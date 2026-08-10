@@ -1,0 +1,339 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+@layer base {
+  :root {
+    --theme-bg: #f3f4f6;
+    --theme-card: #ffffff;
+    --theme-card-border: #e5e7eb;
+    --theme-text-main: #111827;
+    --theme-text-muted: #4b5563;
+    --theme-primary: #2563eb;
+    --theme-primary-hover: #1d4ed8;
+    --theme-primary-text: #ffffff;
+    --theme-accent: #f97316;
+    --theme-accent-light: #ffedd5;
+    --theme-header-bg: #2563eb;
+    --theme-header-text: #ffffff;
+    --font-family: 'Tajawal', sans-serif;
+  }
+
+  body {
+    background-color: var(--theme-bg);
+    color: var(--theme-text-main);
+    font-family: var(--font-family);
+  }
+}
+
+/* Font utilities */
+.font-tajawal { font-family: 'Tajawal', sans-serif; }
+.font-cairo { font-family: 'Cairo', sans-serif; }
+.font-amiri { font-family: 'Amiri', 'Traditional Arabic', 'Arabic Typesetting', serif !important; }
+.font-alexandria { font-family: 'Alexandria', sans-serif; }
+.font-noto { font-family: 'Noto Sans Arabic', sans-serif; }
+.font-arabsq { font-family: 'Amiri', 'Aref Ruqaa', 'Traditional Arabic', serif !important; }
+
+/* Printing Center Font Override */
+.printing-center-root,
+.printing-center-root *,
+.print-page-a4,
+.print-page-a4 *,
+.print-page,
+.print-page *,
+.print-page p,
+.print-page span,
+.print-page h1,
+.print-page h2,
+.print-page h3,
+.print-page h4,
+.print-page h5,
+.print-page h6,
+.print-page div,
+.print-page table,
+.print-page th,
+.print-page td,
+.print-page input,
+.print-page select,
+.print-page button,
+.prose,
+.prose * {
+  font-family: 'Amiri', 'Traditional Arabic', 'Arabic Typesetting', serif !important;
+}
+
+
+
+/* Themes styling */
+.theme-vibrant {
+  --theme-bg: #f3f4f6;
+  --theme-card: #ffffff;
+  --theme-card-border: #e5e7eb;
+  --theme-text-main: #111827;
+  --theme-text-muted: #4b5563;
+  --theme-primary: #2563eb;
+  --theme-primary-hover: #1d4ed8;
+  --theme-primary-text: #ffffff;
+  --theme-accent: #f97316;
+  --theme-accent-light: #ffedd5;
+  --theme-header-bg: #2563eb;
+  --theme-header-text: #ffffff;
+}
+.theme-classic {
+  --theme-bg: #f8fafc;
+  --theme-card: #ffffff;
+  --theme-card-border: #cbd5e1;
+  --theme-text-main: #0f172a;
+  --theme-text-muted: #475569;
+  --theme-primary: #1e3a8a;
+  --theme-primary-hover: #172554;
+  --theme-primary-text: #ffffff;
+  --theme-accent: #b45309;
+  --theme-accent-light: #fef3c7;
+  --theme-header-bg: #0f172a;
+  --theme-header-text: #ffffff;
+}
+
+.theme-diyala {
+  --theme-bg: #f0f9ff;
+  --theme-card: #ffffff;
+  --theme-card-border: #bae6fd;
+  --theme-text-main: #0c4a6e;
+  --theme-text-muted: #0369a1;
+  --theme-primary: #0284c7;
+  --theme-primary-hover: #0369a1;
+  --theme-primary-text: #ffffff;
+  --theme-accent: #0ea5e9;
+  --theme-accent-light: #e0f2fe;
+  --theme-header-bg: #0369a1;
+  --theme-header-text: #ffffff;
+}
+
+.theme-emerald {
+  --theme-bg: #f0fdf4;
+  --theme-card: #ffffff;
+  --theme-card-border: #bbf7d0;
+  --theme-text-main: #064e3b;
+  --theme-text-muted: #047857;
+  --theme-primary: #059669;
+  --theme-primary-hover: #047857;
+  --theme-primary-text: #ffffff;
+  --theme-accent: #d97706;
+  --theme-accent-light: #fef3c7;
+  --theme-header-bg: #064e3b;
+  --theme-header-text: #ffffff;
+}
+
+.theme-dark {
+  --theme-bg: #f8fafc;
+  --theme-card: #ffffff;
+  --theme-card-border: #cbd5e1;
+  --theme-text-main: #0f172a;
+  --theme-text-muted: #334155;
+  --theme-primary: #0284c7;
+  --theme-primary-hover: #0369a1;
+  --theme-primary-text: #ffffff;
+  --theme-accent: #0ea5e9;
+  --theme-accent-light: #e0f2fe;
+  --theme-header-bg: #0284c7;
+  --theme-header-text: #ffffff;
+}
+
+.theme-burgundy {
+  --theme-bg: #fff1f2;
+  --theme-card: #ffffff;
+  --theme-card-border: #fecdd3;
+  --theme-text-main: #4c0519;
+  --theme-text-muted: #881337;
+  --theme-primary: #9f1239;
+  --theme-primary-hover: #881337;
+  --theme-primary-text: #ffffff;
+  --theme-accent: #d97706;
+  --theme-accent-light: #fef3c7;
+  --theme-header-bg: #9f1239;
+  --theme-header-text: #ffffff;
+}
+
+/* Universal Light Overrides to remove ALL dark containers, pitch black elements, and backdrop blurs */
+* {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+select, option, optgroup {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  font-weight: 800 !important;
+}
+
+table, .theme-table {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.bg-slate-900:not(.rich-text-toolbar):not(.rich-text-toolbar *),
+.bg-slate-800:not(.rich-text-toolbar):not(.rich-text-toolbar *),
+.bg-slate-950:not(.rich-text-toolbar):not(.rich-text-toolbar *),
+.bg-black:not(.rich-text-toolbar):not(.rich-text-toolbar *),
+.bg-\[\#0b132b\]:not(.rich-text-toolbar):not(.rich-text-toolbar *) {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.bg-slate-900\/90,
+.bg-slate-900\/80,
+.bg-slate-900\/60,
+.bg-slate-900\/40,
+.bg-slate-800\/90,
+.bg-slate-800\/80,
+.bg-slate-800\/60,
+.bg-slate-800\/50,
+.bg-black\/80,
+.bg-black\/60 {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  color: #0f172a !important;
+}
+
+.text-slate-400,
+.text-slate-500,
+.text-gray-400,
+.text-gray-500,
+.text-slate-600 {
+  color: #0f172a !important;
+  font-weight: 700 !important;
+}
+
+/* Preserve contrast for white text on colored buttons, gradient headers, and active badges */
+.bg-gradient-to-r .text-white,
+.bg-gradient-to-br .text-white,
+.bg-sky-600 .text-white,
+.bg-sky-700 .text-white,
+.bg-blue-600 .text-white,
+.bg-pink-600 .text-white,
+.bg-emerald-600 .text-white,
+.bg-purple-600 .text-white,
+.bg-amber-500 .text-white,
+.bg-rose-600 .text-white,
+button .text-white,
+th.bg-pink-600,
+th.bg-sky-900 {
+  color: #ffffff !important;
+}
+
+/* Rich Text Editor Toolbar Dark Theme Override */
+.rich-text-toolbar,
+.rich-text-toolbar.bg-slate-900,
+.rich-text-toolbar.bg-slate-950 {
+  background-color: #090d16 !important;
+  color: #ffffff !important;
+}
+
+.rich-text-toolbar div {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+.rich-text-toolbar button {
+  background-color: #1e293b !important;
+  color: #ffffff !important;
+  border-color: #334155 !important;
+}
+
+.rich-text-toolbar button:hover {
+  background-color: #fbbf24 !important;
+  color: #020617 !important;
+  border-color: #f59e0b !important;
+}
+
+.rich-text-toolbar button svg,
+.rich-text-toolbar svg {
+  stroke: currentColor !important;
+}
+
+.rich-text-toolbar button:hover svg {
+  color: #020617 !important;
+  stroke: #020617 !important;
+}
+
+.rich-text-toolbar select {
+  background-color: #0f172a !important;
+  color: #fef08a !important;
+  border-color: #334155 !important;
+}
+
+.rich-text-toolbar select option {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+
+/* Template List Item Hover Color Fix (Prevents Pitch-Black Box) */
+.hover\:bg-amber-100:hover {
+  background-color: #fef3c7 !important;
+  color: #451a03 !important;
+  border-color: #fbbf24 !important;
+}
+
+.hover\:bg-blue-100:hover {
+  background-color: #dbeafe !important;
+  color: #1e3a8a !important;
+  border-color: #60a5fa !important;
+}
+
+/* Print stylesheet */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.25s ease-out forwards;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  
+  .print-page-a4, .print-page-a4 *,
+  .print-page, .print-page * {
+    visibility: visible !important;
+  }
+  
+  .print-page-a4, .print-page {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    max-width: 210mm !important;
+    padding: 10mm 12mm !important;
+    margin: 0 !important;
+    background: white !important;
+    color: #0f172a !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .no-print, .no-print * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}
+
+/* Global Table Text Visibility Rules */
+table tbody tr td {
+  color: #0f172a !important;
+}
+
+.student-name-cell, .student-idx-cell, .student-record-cell {
+  color: #0f172a !important;
+  font-weight: 900 !important;
+}
+

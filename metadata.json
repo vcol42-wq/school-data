@@ -1,0 +1,6 @@
+{
+  "name": "نظام الإدارة المدرسية المتكامل",
+  "description": "نظام مالي وإداري لإدارة المدارس (الجدول الدراسي، سجل الطلاب، الكادر التدريسي، الإحصاءات، مركز الطباعة، المنبه والخطوط والثيمات)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
