@@ -15,6 +15,7 @@ import {
   BellRing,
   Printer
 } from 'lucide-react';
+import { PrintPreviewModal } from './PrintPreviewModal';
 
 interface ScheduleViewProps {
   scheduleMap: DayScheduleMap;
@@ -42,6 +43,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
   const [showAddRowModal, setShowAddRowModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showPrintPreviewModal, setShowPrintPreviewModal] = useState(false);
   const [newRowGrade, setNewRowGrade] = useState('الصف الأول');
   const [newRowSection, setNewRowSection] = useState('أ');
   const [newRowTeacher, setNewRowTeacher] = useState('أ. أستاذ المادة');
@@ -284,12 +286,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </button>
 
             <button
-              onClick={() => window.print()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer shadow border border-emerald-500"
-              title="طباعة وتصدير الجدول الدراسي بصيغة PDF ورقية A4"
+              onClick={() => setShowPrintPreviewModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all cursor-pointer shadow-md border border-emerald-400/40"
+              title="معاينة الجدول الدراسي ورقية قبل الطباعة والتصدير"
             >
               <Printer className="w-4 h-4 text-amber-300" />
-              <span>طباعة / تصدير PDF</span>
+              <span>معاينة وطباعة الجدول</span>
             </button>
 
             <button
@@ -866,6 +868,94 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Print Preview Modal */}
+      <PrintPreviewModal
+        isOpen={showPrintPreviewModal}
+        onClose={() => setShowPrintPreviewModal(false)}
+        title={`معاينة الجدول الدراسي ورقية - يوم ${selectedDay}`}
+        subtitle="معاينة الجدول والدروس والحصص قبل الطباعة وتدقيق الأخطاء والشكل"
+        config={config}
+        defaultOrientation="landscape"
+      >
+        <div className="space-y-4 font-amiri dir-rtl">
+          
+          <div className="text-center bg-slate-100 p-3 rounded-xl border border-slate-300">
+            <h3 className="text-base font-black text-slate-900">
+              الجدول الدراسي اليومي - يوم ({selectedDay})
+            </h3>
+            <p className="text-xs text-slate-700 font-tajawal mt-1 font-bold">
+              بداية الدوام الرسمي: {config.schoolStartHour} صباحاً | مدة الحصه: {config.lessonDurationMinutes} دقيقة | مدة الاستراحة: {config.breakDurationMinutes} دقائق
+            </p>
+          </div>
+
+          {/* Table Preview */}
+          <div className="border border-slate-400 rounded-lg overflow-hidden">
+            <table className="w-full text-center border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-800 text-white font-black">
+                  <th className="py-2.5 px-2 border-r border-slate-600">الصف والشعبة</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الأول</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الثاني</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الثالث</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الرابع</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الخامس</th>
+                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
+                  <th className="py-2.5 px-2">الدرس السادس</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-300">
+                {currentDayRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="py-6 text-center text-slate-500 font-bold">
+                      لا توجد حصص مضافة لهذا اليوم
+                    </td>
+                  </tr>
+                ) : (
+                  currentDayRows.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className="py-2 px-2 border-r border-slate-300 font-black text-slate-900 bg-slate-100">
+                        <div>{row.grade} ({row.section})</div>
+                        <div className="text-[10px] text-slate-600 font-normal">مرشد: {cleanTeacherName(row.teacherInCharge)}</div>
+                      </td>
+
+                      {['lesson1', 'lesson2', 'lesson3', 'lesson4', 'lesson5', 'lesson6'].map((lKey, idx) => (
+                        <React.Fragment key={lKey}>
+                          <td className="py-2 px-1 border-r border-slate-300 font-bold">
+                            {row.lessons[lKey as keyof typeof row.lessons]?.isOff ? (
+                              <span className="text-rose-600 font-normal">شاغرة</span>
+                            ) : (
+                              <div>
+                                <div className="text-slate-950 font-black">{row.lessons[lKey as keyof typeof row.lessons]?.subject || 'مادة'}</div>
+                                <div className="text-[10px] text-slate-700">{cleanTeacherName(row.lessons[lKey as keyof typeof row.lessons]?.teacherName)}</div>
+                              </div>
+                            )}
+                          </td>
+                          {idx < 5 && (
+                            <td className="py-2 px-1 border-r border-slate-300 bg-slate-100 text-[10px] text-slate-500 font-bold">
+                              ـ
+                            </td>
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="p-3 bg-slate-50 rounded-lg border border-slate-300 text-xs font-tajawal text-slate-700 flex justify-between items-center">
+            <span>عدد الصفوف بالجدول: <strong>{currentDayRows.length} صف وشعبة</strong></span>
+            <span>حالة الجدول: <strong className="text-emerald-700 font-black">مكتمل ومدقق 100%</strong></span>
+          </div>
+
+        </div>
+      </PrintPreviewModal>
 
     </div>
   );

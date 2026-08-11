@@ -34,6 +34,8 @@ import {
   Code
 } from 'lucide-react';
 import { OFFICIAL_SEAL_DATA_URI } from '../assets/officialSealDataUri';
+import { PrintPreviewModal } from './PrintPreviewModal';
+import { printElement } from '../utils/printHelper';
 
 interface PrintingCenterViewProps {
   documents: OfficialDocument[];
@@ -121,6 +123,7 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
 
   const [isEditing, setIsEditing] = useState(true);
   const [activeTab, setActiveTab] = useState<'editor' | 'archive' | 'prohibitions'>('editor');
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
   
   // Sample Data for Merge Tags Testing
   const [sampleStudent, setSampleStudent] = useState({
@@ -500,11 +503,11 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
           </button>
 
           <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black transition-all shadow-lg cursor-pointer border border-blue-500"
+            onClick={() => setShowPrintPreview(true)}
+            className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white text-xs font-black transition-all shadow-lg cursor-pointer border border-emerald-400/40"
           >
             <Printer className="w-4 h-4 text-amber-300" />
-            <span>طباعة مباشرة / PDF</span>
+            <span>معاينة وطباعة الوثيقة</span>
           </button>
         </div>
       </div>
@@ -842,7 +845,7 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
           )}
 
           {/* EXACT A4 DOCUMENT CANVAS WITH RENDERED HTML & PLACEHOLDERS */}
-          <div className="bg-white text-slate-900 p-8 md:p-10 rounded-2xl shadow-2xl border-4 border-amber-900/30 relative overflow-hidden min-h-[29.7cm] w-full max-w-[21cm] mx-auto flex flex-col justify-between print-page print-page-a4 font-amiri">
+          <div id="printing-center-document-canvas" className="bg-white text-slate-900 p-8 md:p-10 rounded-2xl shadow-2xl border-4 border-amber-900/30 relative overflow-hidden min-h-[29.7cm] w-full max-w-[21cm] mx-auto flex flex-col justify-between print-page print-page-a4 font-amiri">
             
             {/* Inner Decorative Double Border */}
             <div className="absolute inset-2.5 border-2 border-double border-amber-900/40 pointer-events-none rounded-xl"></div>
@@ -1019,6 +1022,58 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
         </div>
 
       </div>
+
+      {/* Print Preview Modal */}
+      <PrintPreviewModal
+        isOpen={showPrintPreview}
+        onClose={() => setShowPrintPreview(false)}
+        title={`معاينة القالب الورقي الرسمية - ${selectedDoc?.title || 'وثيقة رسمية'}`}
+        subtitle="تفقّد الهوامش والتاريخ والتنسيق الإداري قبل طباعة الكراسة أو المستند"
+        config={config}
+        documentRef={selectedDoc?.refNumber || '1042'}
+        documentDate={selectedDoc?.date || new Date().toISOString().split('T')[0]}
+      >
+        <div className="space-y-6 font-amiri dir-rtl px-4 py-2">
+          
+          <div className="text-right">
+            <h3 className="text-lg font-black text-slate-950">
+              {replacePlaceholders(selectedDoc?.recipient || '')}
+            </h3>
+          </div>
+
+          <div className="text-center py-2">
+            <h4 className="inline-block text-lg font-black border-b-2 border-slate-900 pb-1 px-6 text-slate-950">
+              م / {replacePlaceholders(selectedDoc?.subject || '')}
+            </h4>
+          </div>
+
+          <div 
+            className="text-base text-slate-900 leading-relaxed font-amiri min-h-[200px]"
+            dangerouslySetInnerHTML={{ __html: replacePlaceholders(selectedDoc?.bodyContent || '') }}
+          />
+
+          <div className="pt-8 flex justify-between items-end">
+            <div className="text-xs text-slate-600 font-tajawal">
+              {selectedDoc?.copiesTo && selectedDoc.copiesTo.length > 0 && (
+                <div>
+                  <p className="font-bold text-slate-800 mb-1">نسخة منه إلى:</p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {selectedDoc.copiesTo.map((c, i) => (
+                      <li key={i}>{c}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="text-center">
+              <p className="text-sm font-bold text-slate-800">{selectedDoc?.managerTitle || 'مدير المدرسة'}</p>
+              <p className="text-base font-black text-slate-950">{selectedDoc?.managerName || config.managerName}</p>
+            </div>
+          </div>
+
+        </div>
+      </PrintPreviewModal>
 
     </div>
   );

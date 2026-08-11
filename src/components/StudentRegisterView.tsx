@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Student, AppConfig } from '../types';
 import { parseStudentsFromRawInput, parseExcelFileForStudents } from '../utils/parser';
+import { printElement } from '../utils/printHelper';
 import { 
   GraduationCap, 
   Search, 
@@ -1761,7 +1762,7 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
       {/* Printable Full Student Roster Modal */}
       {showPrintRosterModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-4xl w-full shadow-2xl space-y-6 my-8 print-page relative border-2 border-slate-800 dir-rtl">
+          <div id="student-roster-printable-area" className="bg-white text-slate-900 rounded-3xl p-8 max-w-4xl w-full shadow-2xl space-y-6 my-8 print-page relative border-2 border-slate-800 dir-rtl">
             
             {/* Header Official Letterhead */}
             <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4">
@@ -1849,7 +1850,7 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
               </button>
 
               <button
-                onClick={() => window.print()}
+                onClick={() => printElement('student-roster-printable-area', { title: 'سجل الطلاب الموحد', orientation: 'portrait' })}
                 className="flex-1 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-xl flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
