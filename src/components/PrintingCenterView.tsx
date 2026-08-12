@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, Component } from 'react';
 import { OfficialDocument, AppConfig } from '../types';
 import { 
   Printer, 
@@ -53,7 +53,7 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-class PrintingCenterErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class PrintingCenterErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   declare props: ErrorBoundaryProps;
 
   constructor(props: ErrorBoundaryProps) {
@@ -88,11 +88,20 @@ class PrintingCenterErrorBoundary extends React.Component<ErrorBoundaryProps, Er
             <button
               onClick={() => {
                 localStorage.removeItem('diyala_school_documents');
+                (this as any).setState({ hasError: false, error: null });
                 window.location.reload();
               }}
               className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl transition-all shadow-md cursor-pointer text-sm"
             >
               🔄 إعادة تحديث واسترجاع القوالب الرسمية الأصلية
+            </button>
+            <button
+              onClick={() => {
+                (this as any).setState({ hasError: false, error: null });
+              }}
+              className="px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white font-black rounded-xl transition-all shadow-md cursor-pointer text-sm"
+            >
+              🚀 متابعة والدخول إلى مركز الطباعة
             </button>
           </div>
         </div>
@@ -136,6 +145,9 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
   });
 
   const [editorMode, setEditorMode] = useState<'wysiwyg' | 'raw_html'>('wysiwyg');
+  const [externalPrintPath, setExternalPrintPath] = useState<string>(() => {
+    return localStorage.getItem('external_print_file_path') || '';
+  });
   const editorRef = useRef<HTMLDivElement>(null);
 
   // Exact Templates from "ارشيف طباعة.docx"
@@ -380,11 +392,6 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
     }
     alert('تم بنجاح حفظ نص وتنسيق القالب في قاعدة بيانات الأرشيف (HTML Rich Text System)!');
   };
-
-  // External Print File Path State stored in LocalStorage
-  const [externalPrintPath, setExternalPrintPath] = useState<string>(() => {
-    return localStorage.getItem('external_print_file_path') || '';
-  });
 
   // Change External Print File Path Handler
   const handleChangeExternalPrintPath = async () => {

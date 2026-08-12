@@ -361,6 +361,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
       </div>
 
       {/* Main Staff Table View */}
+      {/* Main Staff Table View */}
       <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-lg overflow-hidden">
         <div className="overflow-x-auto no-scrollbar">
           <table className="w-full text-center border-collapse min-w-[1100px] text-xs">
@@ -369,9 +370,8 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                 <th className="py-3.5 px-3 border-r border-slate-700 w-12 text-center whitespace-nowrap">ت</th>
                 <th className="py-3.5 px-3 border-r border-slate-700 text-right whitespace-nowrap">اسم الأستاذ الكامل واللقب</th>
                 <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الاختصاص الدقيق</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الصفوف والشعب التي يدرسها</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الوظيفة والنصاب</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الهاتف والحالة</th>
+                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الصفوف والشعب المكلف بها</th>
+                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">النصاب</th>
                 <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الملف الكامل</th>
               </tr>
             </thead>
@@ -379,7 +379,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
             <tbody className="divide-y divide-slate-200 text-xs">
               {filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-500 font-bold">
+                  <td colSpan={6} className="py-8 text-center text-slate-500 font-bold">
                     لا توجد منتسبون مطابقون لخيارات الفلترة أو البحث الحالية.
                   </td>
                 </tr>
@@ -394,14 +394,9 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
 
                     {/* 2. Full Name & Degree */}
                     <td className="py-3.5 px-3 border-r border-slate-200 text-right whitespace-nowrap">
-                      <div className="flex flex-col">
-                        <span className="font-black text-slate-900 text-sm">
-                          أ. {staff.firstName} {staff.secondName} {staff.thirdName} {staff.titleName}
-                        </span>
-                        <span className="text-[11px] text-slate-600 font-bold mt-0.5">
-                          العنوان: {staff.functionalTitle} • التعيين: {staff.firstDirectYear}
-                        </span>
-                      </div>
+                      <span className="font-black text-slate-900 text-sm">
+                        أ. {staff.firstName} {staff.secondName} {staff.thirdName} {staff.titleName}
+                      </span>
                     </td>
 
                     {/* 3. Specialization */}
@@ -419,29 +414,14 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                       </div>
                     </td>
 
-                    {/* 5. Job & Quota */}
+                    {/* 5. Quota */}
                     <td className="py-3.5 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                      <span className="font-black text-slate-900 ml-1.5">{staff.jobTitle}</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-pink-100 text-pink-950 border border-pink-300 font-black text-[11px]">
+                      <span className="px-2.5 py-1 rounded-full bg-pink-100 text-pink-950 border border-pink-300 font-black text-xs">
                         {staff.teachingQuota} حصة
                       </span>
                     </td>
 
-                    {/* 6. Phone & Status */}
-                    <td className="py-3 px-3 border-r border-slate-200 dark:border-slate-800 text-center whitespace-nowrap">
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="font-mono text-[11px] dir-ltr text-slate-600 dark:text-slate-300 font-bold">{staff.phoneNumber}</span>
-                        <span className={`px-2 py-0.5 rounded-full font-black text-[10px] ${
-                          staff.status === 'مستمر' 
-                            ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200' 
-                            : 'bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-200'
-                        }`}>
-                          {staff.status}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* 7. Action Button */}
+                    {/* 6. Action Button */}
                     <td className="py-2 px-3 text-center whitespace-nowrap">
                       <button
                         onClick={() => setSelectedStaffForDetail(staff)}
@@ -531,7 +511,22 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                   <div><span className="text-slate-500 block">العنوان الوظيفي الرسمي:</span><strong>{selectedStaffForDetail.functionalTitle}</strong></div>
                   <div><span className="text-slate-500 block">الشهادة والأكاديمية:</span><strong>{selectedStaffForDetail.academicDegree}</strong></div>
                   <div><span className="text-slate-500 block">الخدمة الوظيفية الكلية:</span><strong className="text-amber-600">{selectedStaffForDetail.yearsOfService} سنة</strong></div>
-                  <div><span className="text-slate-500 block">نصاب الحصص اليومي:</span><strong className="text-blue-600">{selectedStaffForDetail.teachingQuota} حصة</strong></div>
+                  <div><span className="text-slate-500 block">نصاب الحصص اليومي:</span><strong className="text-blue-600">{selectedStaffForDetail.teachingQuota} hصّة</strong></div>
+                </div>
+              </div>
+
+              {/* Section 4: School Assignments & Role */}
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
+                <h4 className="font-bold text-sm text-purple-700 border-b pb-1">
+                  4. التكليف المدرسي وحالة الملاك الحالية
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div><span className="text-slate-500 block">الوظيفة بالمدرسة:</span><strong>{selectedStaffForDetail.jobTitle}</strong></div>
+                  <div><span className="text-slate-500 block">الاختصاص الدقيق:</span><strong>{selectedStaffForDetail.specialization}</strong></div>
+                  <div><span className="text-slate-500 block">حالة الملاك الحالية:</span><strong>{selectedStaffForDetail.status}</strong></div>
+                  <div><span className="text-slate-500 block">نصاب الحصص:</span><strong className="text-blue-600">{selectedStaffForDetail.teachingQuota} حصة</strong></div>
+                  <div className="col-span-2"><span className="text-slate-500 block">الصفوف والشعب المكلف بها:</span><strong>{Array.isArray(selectedStaffForDetail.classesTaught) ? selectedStaffForDetail.classesTaught.join('، ') : 'الصف الأول أ'}</strong></div>
+                  <div className="col-span-2"><span className="text-slate-500 block">عدد الشعب التي يدرسها:</span><strong>{selectedStaffForDetail.sectionsTaughtCount} شعبة</strong></div>
                 </div>
               </div>
 

@@ -6,7 +6,7 @@ try {
   execSync('taskkill /f /im "The Principal.exe" /im electron.exe 2>nul');
 } catch (e) {}
 
-const builtExe = path.resolve('dist_electron/The Principal - برنامج مباشر بدون تثبيت 1.0.0.exe');
+const builtExe = path.resolve('dist_electron/The Principal - بدون تثبيت 1.0.0.exe');
 const desktopPath = path.resolve('C:/Users/vcol4/Desktop/The Principal - برنامج مباشر بدون تثبيت.exe');
 const parentFolderExe = path.resolve('c:/the boss/The Principal - برنامج مباشر بدون تثبيت.exe');
 

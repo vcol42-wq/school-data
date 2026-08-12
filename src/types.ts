@@ -73,7 +73,26 @@ export interface DayScheduleMap {
 export interface StudentMark {
   year: string;
   subject: string;
-  midterm: number;
+  firstSemester?: number; // الفصل الأول
+  midterm?: number;        // نصف السنة
+  secondSemester?: number;// الفصل الثاني
+  yearlyEffort?: number;  // السعي السنوي
+  finalExam?: number;     // امتحان آخر السنة
+  secondRound?: number;   // امتحان الدور الثاني
+  finalGrade?: number;    // الدرجة النهائية
+  
+  // تفاصيل سجل اليومي والشهور
+  month1Daily?: number;    // مجم ش1
+  month1Written?: number;  // تحر ش1
+  month1?: number;         // ش1 = مجم + تحر
+  
+  month2Daily?: number;    // مجم ش2
+  month2Written?: number;  // تحر ش2
+  month2?: number;         // ش2 = مجم + تحر
+  
+  midtermDaily?: number;   // يومي نصف السنة (مجم)
+  midtermWritten?: number; // تحريري نصف السنة (تحر)
+
   final: number;
   total: number;
 }

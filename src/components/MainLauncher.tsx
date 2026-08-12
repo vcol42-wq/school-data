@@ -60,7 +60,7 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
     },
     {
       id: 'students' as ActiveView,
-      title: 'سجل الطلاب',
+      title: 'سجل الطلاب الموحد',
       subtitle: `${studentsCount} طالب مقيد`,
       icon: GraduationCap,
       gradient: 'from-emerald-500 to-teal-700',

@@ -262,59 +262,96 @@ export async function parseExcelFileForStaff(file: File): Promise<StaffMember[]>
           const json: Record<string, string | number>[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
           json.forEach((row) => {
-            const nameStr = String(
-              row['الاسم'] || 
-              row['اسم المنتسب'] || 
-              row['اسم الموظف'] || 
-              row['الاسم الكامل'] || 
-              Object.values(row)[0] || 
-              ''
-            ).trim();
+            // Extract individual name parts if available in split columns
+            let firstName = String(row['الاسم الأول'] || '').trim();
+            let secondName = String(row['اسم الاب'] || row['اسم الأب'] || '').trim();
+            let thirdName = String(row['اسم الجد'] || '').trim();
+            let fourthName = String(row['اسم الجد الرابع'] || '').trim();
+            let titleName = String(row['اللقب'] || '').trim();
 
-            if (!nameStr || nameStr.includes('الاسم') || nameStr.includes('تسلسل')) {
+            let nameStr = '';
+            if (firstName) {
+              nameStr = [firstName, secondName, thirdName, fourthName, titleName].filter(Boolean).join(' ');
+            } else {
+              nameStr = String(
+                row['الاسم'] || 
+                row['اسم المنتسب'] || 
+                row['اسم الموظف'] || 
+                row['الاسم الكامل'] || 
+                Object.values(row)[0] || 
+                ''
+              ).trim();
+              
+              if (nameStr && !nameStr.includes('الاسم') && !nameStr.includes('تسلسل')) {
+                const tokens = nameStr.split(/\s+/);
+                firstName = tokens[0] || 'أحمد';
+                secondName = tokens[1] || 'محمود';
+                thirdName = tokens[2] || 'فاضل';
+                fourthName = tokens[3] || 'صالح';
+                titleName = tokens[4] || 'التميمي';
+              }
+            }
+
+            // Skip header/empty rows
+            if (!firstName || nameStr.includes('الاسم') || nameStr.includes('تسلسل')) {
               return;
             }
 
-            const tokens = nameStr.split(/\s+/);
+            // Extract specialization (الاختصاص الدقيق)
+            const spec = String(row['الاختصاص الدقيق'] || row['الاختصاص'] || 'اللغة العربية').trim();
+
+            // Extract quota and classes
+            const quota = Number(row['النصاب'] || row['الحصص'] || 18);
+
+            // Map status correctly
+            const statusStr = String(row['الحالة'] || 'مستمر').trim();
+            let mappedStatus: StaffMember['status'] = 'مستمر';
+            if (statusStr.includes('مجاز')) {
+              mappedStatus = 'مجاز إجازة طويلة';
+            } else if (statusStr.includes('منسب خارج') || statusStr.includes('خارج المدرسة')) {
+              mappedStatus = 'منسب خارج المدرسة';
+            } else if (statusStr.includes('منسب')) {
+              mappedStatus = 'منسب إلى المدرسة';
+            }
 
             allStaff.push({
               id: `stf-xls-${Date.now()}-${globalIndex}`,
-              jobTitle: String(row['الوظيفة'] || row['العنوان الوظيفي'] || 'مدرس'),
-              firstName: tokens[0] || 'أحمد',
-              secondName: tokens[1] || 'محمود',
-              thirdName: tokens[2] || 'فاضل',
-              fourthName: tokens[3] || 'صالح',
-              titleName: tokens[4] || 'التميمي',
-              motherName: String(row['اسم الأم'] || 'زينب كاظم'),
-              birthDay: String(row['يوم'] || '15'),
-              birthMonth: String(row['شهر'] || '05'),
-              birthYear: String(row['سنة'] || '1985'),
-              nationalCardNumber: String(row['رقم البطاقة الوطنية'] || `1985123450${globalIndex}`),
-              rationCardNumber: String(row['رقم البطاقة التموينية'] || `789012${globalIndex}`),
-              rationCenterNumber: String(row['رقم مركز التموين'] || '304'),
-              spouseOccupation: String(row['مهنة الزوج /الزوجة'] || row['مهنة الزوج'] || 'ربة بيت'),
-              phoneNumber: String(row['رقم هاتف المنتسب'] || `0770123456${globalIndex}`),
-              specialization: String(row['الاختصاص الدقيق'] || 'اللغة العربية'),
-              firstDirectDay: '01',
-              firstDirectMonth: '09',
-              firstDirectYear: String(row['سنة2'] || '2010'),
-              hasMasterDegree: String(row['الماستر'] || '').toLowerCase().includes('نعم'),
-              schoolDirectDay: '15',
-              schoolDirectMonth: '09',
-              schoolDirectYear: String(row['سنة4'] || '2018'),
-              academicDegree: String(row['الشهادة'] || 'بكالوريوس'),
+              jobTitle: String(row['وظيفته في المدرسة'] || row['الوظيفة'] || row['العنوان الوظيفي'] || 'مدرس').trim(),
+              firstName,
+              secondName,
+              thirdName,
+              fourthName,
+              titleName,
+              motherName: String(row['اسم الام'] || row['اسم الأم'] || 'زينب كاظم').trim(),
+              birthDay: String(row['يوم'] || '15').trim(),
+              birthMonth: String(row[' شهر'] || row['شهر'] || '05').trim(),
+              birthYear: String(row['سنة'] || '1985').trim(),
+              nationalCardNumber: String(row['رقم البطاقة الوطنية'] || row['الموحدة'] || `1985123450${globalIndex}`).trim(),
+              rationCardNumber: String(row['رقم البطاقة التموينية'] || `789012${globalIndex}`).trim(),
+              rationCenterNumber: String(row['رقم مركز التموين'] || '304').trim(),
+              spouseOccupation: String(row['مهنة الزوج /الزوجة'] || row['مهنة الزوج'] || 'ربة بيت').trim(),
+              phoneNumber: String(row['رقم هاتف المنتسب'] || row['الهاتف'] || `0770123456${globalIndex}`).trim(),
+              specialization: spec,
+              firstDirectDay: String(row['يوم2'] || '01').trim(),
+              firstDirectMonth: String(row['المباشرة'] || '09').trim(),
+              firstDirectYear: String(row['سنة2'] || '2010').trim(),
+              hasMasterDegree: String(row['الشهادة'] || '').includes('ماجستير') || String(row['الشهادة'] || '').includes('دكتوراه'),
+              schoolDirectDay: String(row['يوم3'] || '15').trim(),
+              schoolDirectMonth: String(row['المباشرة في المدرسة'] || '09').trim(),
+              schoolDirectYear: String(row['سنة4'] || '2018').trim(),
+              academicDegree: String(row['الشهادة'] || 'بكالوريوس').trim(),
               yearsOfService: Number(row['الخدمة'] || 14),
-              status: String(row['الحالة'] || '').includes('مجاز') ? 'مجاز إجازة طويلة' : 'مستمر',
-              appointmentOrderNo: String(row['رقم الامر الاداري بالتعيين'] || `10452 / 2010`),
-              firstDirectOrderNo: String(row['رقم الامر الاداري بالمباشرة الاولى'] || `8891 / 2010`),
-              functionalTitle: String(row['العنوان الوظيفي'] || 'معلم جامعي أول'),
-              residenceDistrict: String(row['محل السكن (قضاء - ناحية'] || 'بعقوبة - المركز'),
-              nearestLandmark: String(row['اقرب نقطة دالة'] || 'قرب جامع ديالى الكبير'),
-              residenceCardNumber: String(row['رقم بطاقة السكن'] || `45892${globalIndex}`),
-              salaryAccountNumber: String(row['الرقم الحسابي من قائمة الراتب'] || `IQ98RABB01234567890${globalIndex}`),
-              classesTaught: ['الصف الأول', 'الصف الثاني'],
-              sectionsTaughtCount: 3,
-              teachingQuota: 18
+              status: mappedStatus,
+              appointmentOrderNo: String(row['الماستر'] || row['رقم الامر الاداري بالتعيين'] || `10452 / 2010`).trim(),
+              firstDirectOrderNo: String(row['رقم الامر الاداري بالمباشرة الاولى'] || `8891 / 2010`).trim(),
+              functionalTitle: String(row['العنوان الوظيفي'] || 'معلم جامعي أول').trim(),
+              residenceDistrict: String(row['محل السكن (قضاء - ناحية'] || row['محل السكن'] || 'بعقوبة - المركز').trim(),
+              nearestLandmark: String(row['اقرب نقطة دالة'] || 'قرب المدرسة').trim(),
+              residenceCardNumber: String(row['رقم بطاقة السكن'] || `45892${globalIndex}`).trim(),
+              salaryAccountNumber: String(row['الرقم الحسابي من قائمة الراتب'] || `IQ98RABB01234567890${globalIndex}`).trim(),
+              classesTaught: row['الصفوف المكلف بها'] ? String(row['الصفوف المكلف بها']).split('،') : ['الصف الأول', 'الصف الثاني'],
+              sectionsTaughtCount: Number(row['عدد الشعب'] || 3),
+              teachingQuota: quota
             });
 
             globalIndex++;

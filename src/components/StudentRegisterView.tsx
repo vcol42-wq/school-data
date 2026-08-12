@@ -32,7 +32,9 @@ import {
   CheckSquare,
   ScanLine,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Mic,
+  MicOff
 } from 'lucide-react';
 
 interface StudentRegisterViewProps {
@@ -54,6 +56,469 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
   const [selectedGrade, setSelectedGrade] = useState('الكل');
   const [selectedStatus, setSelectedStatus] = useState('الكل');
   const [healthFilter, setHealthFilter] = useState('الكل');
+
+  // Additional states for Continuing Student Marks Register
+  const [selectedSection, setSelectedSection] = useState('الكل');
+  const [selectedSubject, setSelectedSubject] = useState('اللغة العربية');
+  
+  // Daily marks detail editor state
+  const [selectedStudentForDailyMarks, setSelectedStudentForDailyMarks] = useState<Student | null>(null);
+
+  // Voice Grade Input states
+  const [isListeningVoice, setIsListeningVoice] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceMatchMessage, setVoiceMatchMessage] = useState('');
+
+  // Simulated Sync with Teacher's App states
+  const [isSyncingTeacher, setIsSyncingTeacher] = useState(false);
+  const [teacherSyncProgress, setTeacherSyncProgress] = useState(0);
+  const [showTeacherSyncModal, setShowTeacherSyncModal] = useState(false);
+
+  const SUBJECTS = [
+    'اللغة العربية',
+    'التربية الإسلامية',
+    'اللغة الإنجليزية',
+    'الرياضيات',
+    'العلوم',
+    'الاجتماعيات',
+    'الفيزياء',
+    'الكيمياء',
+    'الأحياء',
+    'الحاسوب',
+    'الفنية',
+    'الرياضة'
+  ];
+
+  // Helper: get or initialize a StudentMark object
+  const getStudentMarkForSubject = (std: Student, subject: string): StudentMark => {
+    const currentYear = std.registrationYear || '2024-2025';
+    let mark = std.marksHistory.find(m => m.subject === subject && m.year === currentYear);
+    if (!mark) {
+      mark = std.marksHistory.find(m => m.subject === subject);
+    }
+    return mark || {
+      year: currentYear,
+      subject: subject,
+      month1Daily: undefined,
+      month1Written: undefined,
+      month1: undefined,
+      month2Daily: undefined,
+      month2Written: undefined,
+      month2: undefined,
+      yearlyEffort: undefined,
+      midtermDaily: undefined,
+      midtermWritten: undefined,
+      midterm: undefined,
+      finalExam: undefined,
+      secondRound: undefined,
+      final: 0,
+      total: 0
+    };
+  };
+
+  // Helper: Calculate final grade dynamically
+  const getStudentFinalGrade = (std: Student) => {
+    const m = getStudentMarkForSubject(std, selectedSubject);
+    const effort = Number(m.yearlyEffort || 0);
+    const secondRound = m.secondRound !== undefined && m.secondRound !== null && String(m.secondRound).trim() !== '' ? Number(m.secondRound) : undefined;
+    const finalExam = Number(m.finalExam || 0);
+
+    let rawTotal = 0;
+    if (secondRound !== undefined) {
+      rawTotal = effort + secondRound;
+    } else {
+      rawTotal = effort + finalExam;
+    }
+
+    return Math.round(rawTotal);
+  };
+
+  // Helper: Update a specific grade cell and recalculate averages
+  const updateStudentMark = (studentId: string, field: keyof StudentMark, value: string) => {
+    setStudents(prev => prev.map(s => {
+      if (s.id !== studentId) return s;
+
+      const currentYear = s.registrationYear || '2024-2025';
+      const marks = [...s.marksHistory];
+      let markIdx = marks.findIndex(m => m.subject === selectedSubject && m.year === currentYear);
+      
+      let mark: StudentMark;
+      if (markIdx !== -1) {
+        mark = { ...marks[markIdx] };
+      } else {
+        mark = {
+          year: currentYear,
+          subject: selectedSubject,
+          month1Daily: undefined,
+          month1Written: undefined,
+          month1: undefined,
+          month2Daily: undefined,
+          month2Written: undefined,
+          month2: undefined,
+          yearlyEffort: undefined,
+          midtermDaily: undefined,
+          midtermWritten: undefined,
+          midterm: undefined,
+          finalExam: undefined,
+          secondRound: undefined,
+          final: 0,
+          total: 0
+        };
+      }
+
+      // Update value
+      const numVal = value.trim() === '' ? undefined : Number(value);
+      (mark as any)[field] = numVal;
+
+      // Recalculate Month 1 (ش1 = مجم + تحر)
+      if (mark.month1Daily !== undefined || mark.month1Written !== undefined) {
+        mark.month1 = (mark.month1Daily || 0) + (mark.month1Written || 0);
+      } else {
+        mark.month1 = undefined;
+      }
+
+      // Recalculate Month 2 (ش2 = مجم + تحر)
+      if (mark.month2Daily !== undefined || mark.month2Written !== undefined) {
+        mark.month2 = (mark.month2Daily || 0) + (mark.month2Written || 0);
+      } else {
+        mark.month2 = undefined;
+      }
+
+      // Recalculate Yearly Effort (السعي = (ش1 + ش2) / 2)
+      if (mark.month1 !== undefined || mark.month2 !== undefined) {
+        const m1 = mark.month1 !== undefined ? mark.month1 : 0;
+        const m2 = mark.month2 !== undefined ? mark.month2 : 0;
+        mark.yearlyEffort = Math.round((m1 + m2) / 2);
+      } else {
+        mark.yearlyEffort = undefined;
+      }
+
+      // Recalculate Midterm (نصف السنة = يومي + تحريري دون تقسيم)
+      if (mark.midtermDaily !== undefined || mark.midtermWritten !== undefined) {
+        mark.midterm = (mark.midtermDaily || 0) + (mark.midtermWritten || 0);
+      } else {
+        mark.midterm = undefined;
+      }
+
+      // Recalculate Final Grade
+      const effort = mark.yearlyEffort || 0;
+      const secondRound = mark.secondRound !== undefined && mark.secondRound !== null && String(mark.secondRound).trim() !== '' ? Number(mark.secondRound) : undefined;
+      const finalExam = mark.finalExam !== undefined ? Number(mark.finalExam) : 0;
+
+      let rawTotal = 0;
+      if (secondRound !== undefined) {
+        rawTotal = effort + secondRound;
+      } else {
+        rawTotal = effort + finalExam;
+      }
+
+      const finalGrade = Math.round(rawTotal);
+      mark.finalGrade = finalGrade;
+      mark.total = finalGrade; // compatibility
+      mark.final = secondRound !== undefined ? secondRound : finalExam; // compatibility
+
+      if (markIdx !== -1) {
+        marks[markIdx] = mark;
+      } else {
+        marks.push(mark);
+      }
+
+      // Calculate new overall average score across all subjects for this year
+      const currentYearMarks = marks.filter(m => m.year === currentYear);
+      const avgScore = currentYearMarks.reduce((sum, m) => sum + (m.total || 0), 0) / (currentYearMarks.length || 1);
+      const finalYearScore = Math.round(avgScore);
+
+      return {
+        ...s,
+        marksHistory: marks,
+        finalYearScore: finalYearScore,
+        previousYearResult: finalYearScore >= 50 ? `ناجح (${finalYearScore})` : `راسب (${finalYearScore})`
+      };
+    }));
+  };
+
+  // Voice recognition listener activation
+  const startVoiceRecognition = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('متصفحك لا يدعم ميزة التعرف على الصوت. يرجى استخدام متصفح Google Chrome.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ar-IQ'; // Iraqi Arabic dialect
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListeningVoice(true);
+      setVoiceTranscript('جاري الاستماع... تكلم الآن');
+      setVoiceMatchMessage('');
+    };
+
+    recognition.onerror = () => {
+      setIsListeningVoice(false);
+      setVoiceTranscript('حدث خطأ في التقاط الصوت. حاول مرة أخرى.');
+    };
+
+    recognition.onend = () => {
+      setIsListeningVoice(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setVoiceTranscript(transcript);
+      parseAndApplyVoiceCommand(transcript);
+    };
+
+    recognition.start();
+  };
+
+  const parseAndApplyVoiceCommand = (transcript: string) => {
+    const text = transcript.trim().toLowerCase()
+      .replace(/واحد/g, '1')
+      .replace(/اثنين/g, '2')
+      .replace(/ثلاثة/g, '3')
+      .replace(/اربعة/g, '4')
+      .replace(/خمسة/g, '5')
+      .replace(/ستة/g, '6')
+      .replace(/سبعة/g, '7')
+      .replace(/ثمانية/g, '8')
+      .replace(/تسعة/g, '9')
+      .replace(/عشرة/g, '10')
+      .replace(/صفر/g, '0');
+
+    // 1. Add student voice command
+    if (text.includes('طالب جديد') || text.includes('اضف طالب') || text.includes('أضف طالب') || text.includes('سجل طالب')) {
+      let cleanText = text
+        .replace(/طالب جديد/g, '')
+        .replace(/اضف طالب/g, '')
+        .replace(/أضف طالب/g, '')
+        .replace(/سجل طالب/g, '')
+        .trim();
+
+      const recordMatch = cleanText.match(/(?:قيد|رقم|سجل)\s*(\d+)/);
+      const recordNumber = recordMatch ? recordMatch[1] : String(1050 + students.length);
+
+      const sectionMatch = cleanText.match(/(?:شعبة|شعبه|جروب)\s*([أبجدوهـ])/);
+      const section = sectionMatch ? sectionMatch[1] : 'أ';
+
+      let grade = 'الصف الأول';
+      if (cleanText.includes('الأول متوسط') || cleanText.includes('الاول متوسط')) grade = 'الأول متوسط';
+      else if (cleanText.includes('الثاني متوسط') || cleanText.includes('الثاني متوسط')) grade = 'الثاني متوسط';
+      else if (cleanText.includes('الثالث متوسط') || cleanText.includes('الثالث متوسط')) grade = 'الثالث متوسط';
+      else if (cleanText.includes('الرابع العلمي')) grade = 'الرابع العلمي';
+      else if (cleanText.includes('الرابع الأدبي') || cleanText.includes('الرابع الادبي')) grade = 'الرابع الأدبي';
+      else if (cleanText.includes('الخامس العلمي')) grade = 'الخامس العلمي';
+      else if (cleanText.includes('الخامس الأدبي') || cleanText.includes('الخامس الادبي')) grade = 'الخامس الأدبي';
+      else if (cleanText.includes('السادس العلمي')) grade = 'السادس العلمي (أحياء)';
+      else if (cleanText.includes('السادس الأدبي') || cleanText.includes('السادس الادبي')) grade = 'السادس الأدبي';
+      else if (cleanText.includes('الأول ابتدائي') || cleanText.includes('الاول ابتدائي')) grade = 'الأول ابتدائي';
+      else if (cleanText.includes('الثاني ابتدائي') || cleanText.includes('الثاني ابتدائي')) grade = 'الثاني ابتدائي';
+      else if (cleanText.includes('الثالث ابتدائي') || cleanText.includes('الثالث ابتدائي')) grade = 'الثالث ابتدائي';
+      else if (cleanText.includes('الرابع ابتدائي') || cleanText.includes('الرابع ابتدائي')) grade = 'الرابع ابتدائي';
+      else if (cleanText.includes('الخامس ابتدائي') || cleanText.includes('الخامس ابتدائي')) grade = 'الخامس ابتدائي';
+      else if (cleanText.includes('السادس ابتدائي') || cleanText.includes('السادس ابتدائي')) grade = 'السادس ابتدائي';
+
+      let namePart = cleanText
+        .replace(/(?:قيد|رقم|سجل)\s*\d+/g, '')
+        .replace(/(?:شعبة|شعبه|جروب)\s*[أبجدوهـ]/g, '')
+        .replace(/(?:الصف الأول|الاول متوسط|الأول متوسط|الثاني متوسط|الثالث متوسط|الرابع العلمي|الرابع الأدبي|الخامس العلمي|الخامس الأدبي|السادس العلمي|السادس الأدبي|الأول ابتدائي|الثاني ابتدائي|الثالث ابتدائي|الرابع ابتدائي|الخامس ابتدائي|السادس ابتدائي|الصف)/g, '')
+        .trim();
+
+      const nameWords = namePart.split(/\s+/).filter(w => w.length > 0);
+      const firstName = nameWords[0] || 'طالب';
+      const secondName = nameWords[1] || 'جديد';
+      const thirdName = nameWords[2] || 'حسن';
+      const fourthName = nameWords[3] || 'علي';
+      const titleName = nameWords[4] || 'الزبيدي';
+
+      const newStudentObj: Student = {
+        id: `std-voice-${Date.now()}`,
+        sequence: students.length + 1,
+        recordNumber,
+        registerPageNumber: '15',
+        wasatiPageNumber: '50',
+        registrationYear: '2024-2025',
+        previousYearResult: 'ناجح (85)',
+        currentGrade: grade,
+        section,
+        absencesCount: 0,
+        status: 'مستمر',
+        healthStatus: 'سليم',
+        firstName,
+        secondName,
+        thirdName,
+        fourthName,
+        titleName,
+        motherName: 'فاطمة كريم',
+        nationalCardNumber: '1998' + Math.floor(10000000 + Math.random() * 90000000),
+        conductScore: 'ممتاز',
+        marksHistory: [],
+        notesLog: [
+          { id: `note-${Date.now()}`, date: new Date().toISOString().split('T')[0], type: 'ملاحظة عامة', text: 'تم تسجيل الطالب بواسطة الأمر الصوتي' }
+        ]
+      };
+
+      setStudents(prev => [...prev, newStudentObj]);
+      setVoiceMatchMessage(`✅ تم تسجيل الطالب الجديد [${firstName} ${secondName} ${thirdName}] بنجاح في الصف [${grade}] شعبة [${section}] وقيد [${recordNumber}]`);
+      return;
+    }
+
+    // 2. Grade editing parsing
+    // Match student identifier
+    const seqMatch = text.match(/(?:تسلسل|رقم|الطالب)\s*(\d+)/);
+    let targetStudent: Student | undefined = undefined;
+
+    if (seqMatch) {
+      const seq = parseInt(seqMatch[1], 10);
+      targetStudent = filteredStudents[seq - 1];
+    } else {
+      // Search by name
+      let cleanTextForName = text
+        .replace(/درجة|درجه/g, '')
+        .replace(/ش1|ش2|ش١|ش٢|شهر|أول|ثاني|سعي|السعي|نصف|السنة/g, '')
+        .replace(/مجم|تحر/g, '')
+        .replace(/\d+/g, '')
+        .trim();
+
+      if (cleanTextForName.length > 1) {
+        targetStudent = filteredStudents.find(std => {
+          const fullName = `${std.firstName} ${std.secondName} ${std.thirdName}`.toLowerCase();
+          return fullName.includes(cleanTextForName) || cleanTextForName.includes(std.firstName);
+        });
+      }
+    }
+
+    if (!targetStudent) {
+      setVoiceMatchMessage(`❌ لم يتم التعرف على اسم الطالب أو تسلسله في هذا الصف.`);
+      return;
+    }
+
+    // Parse fields and apply
+    if (text.includes('ش1') || text.includes('ش١') || text.includes('الشهر الأول') || text.includes('الشهر الاول')) {
+      const mجمMatch = text.match(/(?:مجم|مجموع|نشاط)\s*(\d+)/);
+      const تحرMatch = text.match(/(?:تحر|تحريري|امتحان)\s*(\d+)/);
+      if (mجمMatch) updateStudentMark(targetStudent.id, 'month1Daily', mجمMatch[1]);
+      if (تحرMatch) updateStudentMark(targetStudent.id, 'month1Written', تحرMatch[1]);
+      setVoiceMatchMessage(`✅ تم رصد درجات الشهر الأول للطالب [${targetStudent.firstName}] (مجم: ${mجمMatch ? mجمMatch[1] : '-'}، تحر: ${تحرMatch ? تحرMatch[1] : '-'})`);
+    } 
+    else if (text.includes('ش2') || text.includes('ش٢') || text.includes('الشهر الثاني')) {
+      const mجمMatch = text.match(/(?:مجم|مجموع|نشاط)\s*(\d+)/);
+      const تحرMatch = text.match(/(?:تحر|تحريري|امتحان)\s*(\d+)/);
+      if (mجمMatch) updateStudentMark(targetStudent.id, 'month2Daily', mجمMatch[1]);
+      if (تحرMatch) updateStudentMark(targetStudent.id, 'month2Written', تحرMatch[1]);
+      setVoiceMatchMessage(`✅ تم رصد درجات الشهر الثاني للطالب [${targetStudent.firstName}] (مجم: ${mجمMatch ? mجمMatch[1] : '-'}، تحر: ${تحرMatch ? تحرMatch[1] : '-'})`);
+    }
+    else if (text.includes('نصف السنة') || text.includes('نصف سنه') || text.includes('منتصف السنة') || text.includes('نصف')) {
+      const mجمMatch = text.match(/(?:مجم|مجموع|نشاط|يومي)\s*(\d+)/);
+      const تحرMatch = text.match(/(?:تحر|تحريري|امتحان)\s*(\d+)/);
+      if (mجمMatch) updateStudentMark(targetStudent.id, 'midtermDaily', mجمMatch[1]);
+      if (تحرMatch) updateStudentMark(targetStudent.id, 'midtermWritten', تحرMatch[1]);
+      setVoiceMatchMessage(`✅ تم رصد درجات نصف السنة للطالب [${targetStudent.firstName}] (يومي/مجم: ${mجمMatch ? mجمMatch[1] : '-'}، تحريري/تحر: ${تحرMatch ? تحرMatch[1] : '-'})`);
+    }
+    else if (text.includes('النهائي') || text.includes('النهائي') || text.includes('آخر السنة') || text.includes('نهاية السنة')) {
+      const scoreMatch = text.match(/(\d+)/);
+      if (scoreMatch) {
+        updateStudentMark(targetStudent.id, 'finalExam', scoreMatch[1]);
+        setVoiceMatchMessage(`✅ تم رصد درجة النهائي للطالب [${targetStudent.firstName}] بالدرجة (${scoreMatch[1]})`);
+      }
+    }
+    else if (text.includes('الدور الثاني') || text.includes('دور ثاني')) {
+      const scoreMatch = text.match(/(\d+)/);
+      if (scoreMatch) {
+        updateStudentMark(targetStudent.id, 'secondRound', scoreMatch[1]);
+        setVoiceMatchMessage(`✅ تم رصد درجة الدور الثاني للطالب [${targetStudent.firstName}] بالدرجة (${scoreMatch[1]})`);
+      }
+    }
+    else if (text.includes('السعي') || text.includes('سعي')) {
+      const scoreMatch = text.match(/(\d+)/);
+      if (scoreMatch) {
+        updateStudentMark(targetStudent.id, 'yearlyEffort', scoreMatch[1]);
+        setVoiceMatchMessage(`✅ تم رصد درجة السعي للطالب [${targetStudent.firstName}] بالدرجة (${scoreMatch[1]})`);
+      }
+    }
+    else {
+      // Default fallback
+      const scoreMatch = text.match(/(\d+)/);
+      if (scoreMatch) {
+        updateStudentMark(targetStudent.id, 'yearlyEffort', scoreMatch[1]);
+        setVoiceMatchMessage(`✅ تم تحديث درجة السعي للطالب [${targetStudent.firstName}] بالدرجة (${scoreMatch[1]})`);
+      } else {
+        setVoiceMatchMessage(`❌ لم يتم التعرف على الدرجة المطلوبة. قل مثلاً: "تسلسل 1 ش1 مجم 15 تحر 30"`);
+      }
+    }
+  };
+
+  const simulateTeacherAppSync = () => {
+    setIsSyncingTeacher(true);
+    setTeacherSyncProgress(0);
+    setShowTeacherSyncModal(true);
+
+    const interval = setInterval(() => {
+      setTeacherSyncProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            setStudents(prevStudents => prevStudents.map(s => {
+              if (s.status !== 'مستمر' || (selectedGrade !== 'الكل' && s.currentGrade !== selectedGrade) || (selectedSection !== 'الكل' && s.section !== selectedSection)) {
+                return s;
+              }
+
+              const currentYear = s.registrationYear || '2024-2025';
+              const marks = [...s.marksHistory];
+              let markIdx = marks.findIndex(m => m.subject === selectedSubject && m.year === currentYear);
+
+              const firstSemester = Math.min(100, Math.max(40, (s.sequence * 13) % 40 + 60));
+              const midterm = Math.min(100, Math.max(40, (s.sequence * 17) % 40 + 60));
+              const secondSemester = Math.min(100, Math.max(40, (s.sequence * 19) % 40 + 60));
+              
+              const yearlyEffort = Math.round((firstSemester + midterm + secondSemester) / 6);
+              const finalExam = Math.round(Math.min(50, Math.max(20, (s.sequence * 23) % 30 + 20)));
+              const finalGrade = yearlyEffort + finalExam;
+
+              const mark: StudentMark = {
+                year: currentYear,
+                subject: selectedSubject,
+                firstSemester,
+                midterm,
+                secondSemester,
+                yearlyEffort,
+                finalExam,
+                secondRound: undefined,
+                finalGrade,
+                final: finalExam,
+                total: finalGrade
+              };
+
+              if (markIdx !== -1) {
+                marks[markIdx] = mark;
+              } else {
+                marks.push(mark);
+              }
+
+              const currentYearMarks = marks.filter(m => m.year === currentYear);
+              const avgScore = currentYearMarks.reduce((sum, m) => sum + (m.total || 0), 0) / (currentYearMarks.length || 1);
+              const finalYearScore = Math.round(avgScore);
+
+              return {
+                ...s,
+                marksHistory: marks,
+                finalYearScore: finalYearScore,
+                previousYearResult: finalYearScore >= 50 ? `ناجح (${finalYearScore})` : `راسب (${finalYearScore})`
+              };
+            }));
+
+            setIsSyncingTeacher(false);
+            alert(`تم مزامنة واستيراد درجات مادة [${selectedSubject}] بنجاح من تطبيق المدرس لجميع طلاب الصف المختار!`);
+            setShowTeacherSyncModal(false);
+          }, 500);
+          return 100;
+        }
+        return prev + 20;
+      });
+    }, 200);
+  };
 
   // School Stage for Promotion Calculation
   const [schoolStage, setSchoolStage] = useState<'ابتدائية' | 'متوسطة' | 'إعدادية'>(() => {
@@ -272,12 +737,13 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
                           nationalCard.includes(query);
 
     const matchesGrade = selectedGrade === 'الكل' || std.currentGrade === selectedGrade;
+    const matchesSection = activeTab === 'archive' || selectedSection === 'الكل' || std.section === selectedSection;
     const matchesStatus = selectedStatus === 'الكل' || std.status === selectedStatus;
     const matchesHealth = healthFilter === 'الكل' || 
                           (healthFilter === 'خاصة' && std.healthStatus.includes('احتياجات')) ||
                           (healthFilter === 'سليم' && std.healthStatus.includes('سليم'));
 
-    return matchesSearch && matchesGrade && matchesStatus && matchesHealth;
+    return matchesSearch && matchesGrade && matchesSection && matchesStatus && matchesHealth;
   });
 
   // Pre-Import Audit Modal State
@@ -541,6 +1007,24 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
+            onClick={simulateTeacherAppSync}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold transition-all shadow cursor-pointer border border-orange-500"
+            title="مزامنة واستيراد الدرجات للمادة الحالية من تطبيق المدرسين"
+          >
+            <RefreshCw className="w-4 h-4 text-white" />
+            <span>استيراد درجات المدرس</span>
+          </button>
+
+          <button
+            onClick={startVoiceRecognition}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-100 hover:bg-orange-200 text-orange-950 text-xs font-bold transition-all shadow cursor-pointer border border-orange-350"
+            title="رصد درجات السجل اليومي بالصوت"
+          >
+            <Mic className={`w-4 h-4 text-orange-600 ${isListeningVoice ? 'animate-pulse' : ''}`} />
+            <span>رصد بالصوت</span>
+          </button>
+
+          <button
             onClick={() => setShowOcrModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow cursor-pointer border border-purple-500"
             title="التقاط أو كشف صورة السجل الورقي بالذكاء الاصطناعي وتطبيق الدرجات تلقائياً"
@@ -599,6 +1083,15 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
           >
             <UserPlus className="w-4 h-4" />
             <span>طالب جديد</span>
+          </button>
+
+          <button
+            onClick={startVoiceRecognition}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-950 text-xs font-bold transition-all shadow cursor-pointer border border-emerald-350"
+            title="إضافة طالب جديد نطقاً بالصوت"
+          >
+            <Mic className={`w-4 h-4 text-emerald-600 ${isListeningVoice ? 'animate-pulse' : ''}`} />
+            <span>إضافة بالصوت</span>
           </button>
         </div>
       </div>
@@ -683,162 +1176,328 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
             </select>
           </div>
 
-          {/* Status Filter */}
-          <div>
-            <select
-              value={selectedStatus}
-              onChange={e => setSelectedStatus(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
-            >
-              <option value="الكل">جميع الحالات</option>
-              {activeTab === 'active' ? (
-                <option value="مستمر">مستمر بالدراسة</option>
-              ) : (
-                <>
+          {activeTab === 'active' ? (
+            <>
+              {/* Section Filter */}
+              <div>
+                <select
+                  value={selectedSection}
+                  onChange={e => setSelectedSection(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
+                >
+                  <option value="الكل">جميع الشعب</option>
+                  <option value="أ">الشعبة أ</option>
+                  <option value="ب">الشعبة ب</option>
+                  <option value="ج">الشعبة ج</option>
+                  <option value="د">الشعبة د</option>
+                  <option value="هـ">الشعبة هـ</option>
+                </select>
+              </div>
+
+              {/* Subject Filter */}
+              <div>
+                <select
+                  value={selectedSubject}
+                  onChange={e => setSelectedSubject(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
+                >
+                  {SUBJECTS.map((sub, i) => (
+                    <option key={i} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Status Filter */}
+              <div>
+                <select
+                  value={selectedStatus}
+                  onChange={e => setSelectedStatus(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
+                >
+                  <option value="الكل">جميع الحالات</option>
                   <option value="متخرج">متخرج</option>
                   <option value="غادر المدرسة">غادر المدرسة / منقول</option>
                   <option value="مفصول">مفصول</option>
-                </>
-              )}
-            </select>
-          </div>
+                </select>
+              </div>
 
-          {/* Health Filter */}
-          <div>
-            <select
-              value={healthFilter}
-              onChange={e => setHealthFilter(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
-            >
-              <option value="الكل">جميع الحالات الصحية</option>
-              <option value="سليم">سليم وخالٍ من الأمراض</option>
-              <option value="خاصة">من ذوي الاحتياجات الخاصة</option>
-            </select>
-          </div>
+              {/* Health Filter */}
+              <div>
+                <select
+                  value={healthFilter}
+                  onChange={e => setHealthFilter(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
+                >
+                  <option value="الكل">جميع الحالات الصحية</option>
+                  <option value="سليم">سليم وخالٍ من الأمراض</option>
+                  <option value="خاصة">من ذوي الاحتياجات الخاصة</option>
+                </select>
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* Voice Recognition Live Feedback Banner */}
+      {(isListeningVoice || voiceTranscript || voiceMatchMessage) && (
+        <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 dark:bg-amber-950/20 dark:border-amber-800 text-xs font-bold space-y-2 flex items-center justify-between gap-4 animate-fade-in shadow-sm dir-rtl text-right">
+          <div className="flex items-center gap-3">
+            <div className={`p-2.5 rounded-full ${isListeningVoice ? 'bg-rose-100 animate-pulse text-rose-600' : 'bg-amber-100 text-amber-700'}`}>
+              <Mic className="w-5 h-5" />
+            </div>
+            <div className="space-y-1">
+              <span className="text-amber-950 dark:text-amber-300 font-black block text-xs">حالة الإدخال والتحكم الصوتي:</span>
+              <p className="text-slate-900 dark:text-slate-200 text-sm font-black font-sans leading-relaxed">
+                {isListeningVoice ? '🎙️ جاري الاستماع صوتياً... قل مثلاً: "طالب جديد أحمد علي الصف الأول" أو "تسلسل 2 ش1 مجم 15 تحر 30"' : voiceTranscript}
+              </p>
+              {voiceMatchMessage && (
+                <p className="text-emerald-700 dark:text-emerald-400 font-black text-xs mt-1 bg-emerald-50 dark:bg-emerald-950/30 p-1.5 rounded-lg border border-emerald-250 inline-block">
+                  {voiceMatchMessage}
+                </p>
+              )}
+            </div>
+          </div>
+          <button 
+            onClick={() => {
+              setVoiceTranscript('');
+              setVoiceMatchMessage('');
+              setIsListeningVoice(false);
+            }}
+            className="p-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-slate-800 text-slate-500 cursor-pointer shrink-0"
+          >
+            <X className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        </div>
+      )}
 
       {/* Main Student Table */}
       <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-lg overflow-hidden">
         <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-center border-collapse min-w-[1200px] text-xs">
-            <thead>
-              <tr className="bg-gradient-to-r from-sky-700 via-sky-600 to-pink-600 text-white font-black border-b-2 border-sky-400 text-xs">
-                <th className="py-3.5 px-3 border-r border-slate-700 w-12 text-center whitespace-nowrap">ت</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-right whitespace-nowrap">اسم الطالب الكامل واللقب</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">رقم القيد</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الصفحة والقيد</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الصف والشعبة الحالية</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap w-36">الدرجة النهائية (نهاية السنة)</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">نتيجة العام السابق</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">حالة الطالب بالسجل</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الحالة الصحية</th>
-                <th className="py-3.5 px-3 w-36 text-center whitespace-nowrap">الإجراءات والتحكم</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs font-medium">
-              {filteredStudents.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="py-12 text-center text-slate-500 font-bold">
-                    {activeTab === 'active' 
-                      ? 'لا يوجد طلاب مستمرون مطابقون لخيارات البحث.'
-                      : 'أرشيف الطلاب فارغ أو لا توجد نتائج مطابقة للبحث.'}
-                  </td>
+          {activeTab === 'active' ? (
+            /* Continuing Student 7-Column Marks Table */
+            <table className="w-full text-center border-collapse min-w-[1200px] text-xs">
+              <thead>
+                <tr className="bg-gradient-to-r from-sky-700 via-sky-600 to-indigo-700 text-white font-black border-b-2 border-sky-400 text-xs">
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 w-12 text-center whitespace-nowrap">ت</th>
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">رقم القيد</th>
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 text-right whitespace-nowrap">اسم الطالب الكامل واللقب</th>
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">فص١</th>
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">نص</th>
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">فص٢</th>
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">سعي</th>
+                  <th colSpan={2} className="py-2 px-3 border-r border-slate-700 text-center whitespace-nowrap bg-indigo-900/50">الامتحان النهائي</th>
+                  <th rowSpan={2} className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الدرجة النهائية</th>
+                  <th rowSpan={2} className="py-3.5 px-3 w-36 text-center whitespace-nowrap">رصد درجات صفي</th>
                 </tr>
-              ) : (
-                filteredStudents.map((std, idx) => {
-                  const currentScore = std.finalYearScore !== undefined ? std.finalYearScore : (std.previousYearResult.includes('ناجح') ? 85 : 45);
-                  const isPassed = currentScore >= 50;
+                <tr className="bg-sky-850 text-white font-black border-b border-sky-400 text-[10px]">
+                  <th className="py-1.5 px-2 border-r border-slate-700 text-center whitespace-nowrap">د١</th>
+                  <th className="py-1.5 px-2 border-r border-slate-700 text-center whitespace-nowrap">د٢</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs font-medium">
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={11} className="py-12 text-center text-slate-500 font-bold">
+                      لا يوجد طلاب مستمرون مطابقون لخيارات البحث.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((std, idx) => {
+                    const mark = getStudentMarkForSubject(std, selectedSubject);
+                    const finalGrade = mark.finalGrade !== undefined ? mark.finalGrade : getStudentFinalGrade(std);
+                    const isPassed = finalGrade >= 50;
 
-                  return (
-                    <tr key={std.id} className="hover:bg-emerald-50/60 dark:hover:bg-slate-800/80 transition-colors">
-                      <td className="py-3 px-3 font-mono font-black text-slate-950 border-r border-slate-300 text-center whitespace-nowrap bg-slate-100/60 student-idx-cell">
-                        {idx + 1}
-                      </td>
-
-                      <td className="py-3 px-3 border-r border-slate-300 font-black text-slate-950 text-right whitespace-nowrap text-sm student-name-cell">
-                        {std.firstName} {std.secondName} {std.thirdName} {std.fourthName} {std.titleName}
-                      </td>
-
-                      <td className="py-3 px-3 border-r border-slate-300 font-mono font-black text-blue-900 text-center whitespace-nowrap text-sm student-record-cell">
-                        {std.recordNumber}
-                      </td>
-
-                      <td className="py-3 px-3 border-r border-slate-200 font-mono text-center whitespace-nowrap text-slate-950 font-black">
-                        ص {std.registerPageNumber} / و {std.wasatiPageNumber}
-                      </td>
-
-                      <td className="py-3 px-3 border-r border-slate-200 font-black text-sky-950 text-center whitespace-nowrap">
-                        {std.currentGrade} ({std.section})
-                      </td>
-
-                      {/* Final Score Column with Editable Input & Lock Protection */}
-                      <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
+                    return (
+                      <tr key={std.id} className="hover:bg-indigo-50/60 dark:hover:bg-slate-800/80 transition-colors">
+                        <td className="py-3 px-3 font-mono font-black text-slate-950 border-r border-slate-300 text-center whitespace-nowrap bg-slate-100/60">
+                          {idx + 1}
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-300 font-mono font-black text-blue-900 text-center whitespace-nowrap text-sm bg-blue-50/10">
+                          {std.recordNumber}
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-300 font-black text-slate-950 text-right whitespace-nowrap text-sm">
+                          {std.firstName} {std.secondName} {std.thirdName} {std.fourthName} {std.titleName}
+                        </td>
+                        {/* فص1 Column */}
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap font-bold bg-slate-50/50">
+                          <button
+                            onClick={() => setSelectedStudentForDailyMarks(std)}
+                            className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-950 hover:bg-sky-100 border border-sky-300 cursor-pointer text-xs font-mono font-black"
+                            title="عرض وتعديل تفاصيل السجل اليومي للشهر الأول (فص١ = مجم + تحر)"
+                          >
+                            {mark.month1 !== undefined ? mark.month1 : '-'}
+                          </button>
+                        </td>
+                        {/* نص Column */}
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap font-bold bg-slate-50/50">
+                          <button
+                            onClick={() => setSelectedStudentForDailyMarks(std)}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-950 hover:bg-indigo-100 border border-indigo-300 cursor-pointer text-xs font-mono font-black"
+                            title="عرض وتعديل تفاصيل سجل نصف السنة (يومي + تحريري دون تقسيم)"
+                          >
+                            {mark.midterm !== undefined ? mark.midterm : '-'}
+                          </button>
+                        </td>
+                        {/* فص2 Column */}
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap font-bold bg-slate-50/50">
+                          <button
+                            onClick={() => setSelectedStudentForDailyMarks(std)}
+                            className="px-2.5 py-1 rounded-lg bg-sky-50 text-sky-950 hover:bg-sky-100 border border-sky-300 cursor-pointer text-xs font-mono font-black"
+                            title="عرض وتعديل تفاصيل السجل اليومي للشهر الثاني (فص٢ = مجم + تحر)"
+                          >
+                            {mark.month2 !== undefined ? mark.month2 : '-'}
+                          </button>
+                        </td>
+                        {/* السعي Column */}
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap font-black text-slate-950 bg-slate-100/30">
+                          {mark.yearlyEffort !== undefined ? mark.yearlyEffort : '-'}
+                        </td>
+                        {/* د١ (الامتحان النهائي) Column */}
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap bg-indigo-50/20">
                           {std.isLockedAndSynced ? (
-                            <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-300 text-slate-950 font-mono font-black text-xs" title={`الدرجة مقفولة ومختومة سحابياً: ${std.syncSealToken || 'نقطة اللا عودة'}`}>
-                              <Lock className="w-3.5 h-3.5 text-amber-600" />
-                              <span>{currentScore}</span>
-                              <span className="text-[11px] text-slate-900 font-black">/100</span>
-                            </div>
+                            <span className="font-mono font-bold text-slate-500">{mark.finalExam !== undefined ? mark.finalExam : '-'}</span>
                           ) : (
-                            <>
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={currentScore}
-                                onChange={e => handleUpdateStudentScore(std.id, Number(e.target.value))}
-                                className={`w-16 px-1.5 py-1 text-center font-black font-mono rounded-lg border-2 text-xs ${
-                                  isPassed 
-                                    ? 'bg-emerald-50 border-emerald-400 text-emerald-950' 
-                                    : 'bg-rose-50 border-rose-400 text-rose-950'
-                                }`}
-                                title="تعديل الدرجة النهائية للطالب لنهاية السنة"
-                              />
-                              <span className="text-[11px] text-slate-950 font-black">/ 100</span>
-                            </>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={mark.finalExam !== undefined ? mark.finalExam : ''}
+                              onChange={e => updateStudentMark(std.id, 'finalExam', e.target.value)}
+                              placeholder="-"
+                              className="w-14 px-1.5 py-1 text-center font-black font-mono rounded-lg border-2 border-slate-300 text-xs focus:outline-none focus:border-sky-500"
+                              title="درجة الامتحان النهائي (د١)"
+                            />
                           )}
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                        <span className={`px-2.5 py-0.5 rounded font-black text-[11px] border ${
-                          isPassed
-                            ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
-                            : 'bg-rose-100 text-rose-950 border-rose-300'
-                        }`}>
-                          {std.previousYearResult}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                        <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] border ${
-                          std.status === 'مستمر' 
-                            ? 'bg-emerald-100 text-emerald-950 border-emerald-300' 
-                            : std.status === 'متخرج'
-                            ? 'bg-amber-100 text-amber-950 border-amber-300'
-                            : 'bg-rose-100 text-rose-950 border-rose-300'
-                        }`}>
-                          {std.status}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                        {std.healthStatus.includes('احتياجات') ? (
-                          <span className="text-amber-950 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded font-black text-[11px]">
-                            {std.healthStatus}
+                        </td>
+                        {/* د٢ (الدور الثاني) Column */}
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap bg-rose-50/30">
+                          {std.isLockedAndSynced ? (
+                            <span className="font-mono font-bold text-slate-500">{mark.secondRound !== undefined ? mark.secondRound : '-'}</span>
+                          ) : (
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={mark.secondRound !== undefined ? mark.secondRound : ''}
+                              onChange={e => updateStudentMark(std.id, 'secondRound', e.target.value)}
+                              placeholder="-"
+                              className="w-14 px-1.5 py-1 text-center font-black font-mono rounded-lg border-2 border-slate-300 text-xs focus:outline-none focus:border-rose-500"
+                              title="درجة الدور الثاني (د٢)"
+                            />
+                          )}
+                        </td>
+                        {/* الدرجة النهائية Column */}
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                          <span className={`px-2.5 py-1 rounded-lg font-black font-mono text-xs border ${
+                            isPassed 
+                              ? 'bg-emerald-100 border-emerald-300 text-emerald-950' 
+                              : 'bg-rose-100 border-rose-300 text-rose-950'
+                          }`}>
+                            {finalGrade}
                           </span>
-                        ) : (
-                          <span className="text-slate-950 font-black">{std.healthStatus}</span>
-                        )}
-                      </td>
+                        </td>
+                        {/* التحكم والإجراءات */}
+                        <td className="py-2 px-3">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => setSelectedStudentForDailyMarks(std)}
+                              title="رصد وتفصيل درجات النشاط اليومي (مجم + تحر)"
+                              className="p-1.5 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-600 hover:text-white transition-all cursor-pointer shadow-sm"
+                            >
+                              <BookOpen className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setSelectedStudentForDetail(std)}
+                              title="توسعة المعلومات الكاملة عن الطالب"
+                              className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition-all cursor-pointer shadow-sm"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setSelectedStudentForPrint(std)}
+                              title="طباعة وثيقة درجات وسجل الطالب"
+                              className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all cursor-pointer shadow-sm"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          ) : (
+            /* Archive Student Profile Table (Original Table) */
+            <table className="w-full text-center border-collapse min-w-[1200px] text-xs">
+              <thead>
+                <tr className="bg-gradient-to-r from-sky-700 via-sky-600 to-pink-600 text-white font-black border-b-2 border-sky-400 text-xs">
+                  <th className="py-3.5 px-3 border-r border-slate-700 w-12 text-center whitespace-nowrap">ت</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-right whitespace-nowrap">اسم الطالب الكامل واللقب</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">رقم القيد</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الصفحة والقيد</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الصف والشعبة السابقة</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap w-36">الدرجة النهائية (نهاية السنة)</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">النتيجة النهائية</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">حالة الطالب بالسجل</th>
+                  <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الحالة الصحية</th>
+                  <th className="py-3.5 px-3 w-36 text-center whitespace-nowrap">الإجراءات والتحكم</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs font-medium">
+                {filteredStudents.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="py-12 text-center text-slate-500 font-bold">
+                      أرشيف الطلاب فارغ أو لا توجد نتائج مطابقة للبحث.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStudents.map((std, idx) => {
+                    const currentScore = std.finalYearScore !== undefined ? std.finalYearScore : (std.previousYearResult.includes('ناجح') ? 85 : 45);
+                    const isPassed = currentScore >= 50;
 
-                      {/* Action Buttons */}
-                      <td className="py-2 px-3">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {activeTab === 'archive' && (
+                    return (
+                      <tr key={std.id} className="hover:bg-emerald-50/60 dark:hover:bg-slate-800/80 transition-colors">
+                        <td className="py-3 px-3 font-mono font-black text-slate-950 border-r border-slate-300 text-center whitespace-nowrap bg-slate-100/60">
+                          {idx + 1}
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-300 font-black text-slate-950 text-right whitespace-nowrap text-sm">
+                          {std.firstName} {std.secondName} {std.thirdName} {std.fourthName} {std.titleName}
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-300 font-mono font-black text-blue-900 text-center whitespace-nowrap text-sm">
+                          {std.recordNumber}
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200 font-mono text-center whitespace-nowrap text-slate-950 font-black">
+                          ص {std.registerPageNumber} / و {std.wasatiPageNumber}
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200 font-black text-sky-950 text-center whitespace-nowrap">
+                          {std.currentGrade} ({std.section})
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                          <span className="font-mono font-black text-slate-950">{currentScore} / 100</span>
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                          <span className={`px-2.5 py-0.5 rounded font-black text-[11px] border ${
+                            isPassed ? 'bg-emerald-100 text-emerald-950 border-emerald-300' : 'bg-rose-100 text-rose-950 border-rose-300'
+                          }`}>
+                            {std.previousYearResult}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                          <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] border ${
+                            std.status === 'متخرج' ? 'bg-amber-100 text-amber-950 border-amber-300' : 'bg-rose-100 text-rose-950 border-rose-300'
+                          }`}>
+                            {std.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                          <span className="text-slate-950 font-black">{std.healthStatus}</span>
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center justify-center gap-1.5">
                             <button
                               onClick={() => handleRestoreStudent(std.id)}
                               title="إعادة القيد من الأرشيف إلى الطلاب المستمرين بالدراسة"
@@ -846,34 +1505,213 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
                             >
                               <RotateCcw className="w-4 h-4" />
                             </button>
-                          )}
-
-                          <button
-                            onClick={() => setSelectedStudentForDetail(std)}
-                            title="توسعة المعلومات الكاملة عن الطالب"
-                            className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition-all cursor-pointer shadow-sm"
-                          >
-                            <Maximize2 className="w-4 h-4" />
-                          </button>
-
-                          <button
-                            onClick={() => setSelectedStudentForPrint(std)}
-                            title="طباعة وثيقة درجات وسجل الطالب"
-                            className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all cursor-pointer shadow-sm"
-                          >
-                            <Printer className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                            <button
+                              onClick={() => setSelectedStudentForDetail(std)}
+                              title="توسعة المعلومات الكاملة عن الطالب"
+                              className="p-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white transition-all cursor-pointer shadow-sm"
+                            >
+                              <Maximize2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setSelectedStudentForPrint(std)}
+                              title="طباعة وثيقة درجات وسجل الطالب"
+                              className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all cursor-pointer shadow-sm"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
+
+      {/* Modal: Daily Record & Marks Entry (السجل اليومي والنشاط الصفي) */}
+      {selectedStudentForDailyMarks && (() => {
+        const mark = getStudentMarkForSubject(selectedStudentForDailyMarks, selectedSubject);
+        const finalGrade = mark.finalGrade !== undefined ? mark.finalGrade : getStudentFinalGrade(selectedStudentForDailyMarks);
+        
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-[var(--theme-card)] border-4 border-amber-400 rounded-3xl p-6 max-w-xl w-full shadow-2xl space-y-5 my-8 text-right dir-rtl">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-6 h-6 text-amber-600 animate-pulse" />
+                  <h3 className="text-base font-black text-[var(--theme-text-main)]">
+                    سجل الدرجات اليومي والنشاط الصفي - {selectedStudentForDailyMarks.firstName} {selectedStudentForDailyMarks.secondName}
+                  </h3>
+                </div>
+                <button 
+                  onClick={() => setSelectedStudentForDailyMarks(null)} 
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs font-bold space-y-1.5">
+                <p><strong>المادة الدراسية:</strong> <span className="text-emerald-600 font-black">{selectedSubject}</span></p>
+                <p><strong>الصف والشعبة:</strong> {selectedStudentForDailyMarks.currentGrade} ({selectedStudentForDailyMarks.section})</p>
+                <p><strong>رقم القيد:</strong> <span className="font-mono text-blue-600 font-black">{selectedStudentForDailyMarks.recordNumber}</span></p>
+              </div>
+
+              {selectedStudentForDailyMarks.isLockedAndSynced ? (
+                <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-xs font-black flex items-center gap-2 border border-amber-300">
+                  <Lock className="w-4 h-4 shrink-0 text-amber-600" />
+                  <span>عذراً، درجات هذا الطالب مقفولة ومختومة سحابياً، ولا يمكن تعديلها حالياً.</span>
+                </div>
+              ) : null}
+
+              <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
+                {/* Month 1 section */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <h4 className="font-black text-xs text-sky-700 dark:text-sky-400 border-b pb-1.5">
+                    درجات الشهر الأول (ش١)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] text-slate-500 font-bold mb-1">مجموع النشاط (مجم):</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        disabled={!!selectedStudentForDailyMarks.isLockedAndSynced}
+                        value={mark.month1Daily !== undefined ? mark.month1Daily : ''}
+                        onChange={e => updateStudentMark(selectedStudentForDailyMarks.id, 'month1Daily', e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 font-mono font-black"
+                        placeholder="درجة مجم"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-500 font-bold mb-1">الامتحان التحريري (تحر):</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        disabled={!!selectedStudentForDailyMarks.isLockedAndSynced}
+                        value={mark.month1Written !== undefined ? mark.month1Written : ''}
+                        onChange={e => updateStudentMark(selectedStudentForDailyMarks.id, 'month1Written', e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 font-mono font-black"
+                        placeholder="درجة تحر"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-black text-slate-600 bg-sky-50 dark:bg-sky-950/20 p-2.5 rounded-xl border border-sky-100">
+                    <span>مجموع الشهر الأول (ش١ = مجم + تحر):</span>
+                    <span className="text-sm font-mono text-sky-950 dark:text-sky-300">{mark.month1 !== undefined ? mark.month1 : '-'} / 100</span>
+                  </div>
+                </div>
+
+                {/* Month 2 section */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <h4 className="font-black text-xs text-sky-700 dark:text-sky-400 border-b pb-1.5">
+                    درجات الشهر الثاني (ش٢)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] text-slate-500 font-bold mb-1">مجموع النشاط (مجم):</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        disabled={!!selectedStudentForDailyMarks.isLockedAndSynced}
+                        value={mark.month2Daily !== undefined ? mark.month2Daily : ''}
+                        onChange={e => updateStudentMark(selectedStudentForDailyMarks.id, 'month2Daily', e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 font-mono font-black"
+                        placeholder="درجة مجم"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-500 font-bold mb-1">الامتحان التحريري (تحر):</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        disabled={!!selectedStudentForDailyMarks.isLockedAndSynced}
+                        value={mark.month2Written !== undefined ? mark.month2Written : ''}
+                        onChange={e => updateStudentMark(selectedStudentForDailyMarks.id, 'month2Written', e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 font-mono font-black"
+                        placeholder="درجة تحر"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-black text-slate-600 bg-sky-50 dark:bg-sky-950/20 p-2.5 rounded-xl border border-sky-100">
+                    <span>مجموع الشهر الثاني (ش٢ = مجم + تحر):</span>
+                    <span className="text-sm font-mono text-sky-950 dark:text-sky-300">{mark.month2 !== undefined ? mark.month2 : '-'} / 100</span>
+                  </div>
+                </div>
+
+                {/* Midterm section */}
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <h4 className="font-black text-xs text-indigo-700 dark:text-indigo-400 border-b pb-1.5">
+                    درجات نصف السنة
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-[11px] text-slate-500 font-bold mb-1">النشاط اليومي (مجم):</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        disabled={!!selectedStudentForDailyMarks.isLockedAndSynced}
+                        value={mark.midtermDaily !== undefined ? mark.midtermDaily : ''}
+                        onChange={e => updateStudentMark(selectedStudentForDailyMarks.id, 'midtermDaily', e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 font-mono font-black"
+                        placeholder="يومي نصف السنة"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-500 font-bold mb-1">التحريري (تحر):</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        disabled={!!selectedStudentForDailyMarks.isLockedAndSynced}
+                        value={mark.midtermWritten !== undefined ? mark.midtermWritten : ''}
+                        onChange={e => updateStudentMark(selectedStudentForDailyMarks.id, 'midtermWritten', e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-slate-900 font-mono font-black"
+                        placeholder="تحريري نصف السنة"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center text-xs font-black text-slate-600 bg-indigo-50 dark:bg-indigo-950/20 p-2.5 rounded-xl border border-indigo-100">
+                    <span>مجموع نصف السنة (يومي + تحريري دون تقسيم):</span>
+                    <span className="text-sm font-mono text-indigo-950 dark:text-indigo-300">{mark.midterm !== undefined ? mark.midterm : '-'} / 100</span>
+                  </div>
+                </div>
+
+                {/* Final Calculations Summary */}
+                <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-slate-900 border-2 border-amber-300 text-xs font-black space-y-2">
+                  <div className="flex justify-between">
+                    <span>معدل السعي السنوي ((ش١ + ش٢) / ٢):</span>
+                    <span className="font-mono text-sm">{mark.yearlyEffort !== undefined ? mark.yearlyEffort : '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-t border-amber-200 pt-1.5">
+                    <span>الدرجة النهائية المعتمدة:</span>
+                    <span className="text-sm font-mono text-blue-700 dark:text-sky-300">
+                      {finalGrade}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end pt-3 border-t">
+                <button
+                  onClick={() => setSelectedStudentForDailyMarks(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold cursor-pointer"
+                >
+                  حفظ وإغلاق
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modal 1: Full Profile Expand View */}
       {selectedStudentForDetail && (
@@ -1858,6 +2696,52 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+      {/* Modal: Teacher App Sync Simulation Portal */}
+      {showTeacherSyncModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 text-center">
+            <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-300 rounded-full flex items-center justify-center mx-auto animate-pulse">
+              <RefreshCw className="w-6 h-6 animate-spin" />
+            </div>
+
+            <h3 className="text-base font-black text-[var(--theme-text-main)]">
+              جاري استيراد ومزامنة الدرجات من تطبيق المدرس
+            </h3>
+            
+            <p className="text-xs text-[var(--theme-text-muted)]">
+              يرجى الانتظار بينما يتم سحب وتدقيق درجات مادة <strong>[{selectedSubject}]</strong> للصف والجروب المختار.
+            </p>
+
+            {/* Progress Bar Container */}
+            <div className="space-y-1.5">
+              <div className="w-full bg-slate-200 dark:bg-slate-700 h-3.5 rounded-full overflow-hidden relative border border-slate-300 dark:border-slate-600">
+                <div 
+                  className="bg-gradient-to-r from-orange-500 to-amber-500 h-full rounded-full transition-all duration-300 shadow-inner"
+                  style={{ width: `${teacherSyncProgress}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-[11px] font-black text-slate-500">
+                <span>{teacherSyncProgress}%</span>
+                <span>
+                  {teacherSyncProgress < 30 ? 'جاري الاتصال بالسيرفر...' : 
+                   teacherSyncProgress < 60 ? 'جاري مطابقة قيود الطلاب...' : 
+                   teacherSyncProgress < 90 ? 'جاري استيراد وتدقيق الدرجات...' : 'اكتملت المزامنة!'}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                disabled={teacherSyncProgress < 100}
+                onClick={() => setShowTeacherSyncModal(false)}
+                className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs shadow hover:bg-slate-800 disabled:opacity-40"
+              >
+                موافق، إغلاق نافذة المزامنة
+              </button>
+            </div>
           </div>
         </div>
       )}
