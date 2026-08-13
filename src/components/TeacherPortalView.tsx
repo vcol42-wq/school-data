@@ -146,7 +146,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   onBackToMain
 }) => {
   // Connection & Auth State
-  const [cloudUrl, setCloudUrl] = useState('https://diyala-school-cloud.iq/api/v1/sync');
+  const [cloudUrl, setCloudUrl] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return `${window.location.protocol}//${window.location.hostname}:${window.location.port || '3000'}`;
+    }
+    return 'http://localhost:3000';
+  });
   const [teacherName, setTeacherName] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(['اللغة العربية']);
   const [selectedGrades, setSelectedGrades] = useState<string[]>(['الأول الابتدائي']);
@@ -156,13 +161,144 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [currentSection, setCurrentSection] = useState('أ');
   const [isSessionActive, setIsSessionActive] = useState(false);
 
+  // QR Sync State
+  const [pairingRequests, setPairingRequests] = useState<any[]>([]);
+  const [isUploadingSchoolData, setIsUploadingSchoolData] = useState(false);
+
+  // Poll pairing requests from the cloud server
+  useEffect(() => {
+    let interval: any;
+    const fetchPairings = async () => {
+      try {
+        const response = await fetch(`/api/sync/pairing-requests?schoolId=school_01`);
+        const data = await response.json();
+        if (data.success && data.pairings) {
+          setPairingRequests(data.pairings);
+        }
+      } catch (err) {
+        console.error('Error fetching pairing requests:', err);
+      }
+    };
+
+    fetchPairings();
+    interval = setInterval(fetchPairings, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleApprovePairing = async (pairingId: string) => {
+    try {
+      const response = await fetch('/api/sync/approve-pairing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'approve' })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPairingRequests(prev => prev.map(p => p.id === pairingId ? { ...p, status: 'approved', isNewNotification: false } : p));
+      } else {
+        alert(data.error || 'فشلت عملية الموافقة.');
+      }
+    } catch (err) {
+      console.error('Error approving pairing:', err);
+      alert('خطأ في الاتصال بالخادم.');
+    }
+  };
+
+  const handleDismissNotification = async (pairingId: string) => {
+    try {
+      const response = await fetch('/api/sync/approve-pairing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'dismiss_notification' })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPairingRequests(prev => prev.map(p => p.id === pairingId ? { ...p, isNewNotification: false } : p));
+      } else {
+        alert(data.error || 'فشل اعتماد التنبيه.');
+      }
+    } catch (err) {
+      console.error('Error dismissing notification:', err);
+    }
+  };
+
+  const handleRevokePairing = async (pairingId: string) => {
+    if (!confirm('هل أنت متأكد من إيقاف هذا الربط وطلب إعادة قراءة الرمز من المعلم؟')) return;
+    try {
+      const response = await fetch('/api/sync/approve-pairing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'reread' })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPairingRequests(prev => prev.map(p => p.id === pairingId ? { ...p, status: 'reread', isNewNotification: false } : p));
+      } else {
+        alert(data.error || 'فشلت عملية إيقاف الربط.');
+      }
+    } catch (err) {
+      console.error('Error revoking pairing:', err);
+      alert('خطأ في الاتصال بالخادم.');
+    }
+  };
+
+  const handleRejectPairing = async (pairingId: string) => {
+    if (!confirm('هل أنت متأكد من رفض وحذف طلب الاقتران هذا؟')) return;
+    try {
+      const response = await fetch('/api/sync/approve-pairing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'reject' })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setPairingRequests(prev => prev.filter(p => p.id !== pairingId));
+      } else {
+        alert(data.error || 'فشلت عملية الحذف.');
+      }
+    } catch (err) {
+      console.error('Error rejecting pairing:', err);
+      alert('خطأ في الاتصال بالخادم.');
+    }
+  };
+
+  const handleUploadSchoolData = async () => {
+    setIsUploadingSchoolData(true);
+    try {
+      const response = await fetch('/api/sync/upload-manager-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolId: 'school_01',
+          schoolName: config.schoolName,
+          students: students,
+          staff: staffList,
+          config: config
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        alert('تم رفع قاعدة بيانات المدرسة وقوائم الطلاب والجداول إلى السحابة بنجاح! يمكن للمدرسين الآن ربط وتنزيل شعبهم.');
+      } else {
+        alert(data.error || 'فشل رفع البيانات.');
+      }
+    } catch (err) {
+      console.error('Error uploading school data:', err);
+      alert('خطأ في الاتصال بالخادم لرفع البيانات.');
+    } finally {
+      setIsUploadingSchoolData(false);
+    }
+  };
+
   // OTP Verification System
-  const [generatedOtpCode, setGeneratedOtpCode] = useState<string>('849203');
+  const [generatedOtpCode, setGeneratedOtpCode] = useState<string>('999888');
   const [inputOtpCode, setInputOtpCode] = useState<string>('');
   const [isVerifiedByPrincipal, setIsVerifiedByPrincipal] = useState<boolean>(false);
   const [showOtpModal, setShowOtpModal] = useState<boolean>(false);
   const [otpError, setOtpError] = useState<string | null>(null);
   const [copiedOtp, setCopiedOtp] = useState<boolean>(false);
+  const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+  const [copiedSchoolCode, setCopiedSchoolCode] = useState<boolean>(false);
 
   // Entry Method State ('manual' | 'camera' | 'image' | 'voice')
   const [entryMode, setEntryMode] = useState<'manual' | 'camera' | 'image' | 'voice'>('manual');
@@ -203,11 +339,119 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   const availableSections = ['أ', 'ب', 'ج', 'د', 'هـ'];
 
-  // Generate random 6-digit OTP code whenever teacher selects name/subject/grade
+  // Maintain the unified school connection code
   const refreshOtpCode = () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtpCode(code);
+    setGeneratedOtpCode('999888');
     setInputOtpCode('');
+  };
+
+  const registerSessionOnServer = async (code: string, tName: string, subjs: string[], grds: string[], scts: string[]) => {
+    try {
+      const sessionStudents = students.filter(
+        s => grds.includes(s.currentGrade) && scts.includes(s.section)
+      );
+
+      await fetch('/api/sync/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          otpCode: code,
+          teacherName: tName,
+          subjects: subjs,
+          grades: grds,
+          sections: scts,
+          students: sessionStudents
+        })
+      });
+      console.log('Registered session on server with OTP:', code);
+    } catch (err) {
+      console.error('Failed to register session on server:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (generatedOtpCode && teacherName && selectedSubjects.length > 0 && selectedGrades.length > 0 && selectedSections.length > 0) {
+      registerSessionOnServer(generatedOtpCode, teacherName, selectedSubjects, selectedGrades, selectedSections);
+    }
+  }, [generatedOtpCode, teacherName, selectedSubjects, selectedGrades, selectedSections]);
+
+  const handlePullSyncedGrades = async () => {
+    try {
+      const response = await fetch(`/api/sync/get-synced-grades?otpCode=${generatedOtpCode}`);
+      const data = await response.json();
+      if (data.success && data.syncedGrades && data.syncedGrades.length > 0) {
+        setStudents(prevStudents => {
+          return prevStudents.map(std => {
+            let updatedMarksHistory = [...(std.marksHistory || [])];
+            let absencesCount = std.absencesCount;
+
+            data.syncedGrades.forEach((syncClass: any) => {
+              const { grade, section, subject, gradesList } = syncClass;
+              if (std.currentGrade === grade && std.section === section) {
+                const studentSync = gradesList.find((gs: any) => gs.recordNumber === std.recordNumber);
+                if (studentSync) {
+                  if (studentSync.absencesCount !== undefined) {
+                    absencesCount = studentSync.absencesCount;
+                  }
+
+                  const academicYear = '2024-2025';
+                  const existingMarkIdx = updatedMarksHistory.findIndex(
+                    m => m.subject === subject && m.year === academicYear
+                  );
+
+                  const newMarkEntry: any = {
+                    year: academicYear,
+                    subject: subject,
+                    midterm: studentSync.marks.midtermFinalGrade,
+                    finalExam: studentSync.marks.finalExamTotal,
+                    finalGrade: studentSync.marks.finalGrade,
+                    total: studentSync.marks.finalGrade,
+                    ...studentSync.marks
+                  };
+
+                  if (existingMarkIdx > -1) {
+                    updatedMarksHistory[existingMarkIdx] = {
+                      ...updatedMarksHistory[existingMarkIdx],
+                      ...newMarkEntry
+                    };
+                  } else {
+                    updatedMarksHistory.push(newMarkEntry);
+                  }
+                }
+              }
+            });
+
+            return {
+              ...std,
+              marksHistory: updatedMarksHistory,
+              absencesCount: absencesCount
+            };
+          });
+        });
+
+        // Update local session scores
+        const newSessionScores = { ...sessionScores };
+        data.syncedGrades.forEach((syncClass: any) => {
+          const { grade, section, subject, gradesList } = syncClass;
+          if (grade === currentGrade && section === currentSection && subject === currentSubject) {
+            gradesList.forEach((gs: any) => {
+              const matchedStudent = students.find(s => s.recordNumber === gs.recordNumber && s.currentGrade === grade && s.section === section);
+              if (matchedStudent) {
+                newSessionScores[matchedStudent.id] = gs.marks.finalGrade || gs.marks.midtermFinalGrade || 0;
+              }
+            });
+          }
+        });
+        setSessionScores(newSessionScores);
+
+        alert(`تم بنجاح سحب وتحديث درجات وغيابات الطلاب من الأستاذ عبر السحابة!`);
+      } else {
+        alert('لم يتم العثور على أي درجات جديدة مرفوعة من قبل المدرس حتى الآن.');
+      }
+    } catch (err) {
+      console.error('Error pulling synced grades:', err);
+      alert('حدث خطأ أثناء محاولة جلب البيانات من السحابة.');
+    }
   };
 
   useEffect(() => {
@@ -477,339 +721,296 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               )}
             </div>
             <p className="text-xs text-blue-200 mt-0.5">
-              منظومة إدخال ورصد الدرجات للمدرسين وتوثيق الدخول مع إدارة {config.schoolName}
+              منظومة المزامنة والاقتران السحابي الذكي
             </p>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {isSessionActive && !isVerifiedByPrincipal && (
-            <button
-              onClick={() => setShowOtpModal(true)}
-              className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer animate-pulse"
-            >
-              <KeyRound className="w-4 h-4" />
-              <span>إدخال رمز المدير للتفعيل السحابي</span>
-            </button>
-          )}
-
-          {isSessionActive && (
-            <button
-              onClick={() => {
-                if (confirm('هل تريد تسجيل الخروج وتبديل المدرس أو الصف؟')) {
-                  setIsSessionActive(false);
-                  refreshOtpCode();
-                }
-              }}
-              className="px-3.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-rose-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>تسجيل الخروج / تبديل الصف</span>
-            </button>
-          )}
-
-          <button
-            onClick={onBackToMain}
-            className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
-          >
-            <span>العودة للرئيسية</span>
-          </button>
         </div>
       </div>
 
-      {/* STEP 1: INITIAL LOGIN & CLOUD CONNECTION FORM */}
       {!isSessionActive ? (
-        <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-3xl p-6 md:p-8 shadow-xl space-y-6 max-w-4xl mx-auto">
-          <div className="text-center space-y-2 border-b pb-4">
-            <div className="inline-flex p-3 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 mb-1">
-              <Globe className="w-8 h-8 animate-spin-slow" />
+        <div className="space-y-8 max-w-5xl mx-auto">
+
+          {/* Wi-Fi Local Connection Help Banner */}
+          <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 p-4 rounded-3xl flex gap-3 text-xs leading-relaxed text-blue-900 dark:text-blue-200">
+            <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-black text-[13px] text-blue-700 dark:text-blue-300">ملاحظة هامة للربط السحابي المحلي:</p>
+              <p>
+                إذا كان المدرسون يربطون هواتفهم عبر شبكة الواي فاي المحلية للمدرسة، يرجى استبدال العنوان الافتراضي <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-950/80 font-mono font-bold">http://localhost:3000</code> أدناه بـ <strong>IP الحاسوب الفعلي</strong> (مثال: <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-950/80 font-mono font-bold">http://192.168.1.15:3000</code>) ليتمكن تطبيق الأندرويد من مسح الباركود والاتصال بنجاح.
+              </p>
             </div>
-            <h3 className="text-lg font-black text-slate-900 dark:text-white">
-              ربط وتوثيق جلسة المدرس مع إدارة المدرسة
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              عند تحديد اسم المدرس والصف يتم إرسال رمز أمان لتطبيق المدير، وعند أدخاله يتفعل ربط السحابة، أو المتابعة كدفتر درجات خاص
-            </p>
           </div>
-
-          {/* SIMULATED PRINCIPAL APP DISPATCH NOTIFICATION PANEL */}
-          <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-indigo-500/10 border-2 border-amber-500/30 rounded-3xl p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-black text-xs">
-                <Bell className="w-4 h-4 animate-bounce text-amber-500" />
-                <span>إشعار وارد لتطبيق المدير / الإدارة (School Principal Dispatch):</span>
+          
+          {/* SECTION 1: UNIFIED CREDENTIALS CONTAINER */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            {/* Card A: Unified URL */}
+            <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-3xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden backdrop-blur-md">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl"></div>
+              <div className="space-y-4 z-10">
+                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  <Globe className="w-5 h-5 shrink-0" />
+                  <span className="font-black text-sm">رابط خادم السحاب الموحد</span>
+                </div>
+                <p className="text-xs text-[var(--theme-text-muted)] leading-relaxed">
+                  الرابط النشط الذي يسجله المدرس للوصول إلى خادم المدرسة.
+                </p>
+                <div className="space-y-1 text-right">
+                  <input
+                    type="text"
+                    value={cloudUrl}
+                    onChange={e => setCloudUrl(e.target.value)}
+                    placeholder="http://localhost:3000"
+                    className="w-full p-3 rounded-xl border border-blue-500/20 bg-slate-50 dark:bg-slate-900 text-xs font-mono font-bold text-center text-blue-600 dark:text-blue-300"
+                  />
+                </div>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-950 font-mono font-black text-[10px]">
-                رمز التوثيق الموجه للأستاذ
-              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(cloudUrl);
+                  setCopiedUrl(true);
+                  setTimeout(() => setCopiedUrl(false), 2000);
+                }}
+                className="mt-4 w-full py-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-500/20 text-blue-600 dark:text-blue-400 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-blue-100 transition-all cursor-pointer"
+              >
+                {copiedUrl ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedUrl ? 'تم النسخ!' : 'نسخ رابط السحابة'}</span>
+              </button>
             </div>
 
-            <div className="p-3 bg-amber-50/80 dark:bg-amber-950/40 rounded-2xl border border-amber-200 dark:border-amber-800 space-y-1.5 text-xs">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 font-bold">
-                  <span>اسم المدرس المستهدف بالطلب:</span>
-                  <span className="text-sm font-black text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/60 px-2.5 py-0.5 rounded-lg border border-blue-300">
-                    الأستاذ / {teacherName || 'لم يُدخل الاسم بعد'}
-                  </span>
+            {/* Card B: Unified Pairing Code */}
+            <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-3xl p-6 shadow-xl flex flex-col justify-between relative overflow-hidden backdrop-blur-md">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-3xl"></div>
+              <div className="space-y-4 z-10">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                  <KeyRound className="w-5 h-5 shrink-0" />
+                  <span className="font-black text-sm">رمز الاقتران الموحد</span>
                 </div>
-                <div className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                  المادة: <strong className="text-emerald-700 dark:text-emerald-300">{selectedSubjects.join('، ')}</strong> | الصف: <strong className="text-amber-700 dark:text-amber-300">{selectedGrades.join('، ')} (شعبة {selectedSections.join('، ')})</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 rounded-2xl border shadow-inner">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-xl">
-                  <KeyRound className="w-6 h-6" />
-                </div>
-                <div>
-                  <span className="block text-[10px] text-slate-500 font-bold">رمز التوثيق المعتمد والخاص بالأستاذ:</span>
-                  <span className="text-2xl font-black font-mono tracking-widest text-emerald-600 dark:text-emerald-400">
+                <p className="text-xs text-[var(--theme-text-muted)] leading-relaxed">
+                  الرمز المشترك لكافة المدرسين للربط وحماية تدقيق درجاتهم.
+                </p>
+                <div className="py-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-center">
+                  <span className="font-mono text-3xl font-black text-amber-600 dark:text-amber-400 tracking-widest">
                     {generatedOtpCode}
                   </span>
                 </div>
               </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPrintOtpSlipModal(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة بطاقة الرمز للأستاذ</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(generatedOtpCode);
-                    setCopiedOtp(true);
-                    setTimeout(() => setCopiedOtp(false), 2000);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold flex items-center gap-1 cursor-pointer hover:bg-slate-300"
-                >
-                  {copiedOtp ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedOtp ? 'تم النسخ' : 'نسخ الرمز'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInputOtpCode(generatedOtpCode);
-                    handleStartSession(true);
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1 cursor-pointer shadow-md"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>موافقة المدير واعتماد الدخول مباشرة</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* FORM FIELDS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Cloud API URL */}
-            <div className="md:col-span-2 space-y-1">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Cloud className="w-4 h-4 text-blue-500" />
-                <span>رابط سحابة المدرسة (Cloud Sync Link):</span>
-              </label>
-              <input 
-                type="text" 
-                value={cloudUrl}
-                onChange={e => setCloudUrl(e.target.value)}
-                placeholder="https://diyala-school-cloud.iq/api/v1/sync"
-                className="w-full p-3 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-mono text-slate-800 dark:text-slate-200"
-              />
-            </div>
-
-            {/* Teacher Name Selection or Entry */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <User className="w-4 h-4 text-purple-500" />
-                <span>اسم المدرس / الأستاذ:</span>
-              </label>
-              <select
-                value={teacherName}
-                onChange={e => {
-                  setTeacherName(e.target.value);
-                  refreshOtpCode();
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedOtpCode);
+                  setCopiedSchoolCode(true);
+                  setTimeout(() => setCopiedSchoolCode(false), 2000);
                 }}
-                className="w-full p-3 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-bold"
+                className="mt-4 w-full py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-500/20 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center justify-center gap-1.5 hover:bg-amber-100 transition-all cursor-pointer"
               >
-                <option value="">-- اختر اسم المدرس من الكادر --</option>
-                {staffList.map(st => (
-                  <option key={st.id} value={st.fullName}>{st.fullName} ({st.specialization})</option>
-                ))}
-              </select>
-              {!teacherName && (
-                <input 
-                  type="text" 
-                  placeholder="أو اكتب اسم المدرس هنا..."
-                  onChange={e => {
-                    setTeacherName(e.target.value);
-                    refreshOtpCode();
-                  }}
-                  className="w-full p-2.5 mt-1 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-bold"
-                />
-              )}
+                {copiedSchoolCode ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedSchoolCode ? 'تم النسخ!' : 'نسخ الرمز الموحد'}</span>
+              </button>
             </div>
 
-            {/* Select Main Subjects (Multi-select) */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <BookOpen className="w-4 h-4 text-emerald-500" />
-                <span>المواد المشمولة بالتدرس:</span>
-              </label>
-              <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-900 rounded-xl border max-h-32 overflow-y-auto">
-                {availableSubjects.map(sub => {
-                  const isSelected = selectedSubjects.includes(sub);
-                  return (
-                    <button
-                      key={sub}
-                      type="button"
-                      onClick={() => {
-                        if (isSelected) {
-                          if (selectedSubjects.length > 1) setSelectedSubjects(prev => prev.filter(s => s !== sub));
-                        } else {
-                          setSelectedSubjects(prev => [...prev, sub]);
-                        }
-                        refreshOtpCode();
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'bg-emerald-600 text-white shadow' 
-                          : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      {sub} {isSelected && '✓'}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Select Grades */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Layers className="w-4 h-4 text-amber-500" />
-                <span>الصف الدراسي المشمول:</span>
-              </label>
-              <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-900 rounded-xl border">
-                {availableGrades.map(grd => {
-                  const isSelected = selectedGrades.includes(grd);
-                  return (
-                    <button
-                      key={grd}
-                      type="button"
-                      onClick={() => {
-                        if (isSelected) {
-                          if (selectedGrades.length > 1) setSelectedGrades(prev => prev.filter(g => g !== grd));
-                        } else {
-                          setSelectedGrades(prev => [...prev, grd]);
-                        }
-                        refreshOtpCode();
-                      }}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'bg-amber-500 text-slate-950 font-black shadow' 
-                          : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      {grd} {isSelected && '✓'}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Select Sections */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Sliders className="w-4 h-4 text-indigo-500" />
-                <span>الشعبة المشمولة:</span>
-              </label>
-              <div className="flex flex-wrap gap-2 p-2 bg-slate-50 dark:bg-slate-900 rounded-xl border">
-                {availableSections.map(sec => {
-                  const isSelected = selectedSections.includes(sec);
-                  return (
-                    <button
-                      key={sec}
-                      type="button"
-                      onClick={() => {
-                        if (isSelected) {
-                          if (selectedSections.length > 1) setSelectedSections(prev => prev.filter(s => s !== sec));
-                        } else {
-                          setSelectedSections(prev => [...prev, sec]);
-                        }
-                        refreshOtpCode();
-                      }}
-                      className={`w-9 h-9 rounded-xl font-black text-xs transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'bg-indigo-600 text-white shadow ring-2 ring-indigo-400' 
-                          : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      شعبة {sec}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Verification Code Input Field */}
-            <div className="md:col-span-2 space-y-1 bg-amber-50 dark:bg-amber-950/30 p-4 rounded-2xl border border-amber-300 dark:border-amber-800">
-              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-amber-600" />
-                <span>أدخل رمز الاعتماد المزود من المدير (اختياري للتفعيل السحابي المباشر):</span>
-              </label>
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={inputOtpCode}
-                  onChange={e => setInputOtpCode(e.target.value)}
-                  placeholder="مثال: 849203"
-                  className="flex-1 p-3 rounded-xl border bg-white dark:bg-slate-900 text-center font-mono font-black text-lg tracking-widest text-slate-900 dark:text-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (inputOtpCode.trim() === generatedOtpCode) {
-                      handleStartSession(true);
-                    } else {
-                      alert(`رمز التوثيق غير صحيح! الرمز المولد من تطبيق المدير هو (${generatedOtpCode})`);
-                    }
-                  }}
-                  className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>تأكيد الرمز</span>
-                </button>
+            {/* Card C: Unified QR Code Barcode */}
+            <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-3xl p-6 shadow-xl flex flex-col items-center justify-center text-center relative overflow-hidden backdrop-blur-md">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl"></div>
+              <div className="z-10 space-y-3 flex flex-col items-center">
+                <span className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <QrCode className="w-4 h-4 text-indigo-500" />
+                  <span>الباركود الموحد لمزامنة المدرسة</span>
+                </span>
+                <div className="p-3.5 bg-white rounded-2xl shadow-lg border-2 border-indigo-400/30 hover:scale-105 transition-all">
+                  <QrCodeSvg 
+                    value={JSON.stringify({ 
+                      url: cloudUrl, 
+                      schoolId: 'school_01', 
+                      schoolName: config.schoolName,
+                      pairingCode: generatedOtpCode
+                    })} 
+                    size={120} 
+                  />
+                </div>
+                <p className="text-[10px] text-slate-500 max-w-[200px] leading-tight">
+                  يمسحه المعلم بكاميرا التطبيق لربط جهازه وتنزيل الشعب تلقائياً.
+                </p>
               </div>
             </div>
           </div>
 
-          {/* TWO DUAL LAUNCH OPTIONS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+          {/* SECTION 2: LIVE NOTIFICATION BANNERS FROM INCOMING PAIRINGS */}
+          {(() => {
+            const newNotifications = pairingRequests.filter(p => p.isNewNotification);
+            if (newNotifications.length === 0) return null;
+
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+                  <Bell className="w-5 h-5 text-rose-500 animate-bounce" />
+                  <h3 className="text-sm font-black">إشعارات ربط المعلمين وتأكيد الشعب الواردة حديثاً (مراجعة الاختيارات)</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {newNotifications.map((req: any) => (
+                    <div 
+                      key={req.id} 
+                      className="relative bg-gradient-to-br from-amber-500/5 to-indigo-500/5 border border-amber-400/40 rounded-3xl p-5 shadow-lg flex flex-col justify-between gap-4 animate-pulse duration-1000"
+                    >
+                      <span className="absolute top-3 left-3 px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-[9px] tracking-wider">
+                        طلب ربط نشط المعاينة 🔔
+                      </span>
+                      <div className="space-y-1 text-right">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center font-bold text-xs shrink-0">
+                            {req.teacherName.charAt(0)}
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-[var(--theme-text-main)]">{req.teacherName}</h4>
+                            <p className="text-[9px] text-slate-500">{new Date(req.lastActiveTime).toLocaleTimeString('ar-IQ')}</p>
+                          </div>
+                        </div>
+                        <div className="pt-2 text-xs space-y-1">
+                          <p>المادة المختارة: <strong className="text-indigo-600 dark:text-indigo-400 font-bold">{req.subject}</strong></p>
+                          <p>الصف والشعبة: <strong className="text-amber-600 dark:text-amber-400 font-bold">{req.grade} - شعبة ({req.section})</strong></p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDismissNotification(req.id)}
+                          className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all hover:scale-[1.02]"
+                        >
+                          <CheckCircle2 className="w-4 h-4 text-white" />
+                          <span>اعتماد كصحيح</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRevokePairing(req.id)}
+                          className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-md transition-all hover:scale-[1.02]"
+                        >
+                          <X className="w-4 h-4 text-white" />
+                          <span>إيقاف الربط وإعادة القراءة</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* SECTION 3: ALL REGISTERED TEACHERS TABLE */}
+          <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[var(--theme-card-border)] pb-3">
+              <div className="flex items-center gap-2 text-[var(--theme-text-main)] font-black text-sm">
+                <User className="w-5 h-5 text-indigo-500" />
+                <span>لوحة التحكم بالمدرسين المتصلين بسحابة المدرسة</span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-black text-[10px]">
+                المتصلون الآن ({pairingRequests.length})
+              </span>
+            </div>
+
+            {pairingRequests.length === 0 ? (
+              <div className="text-center py-10 text-xs text-slate-400 font-bold">
+                بانتظار قراءة المعلمين للرمز الموحد وتأكيد شعبهم...
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-[var(--theme-card-border)]">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-100 dark:bg-slate-900 font-bold border-b border-[var(--theme-card-border)] text-slate-700 dark:text-slate-300">
+                    <tr>
+                      <th className="p-3">اسم المدرس</th>
+                      <th className="p-3">المادة</th>
+                      <th className="p-3">الصف والشعبة</th>
+                      <th className="p-3 text-center">الحالة</th>
+                      <th className="p-3 text-center">التحكم بالإقتران</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--theme-card-border)] font-medium">
+                    {pairingRequests.map((req: any) => (
+                      <tr key={req.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                        <td className="p-3 font-bold text-[var(--theme-text-main)] flex items-center gap-2">
+                          <div className={`w-2.5 h-2.5 rounded-full ${req.status === 'approved' ? 'bg-emerald-500 animate-ping' : 'bg-rose-500'}`} />
+                          <span>{req.teacherName}</span>
+                        </td>
+                        <td className="p-3 text-indigo-600 dark:text-indigo-400 font-black">{req.subject}</td>
+                        <td className="p-3 text-amber-600 dark:text-amber-400 font-bold">
+                          {req.grade} - شعبة ({req.section})
+                        </td>
+                        <td className="p-3 text-center">
+                          {req.status === 'approved' ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                              نشط ومعتمد ✓
+                            </span>
+                          ) : req.status === 'reread' ? (
+                            <span className="px-2.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] font-bold">
+                              موقوف - يرجى إعادة القراءة ⚠️
+                            </span>
+                          ) : (
+                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
+                              معلق للتدقيق
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center flex items-center justify-center gap-2">
+                          {req.status === 'approved' ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRevokePairing(req.id)}
+                              className="px-3 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-600 dark:bg-rose-950/20 dark:text-rose-400 font-bold text-[10px] cursor-pointer transition-all"
+                            >
+                              إيقاف الربط وإعادة القراءة
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleApprovePairing(req.id)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[10px] cursor-pointer transition-all"
+                            >
+                              تفعيل الربط
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRejectPairing(req.id)}
+                            className="px-2 py-1.5 rounded-lg text-slate-500 hover:text-rose-600 font-bold text-[10px] cursor-pointer"
+                            title="إلغاء وحذف نهائي"
+                          >
+                            حذف
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* SECTION 4: ACTIONS AND MANAGE SETUP */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
             <button
-              onClick={() => handleStartSession(false)}
-              className="py-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.01]"
+              type="button"
+              onClick={handleUploadSchoolData}
+              disabled={isUploadingSchoolData}
+              className="py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all disabled:opacity-50 hover:scale-[1.01]"
             >
-              <Notebook className="w-5 h-5 text-slate-900" />
-              <span>الدخول بـ (دفتر درجات خاص للأستاذ) بدون رمز</span>
+              <Upload className="w-5 h-5 shrink-0" />
+              <span>
+                {isUploadingSchoolData ? 'جاري تهيئة قاعدة البيانات...' : 'رفع وتهيئة أسماء وجدول المدرسة للسحاب 📤'}
+              </span>
             </button>
 
             <button
-              onClick={() => handleStartSession(true)}
-              className="py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.01]"
+              type="button"
+              onClick={() => setIsSessionActive(true)}
+              className="py-4 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-[1.01]"
             >
-              <ShieldCheck className="w-5 h-5 text-amber-300" />
-              <span>دخول موثق ومُعتمد بالسحابة (برمز المدير)</span>
+              <Notebook className="w-5 h-5 text-slate-950 shrink-0" />
+              <span>فتح لوحة الرصد اليدوي المباشر للمدرس (المحاكاة) 📝</span>
             </button>
           </div>
+
         </div>
       ) : (
 
@@ -876,6 +1077,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
               >
                 <Printer className="w-4 h-4 text-amber-400" />
                 <span>طباعة دفتر الدرجات</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePullSyncedGrades}
+                className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow flex items-center gap-1.5 cursor-pointer border border-blue-500"
+                title="تحديث وجلب درجات المعلم من السحابة"
+              >
+                <RefreshCw className="w-4 h-4 text-white" />
+                <span>سحب الدرجات من السحابة</span>
               </button>
 
               {/* SEND ALL TO CLOUD BUTTON */}

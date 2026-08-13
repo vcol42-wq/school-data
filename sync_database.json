@@ -1,0 +1,158 @@
+{
+  "schools": {},
+  "pairings": {
+    "school_01": [
+      {
+        "id": "مدرس-تجريبي-الأول-أ-الرياضيات",
+        "teacherName": "مدرس تجريبي",
+        "grade": "الأول",
+        "section": "أ",
+        "subject": "الرياضيات",
+        "status": "approved",
+        "token": "TEACHER-250052",
+        "lastActiveTime": "2026-08-13T20:34:36.772Z"
+      },
+      {
+        "id": "مدرس-تجريبي-الصف-الأول-الابتدائي-أ-الرياضيات",
+        "teacherName": "مدرس تجريبي",
+        "grade": "الصف الأول الابتدائي",
+        "section": "أ",
+        "subject": "الرياضيات",
+        "status": "approved",
+        "token": "TEACHER-134872",
+        "lastActiveTime": "2026-08-13T21:00:46.892Z"
+      }
+    ]
+  },
+  "syncedGrades": {
+    "school_01": [
+      {
+        "teacherName": "مدرس تجريبي",
+        "grade": "الأول",
+        "section": "أ",
+        "subject": "الرياضيات",
+        "gradesList": [
+          {
+            "recordNumber": "1001",
+            "marks": {
+              "m1Daily": [
+                8.5
+              ],
+              "m1Written": 35,
+              "m1MonthAvg": 43.5,
+              "m2Daily": [
+                9
+              ],
+              "m2Written": 38,
+              "m2MonthAvg": 47,
+              "term1Avg": 45.25,
+              "midtermOral": [
+                9,
+                9.5
+              ],
+              "midtermScore": 40,
+              "midtermTotal": 49.25,
+              "midtermFinalGrade": 94.5,
+              "m3Daily": [],
+              "m3Written": 0,
+              "m3MonthAvg": 0,
+              "m4Daily": [],
+              "m4Written": 0,
+              "m4MonthAvg": 0,
+              "term2Avg": 0,
+              "annualAverage": 0,
+              "finalOral": [],
+              "finalWrittenD1": 0,
+              "finalWrittenD2": null,
+              "finalExamTotal": 0,
+              "finalGrade": 94.5,
+              "result": "ناجح",
+              "status": "مستمر"
+            },
+            "absencesCount": 1
+          }
+        ],
+        "timestamp": "2026-08-13T20:34:36.790Z"
+      },
+      {
+        "teacherName": "مدرس تجريبي",
+        "grade": "الصف الأول الابتدائي",
+        "section": "أ",
+        "subject": "الرياضيات",
+        "gradesList": [
+          {
+            "recordNumber": "2001",
+            "marks": {
+              "m1Daily": [
+                9
+              ],
+              "m1Written": 40,
+              "m1MonthAvg": 49,
+              "m2Daily": [
+                9.5
+              ],
+              "m2Written": 42,
+              "m2MonthAvg": 51.5,
+              "term1Avg": 50.25,
+              "midtermOral": [
+                10
+              ],
+              "midtermScore": 45,
+              "midtermTotal": 55,
+              "midtermFinalGrade": 100,
+              "m3Daily": [],
+              "m3Written": 0,
+              "m3MonthAvg": 0,
+              "m4Daily": [],
+              "m4Written": 0,
+              "m4MonthAvg": 0,
+              "term2Avg": 0,
+              "annualAverage": 0,
+              "finalOral": [],
+              "finalWrittenD1": 0,
+              "finalWrittenD2": null,
+              "finalExamTotal": 0,
+              "finalGrade": 100,
+              "result": "ناجح",
+              "status": "مستمر"
+            },
+            "absencesCount": 0
+          }
+        ],
+        "timestamp": "2026-08-13T21:00:46.912Z"
+      }
+    ]
+  },
+  "sessions": {
+    "777666": {
+      "teacherName": "مدرس تجريبي",
+      "subjects": [
+        "الرياضيات"
+      ],
+      "grades": [
+        "الأول ابتدائي"
+      ],
+      "sections": [
+        "أ"
+      ],
+      "students": [],
+      "schoolId": "school_01",
+      "createdAt": "2026-08-13T21:00:46.844Z"
+    },
+    "999888": {
+      "teacherName": "مدرس تجريبي",
+      "subjects": [
+        "الرياضيات"
+      ],
+      "grades": [
+        "الأول"
+      ],
+      "sections": [
+        "أ"
+      ],
+      "students": [],
+      "schoolId": "school_01",
+      "createdAt": "2026-08-13T20:34:36.719Z"
+    }
+  }
+}

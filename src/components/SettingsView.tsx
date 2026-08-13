@@ -325,6 +325,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
+        {/* Section 4.5: Administration Email and Gemini Key */}
+        <div className="bg-[var(--theme-card)] p-6 rounded-2xl border border-[var(--theme-card-border)] shadow-sm space-y-4">
+          <h3 className="text-base font-bold text-[var(--theme-text-main)] border-b pb-2 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-indigo-500" />
+            <span>5. إعدادات حساب إدارة المدرسة والذكاء الاصطناعي</span>
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="block font-bold mb-1">البريد الإلكتروني للادارة (Email):</label>
+              <input
+                type="email"
+                value={formConfig.adminEmail || ''}
+                onChange={e => setFormConfig(p => ({ ...p, adminEmail: e.target.value }))}
+                placeholder="school.admin@gmail.com"
+                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold mb-1">مفتاح ذكاء اصطناعي Gemini الخاص بالإدارة (Gemini API Key):</label>
+              <input
+                type="text"
+                value={formConfig.geminiApiKey || ''}
+                onChange={e => setFormConfig(p => {
+                  const updated = { ...p, geminiApiKey: e.target.value };
+                  localStorage.setItem('gemini_api_key', e.target.value);
+                  localStorage.setItem('diyala_school_gemini_key', e.target.value);
+                  return updated;
+                })}
+                placeholder="AIzaSy..."
+                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400"
+              />
+              <span className="text-[10px] text-slate-500 block mt-1">
+                عند إضافة المفتاح، سيتم تشغيل البحث الذكي وتوليد الإحصائيات مباشرة على جهازك.
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Form Action Controls */}
         <div className="flex items-center justify-between pt-4 border-t border-[var(--theme-card-border)]">
           <button

@@ -34,6 +34,8 @@ export interface AppConfig {
   enableScreensaver?: boolean;
   splashImageUrl?: string;
   screensaverImageUrl?: string;
+  adminEmail?: string;
+  geminiApiKey?: string;
 }
 
 // 1. Schedule Types
@@ -81,7 +83,7 @@ export interface StudentMark {
   secondRound?: number;   // امتحان الدور الثاني
   finalGrade?: number;    // الدرجة النهائية
   
-  // تفاصيل سجل اليومي والشهور
+  // تفاصيل سجل اليومي والشهور (المبسطة للمدير)
   month1Daily?: number;    // مجم ش1
   month1Written?: number;  // تحر ش1
   month1?: number;         // ش1 = مجم + تحر
@@ -93,8 +95,35 @@ export interface StudentMark {
   midtermDaily?: number;   // يومي نصف السنة (مجم)
   midtermWritten?: number; // تحريري نصف السنة (تحر)
 
-  final: number;
-  total: number;
+  // تفاصيل الدرجات اليومية والشهرية الكاملة من الأندرويد (تطابق StudentMarks.kt)
+  m1Daily?: number[];
+  m1Written?: number;
+  m1MonthAvg?: number;
+  m2Daily?: number[];
+  m2Written?: number;
+  m2MonthAvg?: number;
+  term1Avg?: number;
+  midtermOral?: number[];
+  midtermScore?: number;
+  midtermTotal?: number;
+  midtermFinalGrade?: number;
+  m3Daily?: number[];
+  m3Written?: number;
+  m3MonthAvg?: number;
+  m4Daily?: number[];
+  m4Written?: number;
+  m4MonthAvg?: number;
+  term2Avg?: number;
+  annualAverage?: number;
+  finalOral?: number[];
+  finalWrittenD1?: number;
+  finalWrittenD2?: number | null;
+  finalExamTotal?: number;
+  result?: string;
+  status?: string;
+
+  final?: number;
+  total?: number;
 }
 
 export interface StudentNote {

@@ -21,23 +21,31 @@ import {
   Mic,
   Laptop,
   Smartphone,
-  CloudCheck
+  CloudCheck,
+  Cloud,
+  X
 } from 'lucide-react';
+import { PrincipalSyncDashboard } from './PrincipalSyncDashboard';
 
 interface MainLauncherProps {
   setActiveView: (view: ActiveView) => void;
   studentsCount: number;
   staffCount: number;
   onOpenVoiceModal?: () => void;
+  students: any[];
+  scheduleMap: any;
 }
 
 export const MainLauncher: React.FC<MainLauncherProps> = ({
   setActiveView,
   studentsCount,
   staffCount,
-  onOpenVoiceModal
+  onOpenVoiceModal,
+  students,
+  scheduleMap
 }) => {
   const [iconShape, setIconShape] = useState<'squircle' | 'round'>('squircle');
+  const [showSyncPanel, setShowSyncDashboard] = useState(false);
 
   const launcherItems = [
     {
@@ -48,6 +56,15 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
       gradient: 'from-blue-600 via-indigo-600 to-purple-700',
       badge: 'تطبيق الويب 📱',
       badgeBg: 'bg-emerald-400 text-slate-950 font-black animate-pulse'
+    },
+    {
+      id: 'sync_center' as any, // Virtual ID for the sync panel
+      title: 'مركز المزامنة السحابي',
+      subtitle: 'ربط المدرسين والبيانات',
+      icon: Cloud,
+      gradient: 'from-indigo-600 to-blue-900',
+      badge: 'سحابة ☁️',
+      badgeBg: 'bg-amber-400 text-slate-950 font-black'
     },
     {
       id: 'schedule' as ActiveView,
@@ -264,7 +281,13 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveView(item.id)}
+                onClick={() => {
+                  if (item.id === 'sync_center') {
+                    setShowSyncDashboard(true);
+                  } else {
+                    setActiveView(item.id as ActiveView);
+                  }
+                }}
                 className="group flex flex-col items-center text-center cursor-pointer transition-all duration-200 transform hover:-translate-y-1.5 focus:outline-none focus:ring-2 focus:ring-amber-500/50 rounded-2xl p-2 w-full max-w-[130px]"
               >
                 {/* 3D Directional Side Drop Shadow Box + Ornate Frame */}
@@ -313,6 +336,21 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
       <div className="mt-8 text-center text-xs text-[var(--theme-text-muted)] flex items-center justify-center gap-2">
         <span>يمكنك أيضاً فتح القائمة الجانبية بالضغط على الأسطر الثلاثة (☰) في الشريط الأعلى.</span>
       </div>
+
+      {/* Sync Dashboard Modal */}
+      {showSyncPanel && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 md:p-8">
+          <div className="max-w-5xl w-full relative">
+            <button
+              onClick={() => setShowSyncDashboard(false)}
+              className="absolute -top-12 left-0 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <PrincipalSyncDashboard students={students} schedule={scheduleMap} />
+          </div>
+        </div>
+      )}
 
     </div>
   );

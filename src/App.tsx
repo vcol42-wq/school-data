@@ -40,6 +40,7 @@ import { TeacherPortalView } from './components/TeacherPortalView';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
 import { SplashModal } from './components/SplashModal';
 import { ScreensaverModal } from './components/ScreensaverModal';
+import { OnboardingModal } from './components/OnboardingModal';
 
 export default function App() {
   // Navigation & Theme
@@ -54,7 +55,7 @@ export default function App() {
   // Data Persistence
   const [config, setConfig] = useState<AppConfig>(() => {
     const saved = localStorage.getItem('diyala_school_config');
-    return saved ? JSON.parse(saved) : defaultAppConfig;
+    return saved ? JSON.parse(saved) : { ...defaultAppConfig, schoolName: '' }; // Force onboarding if no schoolName
   });
 
   const [scheduleMap, setScheduleMap] = useState<DayScheduleMap>(() => {
@@ -185,6 +186,8 @@ export default function App() {
             studentsCount={students.length}
             staffCount={staffList.length}
             onOpenVoiceModal={() => setShowVoiceModal(true)}
+            students={students}
+            scheduleMap={scheduleMap}
           />
         )}
 
@@ -310,6 +313,15 @@ export default function App() {
         <ScreensaverModal
           config={config}
           onUnlock={() => setShowScreensaver(false)}
+        />
+      )}
+
+      {/* New: First-time Onboarding Modal */}
+      {!config.schoolName && (
+        <OnboardingModal
+          onComplete={(data) => {
+            setConfig(prev => ({ ...prev, ...data }));
+          }}
         />
       )}
 

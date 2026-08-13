@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Student, AppConfig } from '../types';
+import { Student, AppConfig, StudentMark } from '../types';
 import { parseStudentsFromRawInput, parseExcelFileForStudents } from '../utils/parser';
 import { printElement } from '../utils/printHelper';
 import { 
