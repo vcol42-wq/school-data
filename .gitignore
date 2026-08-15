@@ -1,8 +1,26 @@
-node_modules/
-build/
-dist/
-coverage/
+# === Root & IDE Settings ===
+.idea/
+*.iml
 .DS_Store
 *.log
-.env*
-!.env.example
+app_stderr.log
+app_stdout.log
+dev_stderr.log
+dev_stdout.log
+
+# === SchoolSystem_Android (Android Application) ===
+SchoolSystem_Android/.gradle/
+SchoolSystem_Android/build/
+SchoolSystem_Android/app/build/
+SchoolSystem_Android/local.properties
+SchoolSystem_Android/.artifacts/
+
+# === extracted_school_system (Electron / Web Application) ===
+extracted_school_system/node_modules/
+extracted_school_system/build/
+extracted_school_system/dist/
+extracted_school_system/dist_electron/
+extracted_school_system/coverage/
+extracted_school_system/sync_database.json
+extracted_school_system/.env*
+!extracted_school_system/.env.example
