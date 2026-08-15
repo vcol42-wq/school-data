@@ -14,14 +14,22 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Logic: Convert Email to School ID (Simulated Global Registration)
+    
+    // Generate Unique School ID and Teacher Pairing/Invitation Code
     const generatedId = "SCH-" + email.split('@')[0].toUpperCase().slice(0, 4) + "-" + Math.floor(1000 + Math.random() * 9000);
+    const generatedPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     setTimeout(() => {
       localStorage.setItem('diyala_school_id', generatedId);
+      localStorage.setItem('diyala_school_pairing_code', generatedPairingCode);
       localStorage.setItem('diyala_admin_email', email);
       localStorage.setItem('diyala_school_name', schoolName);
-      onComplete({ schoolName, managerName, schoolId: generatedId });
+      onComplete({ 
+        schoolName, 
+        managerName, 
+        schoolId: generatedId, 
+        pairingCode: generatedPairingCode 
+      });
       setIsLoading(false);
     }, 2000);
   };

@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
+import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
 
@@ -182,7 +182,26 @@ async function startServer() {
   // REAL CLOUD SYNC & PAIRING APIS FOR TEACHER & MANAGER (QR VERSION)
   // ==========================================
 
-  const DB_FILE = path.join(process.cwd(), 'sync_database.json');
+  const activeDirname = typeof __dirname !== 'undefined' 
+    ? __dirname 
+    : path.dirname(fileURLToPath(import.meta.url));
+
+  let DB_FILE = path.join(process.cwd(), 'sync_database.json');
+  let isPackaged = false;
+
+  if (process.versions.electron) {
+    try {
+      // Dynamically import electron so it doesn't fail outside of Electron environment
+      const electron = await import('electron');
+      const electronApp = electron.app || electron.default?.app;
+      if (electronApp) {
+        DB_FILE = path.join(electronApp.getPath('userData'), 'sync_database.json');
+        isPackaged = electronApp.isPackaged;
+      }
+    } catch (e) {
+      console.error('Failed to get Electron info, using fallback:', e);
+    }
+  }
 
   function readSyncDb() {
     try {
@@ -311,75 +330,106 @@ async function startServer() {
   app.post('/api/sync/request-pairing', (req, res) => {
     try {
       const { schoolId, teacherName, grade, section, subject, pairingCode } = req.body;
-      if (!schoolId || !teacherName || !grade || !section || !subject) {
+      if (!schoolId || !teacherName || !pairingCode) {
         return res.status(400).json({ error: 'بيانات الاقتران غير مكتملة' });
       }
 
-      if (!pairingCode) {
-        return res.status(400).json({ error: 'رمز الاقتران الموحد مطلوب لربط المعلم بسحابة المدرسة' });
+      const db = readSyncDb();
+      db.schools = db.schools || {};
+      const school = db.schools[schoolId];
+      if (!school) {
+        return res.status(404).json({ error: 'عفواً، لم نجد مدرسة مسجلة بهذا المعرف في السحاب.' });
       }
 
-      if (pairingCode !== UNIFIED_SCHOOL_CODE) {
+      // Validate school pairing code
+      const expectedPairingCode = school.config?.pairingCode || UNIFIED_SCHOOL_CODE;
+      if (pairingCode !== expectedPairingCode) {
         return res.status(400).json({ error: 'رمز الاقتران الموحد غير صحيح! يرجى إدخال الرمز الصحيح المعروض في بوابة المدير.' });
       }
 
-      const db = readSyncDb();
-      db.pairings = db.pairings || {};
-      const pairings = db.pairings[schoolId] || [];
+      // Try to find the teacher in the school staff database
+      const normalizedInput = normalizeArabic(teacherName);
+      const matchedStaff = (school.staff || []).find((s: any) => {
+        const staffFullName = `${s.firstName || ''} ${s.secondName || ''} ${s.thirdName || ''} ${s.fourthName || ''} ${s.titleName || ''}`.replace(/\s+/g, ' ').trim();
+        return normalizeArabic(staffFullName).includes(normalizedInput) || 
+               normalizedInput.includes(normalizeArabic(staffFullName)) ||
+               (s.firstName && normalizeArabic(s.firstName).includes(normalizedInput));
+      });
 
-      // Check conflict (another teacher teaching the same subject on the same grade/section)
-      const conflict = pairings.find(
-        (p: any) => p.status !== 'reread' &&
-                    normalizeArabic(p.grade) === normalizeArabic(grade) && 
-                    normalizeArabic(p.section) === normalizeArabic(section) && 
-                    normalizeArabic(p.subject) === normalizeArabic(subject) && 
-                    p.teacherName !== teacherName
-      );
-
-      if (conflict) {
-        return res.json({
-          success: false,
-          warning: true,
-          message: `تنبيه: الشعبة ${grade} (${section}) مسجلة بالفعل للمدرس (${conflict.teacherName}) لنفس المادة (${subject})!`
+      let parsedClasses: Array<{ grade: string; section: string; subject: string }> = [];
+      if (matchedStaff && Array.isArray(matchedStaff.classesTaught)) {
+        // Parse assigned classes
+        matchedStaff.classesTaught.forEach((classStr: string) => {
+          const cleaned = classStr.replace(/^الصف\s+/g, '').trim();
+          const parts = cleaned.split(/[-–—\s]+/);
+          if (parts.length >= 3) {
+            const subjectPart = parts[parts.length - 1];
+            const sectionPart = parts[parts.length - 2];
+            const gradePart = parts.slice(0, parts.length - 2).join(' ');
+            parsedClasses.push({ grade: gradePart, section: sectionPart, subject: subjectPart });
+          } else if (parts.length === 2) {
+            parsedClasses.push({ grade: parts[0], section: parts[1], subject: matchedStaff.specialization || 'الرياضيات' });
+          } else if (parts.length === 1 && parts[0].length > 0) {
+            parsedClasses.push({ grade: parts[0], section: 'أ', subject: matchedStaff.specialization || 'الرياضيات' });
+          }
         });
       }
 
-      const id = `${teacherName}-${grade}-${section}-${subject}`.replace(/\s+/g, '-');
+      db.pairings = db.pairings || {};
+      const pairings = db.pairings[schoolId] || [];
       
-      let pairing = pairings.find((p: any) => p.id === id);
-      const token = pairing ? pairing.token : `TEACHER-${Math.floor(100000 + Math.random() * 900000)}`;
-      
-      // Auto-approved since they entered the correct unified code, but notify manager for review
-      pairing = {
-        id,
-        teacherName,
-        grade,
-        section,
-        subject,
-        status: 'approved',
-        token,
-        lastActiveTime: new Date().toISOString(),
-        isNewNotification: true // Flag to show notification card to the manager!
-      };
+      const teacherPairings = pairings.filter((p: any) => p.teacherName === teacherName);
+      const token = teacherPairings.length > 0 ? teacherPairings[0].token : `TEACHER-${Math.floor(100000 + Math.random() * 900000)}`;
 
-      // Replace or add pairing
-      const existingIdx = pairings.findIndex((p: any) => p.id === id);
-      if (existingIdx > -1) {
-        pairings[existingIdx] = pairing;
+      const newPairings = pairings.filter((p: any) => p.teacherName !== teacherName);
+
+      if (parsedClasses.length > 0) {
+        parsedClasses.forEach((cls) => {
+          const id = `${teacherName}-${cls.grade}-${cls.section}-${cls.subject}`.replace(/\s+/g, '-');
+          newPairings.push({
+            id,
+            teacherName,
+            grade: cls.grade,
+            section: cls.section,
+            subject: cls.subject,
+            status: 'approved',
+            token,
+            lastActiveTime: new Date().toISOString(),
+            isNewNotification: true
+          });
+        });
       } else {
-        pairings.push(pairing);
+        // Fallback: If not found in staff or classesTaught is empty, pair with requested class
+        const useGrade = grade || 'الأول الابتدائي';
+        const useSection = section || 'أ';
+        const useSubject = subject || 'الرياضيات';
+        const id = `${teacherName}-${useGrade}-${useSection}-${useSubject}`.replace(/\s+/g, '-');
+        
+        newPairings.push({
+          id,
+          teacherName,
+          grade: useGrade,
+          section: useSection,
+          subject: useSubject,
+          status: 'approved',
+          token,
+          lastActiveTime: new Date().toISOString(),
+          isNewNotification: true
+        });
       }
 
-      db.pairings[schoolId] = pairings;
+      db.pairings[schoolId] = newPairings;
       writeSyncDb(db);
 
-      console.log(`[Sync] Pairing request by ${teacherName} for ${grade}-${section} [${subject}], auto-approved via unified code.`);
+      console.log(`[Sync] Multi-tenant pairing for ${teacherName} in school ${schoolId} approved for ${parsedClasses.length || 1} classes.`);
       return res.json({
         success: true,
         warning: false,
-        token: pairing.token,
-        status: pairing.status,
-        message: 'تم ربط جهازك بسحابة المدرسة بنجاح! سيتم تنزيل أسماء الطلاب والبدء بالعمل فوراً.'
+        token: token,
+        status: 'approved',
+        message: parsedClasses.length > 0 
+          ? `تم ربط جهازك بنجاح! تم العثور على ${parsedClasses.length} شعب مكلف بها في سجل الكادر وسيتم تنزيل الأسماء والبدء بالعمل.`
+          : 'تم ربط جهازك بسحابة المدرسة للشعبة المطلوبة بنجاح! سيتم تنزيل الأسماء والبدء بالعمل.'
       });
     } catch (error: any) {
       console.error('Error requesting pairing:', error);
@@ -466,17 +516,20 @@ async function startServer() {
       const db = readSyncDb();
       db.pairings = db.pairings || {};
       const pairings = db.pairings[schoolId as string] || [];
-      const pairing = pairings.find((p: any) => p.token === token);
+      const teacherPairings = pairings.filter((p: any) => p.token === token);
 
-      if (!pairing) {
+      if (teacherPairings.length === 0) {
         return res.status(404).json({ error: 'عفواً، لم نجد طلب اقتران مطابق.' });
       }
 
-      if (pairing.status === 'reread') {
+      const activePairings = teacherPairings.filter((p: any) => p.status === 'approved');
+      const revokedPairings = teacherPairings.filter((p: any) => p.status === 'reread');
+
+      if (revokedPairings.length > 0 && activePairings.length === 0) {
         return res.status(400).json({ error: 'REVOKED', message: 'عفواً، تم إيقاف هذا الربط من قبل المدير لوجود خطأ! يرجى إعادة إدخال الرمز وتعديل الصف والشعبة.' });
       }
 
-      if (pairing.status !== 'approved') {
+      if (activePairings.length === 0) {
         return res.status(403).json({ error: 'عفواً، طلب الاقتران الخاص بك ما زال بانتظار مصادقة وتدقيق المدير.' });
       }
 
@@ -486,12 +539,22 @@ async function startServer() {
         return res.status(404).json({ error: 'عفواً، قاعدة بيانات المدرسة غير متوفرة في السحاب.' });
       }
 
-      const students = school.students.filter(
-        (s: any) => normalizeArabic(s.currentGrade) === normalizeArabic(pairing.grade) && 
-                    normalizeArabic(s.section) === normalizeArabic(pairing.section)
-      );
+      // Collect all active classes
+      const classesList = activePairings.map((p: any) => ({
+        grade: p.grade,
+        section: p.section,
+        subject: p.subject
+      }));
 
-      const studentsList = students.map((std: any) => ({
+      // Filter students who are in any of the active grade/sections
+      const matchedStudents = school.students.filter((s: any) => {
+        return activePairings.some((p: any) => 
+          normalizeArabic(s.currentGrade) === normalizeArabic(p.grade) && 
+          normalizeArabic(s.section) === normalizeArabic(p.section)
+        );
+      });
+
+      const studentsList = matchedStudents.map((std: any) => ({
         recordNumber: std.recordNumber,
         fullName: `${std.firstName} ${std.secondName} ${std.thirdName} ${std.fourthName} ${std.titleName}`.replace(/\s+/g, ' ').trim(),
         grade: std.currentGrade,
@@ -499,12 +562,12 @@ async function startServer() {
         historicalAbsences: std.absencesCount || 0
       }));
 
-      console.log(`[Sync] Teacher ${pairing.teacherName} downloaded roster for ${pairing.grade}-${pairing.section}`);
+      console.log(`[Sync] Teacher ${activePairings[0].teacherName} downloaded roster for ${classesList.length} classes`);
       return res.json({
         success: true,
-        token: pairing.token,
-        teacherName: pairing.teacherName,
-        classes: [{ grade: pairing.grade, section: pairing.section, subject: pairing.subject }],
+        token: token,
+        teacherName: activePairings[0].teacherName,
+        classes: classesList,
         students: studentsList
       });
     } catch (error: any) {
@@ -586,6 +649,7 @@ async function startServer() {
 
   // 8. Get QR Pairing Data (Called by Desktop App to show QR)
   app.get('/api/sync/qr-data', (req, res) => {
+    const { schoolId: reqSchoolId } = req.query;
     const os = require('os');
     const networkInterfaces = os.networkInterfaces();
     let localIp = 'localhost';
@@ -601,22 +665,24 @@ async function startServer() {
       if (localIp !== 'localhost') break;
     }
 
-    const schoolId = 'DIYALA-8492'; // Should ideally come from config
-    const schoolName = 'مدرسة التميز'; // Should ideally come from config
+    const schoolId = (reqSchoolId as string) || 'DIYALA-8492';
+    const db = readSyncDb();
+    const school = db.schools[schoolId];
 
     res.json({
       success: true,
       url: `http://${localIp}:${PORT}`,
       schoolId,
-      schoolName,
-      pairingCode: UNIFIED_SCHOOL_CODE
+      schoolName: school?.schoolName || 'مدرسة التميز',
+      pairingCode: school?.config?.pairingCode || UNIFIED_SCHOOL_CODE
     });
   });
 
   // UNIFY OLD CLOUD APIs WITH NEW SYNC DB
   app.get('/api/cloud/teachers', (req, res) => {
+    const { schoolId: reqSchoolId } = req.query;
     const db = readSyncDb();
-    const schoolId = 'DIYALA-8492';
+    const schoolId = (reqSchoolId as string) || 'DIYALA-8492';
     const pairings = db.pairings[schoolId] || [];
     const teachers = pairings.map((p: any) => ({
       id: p.id,
@@ -632,7 +698,7 @@ async function startServer() {
 
   app.post('/api/cloud/sync-all', (req, res) => {
     const { students, staff, config } = req.body;
-    const schoolId = 'DIYALA-8492';
+    const schoolId = config?.schoolId || 'DIYALA-8492';
     const db = readSyncDb();
     db.schools = db.schools || {};
     db.schools[schoolId] = {
@@ -768,17 +834,43 @@ async function startServer() {
   });
 
   // Vite middleware for development vs static serve for production
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
+  // We strictly check for the existence of index.html in the same directory
+  // which is only true in production builds.
+  const distPath = activeDirname;
+  const isProductionBuild = fs.existsSync(path.join(distPath, 'index.html'));
+
+  let useVite = false;
+  if (!isProductionBuild && process.env.NODE_ENV !== 'production') {
+      useVite = true;
+  }
+
+  if (useVite) {
+    try {
+      // Use eval to hide the import from static analysis and bundlers
+      // This ensures the production app never even tries to resolve 'vite'
+      const { createServer } = await eval('import("vite")');
+      const vite = await createServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+      console.log('Vite development middleware active');
+    } catch (e: any) {
+      console.warn('Vite not found or failed to start, falling back to static');
+      useVite = false;
+    }
+  }
+
+  if (!useVite) {
+    const distPath = activeDirname;
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const indexPath = path.join(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send('فشل تحميل ملفات النظام (index.html غير موجود)');
+      }
     });
   }
 

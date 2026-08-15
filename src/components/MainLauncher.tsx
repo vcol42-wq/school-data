@@ -33,6 +33,7 @@ interface MainLauncherProps {
   staffCount: number;
   onOpenVoiceModal?: () => void;
   students: any[];
+  setStudents: React.Dispatch<React.SetStateAction<any[]>>;
   scheduleMap: any;
 }
 
@@ -42,6 +43,7 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
   staffCount,
   onOpenVoiceModal,
   students,
+  setStudents,
   scheduleMap
 }) => {
   const [iconShape, setIconShape] = useState<'squircle' | 'round'>('squircle');
@@ -347,7 +349,7 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
             >
               <X className="w-6 h-6" />
             </button>
-            <PrincipalSyncDashboard students={students} schedule={scheduleMap} />
+            <PrincipalSyncDashboard students={students} setStudents={setStudents} schedule={scheduleMap} />
           </div>
         </div>
       )}

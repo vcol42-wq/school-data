@@ -170,7 +170,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     let interval: any;
     const fetchPairings = async () => {
       try {
-        const response = await fetch(`/api/sync/pairing-requests?schoolId=school_01`);
+        const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+        const response = await fetch(`/api/sync/pairing-requests?schoolId=${activeSchoolId}`);
         const data = await response.json();
         if (data.success && data.pairings) {
           setPairingRequests(data.pairings);
@@ -183,14 +184,15 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     fetchPairings();
     interval = setInterval(fetchPairings, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [config.schoolId]);
 
   const handleApprovePairing = async (pairingId: string) => {
     try {
+      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       const response = await fetch('/api/sync/approve-pairing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'approve' })
+        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'approve' })
       });
       const data = await response.json();
       if (data.success) {
@@ -206,10 +208,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   const handleDismissNotification = async (pairingId: string) => {
     try {
+      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       const response = await fetch('/api/sync/approve-pairing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'dismiss_notification' })
+        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'dismiss_notification' })
       });
       const data = await response.json();
       if (data.success) {
@@ -225,10 +228,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const handleRevokePairing = async (pairingId: string) => {
     if (!confirm('هل أنت متأكد من إيقاف هذا الربط وطلب إعادة قراءة الرمز من المعلم؟')) return;
     try {
+      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       const response = await fetch('/api/sync/approve-pairing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'reread' })
+        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'reread' })
       });
       const data = await response.json();
       if (data.success) {
@@ -245,10 +249,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const handleRejectPairing = async (pairingId: string) => {
     if (!confirm('هل أنت متأكد من رفض وحذف طلب الاقتران هذا؟')) return;
     try {
+      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       const response = await fetch('/api/sync/approve-pairing', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: 'school_01', pairingId, action: 'reject' })
+        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'reject' })
       });
       const data = await response.json();
       if (data.success) {
@@ -265,11 +270,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const handleUploadSchoolData = async () => {
     setIsUploadingSchoolData(true);
     try {
+      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       const response = await fetch('/api/sync/upload-manager-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          schoolId: 'school_01',
+          schoolId: activeSchoolId,
           schoolName: config.schoolName,
           students: students,
           staff: staffList,

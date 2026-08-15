@@ -187,6 +187,7 @@ export default function App() {
             staffCount={staffList.length}
             onOpenVoiceModal={() => setShowVoiceModal(true)}
             students={students}
+            setStudents={setStudents}
             scheduleMap={scheduleMap}
           />
         )}

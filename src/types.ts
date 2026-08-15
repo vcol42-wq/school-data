@@ -36,6 +36,8 @@ export interface AppConfig {
   screensaverImageUrl?: string;
   adminEmail?: string;
   geminiApiKey?: string;
+  schoolId?: string;
+  pairingCode?: string;
 }
 
 // 1. Schedule Types

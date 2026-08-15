@@ -5,28 +5,31 @@ import { QrCodeSvg } from './QrCodeSvg';
 
 interface PrincipalSyncDashboardProps {
   students: Student[];
+  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
   schedule: DayScheduleMap;
 }
 
-export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ students, schedule }) => {
+export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ students, setStudents, schedule }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [schoolId, setSchoolId] = useState<string>('999888'); // The Unified Code
+  const [schoolId, setSchoolId] = useState<string>(() => localStorage.getItem('diyala_school_id') || 'school_01');
+  const [pairingCode, setPairingCode] = useState<string>(() => localStorage.getItem('diyala_school_pairing_code') || '999888');
   const [serverUrl, setServerUrl] = useState<string>('جاري استخراج الرابط...');
   const [teachers, setTeachers] = useState<any[]>([]);
 
   useEffect(() => {
-    // Fetch Local IP and active teachers
+    const activeSchoolId = localStorage.getItem('diyala_school_id') || 'school_01';
     const fetchInfo = async () => {
       try {
-        const qrResp = await fetch('/api/sync/qr-data');
+        const qrResp = await fetch(`/api/sync/qr-data?schoolId=${activeSchoolId}`);
         const qrData = await qrResp.json();
         if (qrData.success) {
           setServerUrl(qrData.url.replace('http://', ''));
-          setSchoolId(qrData.pairingCode);
+          setSchoolId(qrData.schoolId);
+          setPairingCode(qrData.pairingCode);
         }
 
-        const teachResp = await fetch('/api/cloud/teachers');
+        const teachResp = await fetch(`/api/cloud/teachers?schoolId=${activeSchoolId}`);
         const teachData = await teachResp.json();
         if (teachData.success) setTeachers(teachData.teachers);
       } catch (e) { console.error(e); }
@@ -42,6 +45,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
       const config = {
         schoolName: localStorage.getItem('diyala_school_name') || 'مدرستي',
         schoolId: schoolId,
+        pairingCode: pairingCode,
         adminEmail: localStorage.getItem('diyala_admin_email')
       };
       const resp = await fetch('/api/cloud/sync-all', {
@@ -56,6 +60,72 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
       }
     } catch (e) {
       alert('خطأ في الاتصال بالسحابة');
+    }
+    setIsSyncing(false);
+  };
+
+  const handlePullAllGrades = async () => {
+    setIsSyncing(true);
+    try {
+      const activeSchoolId = localStorage.getItem('diyala_school_id') || 'school_01';
+      const resp = await fetch(`/api/sync/pull-all-grades?schoolId=${activeSchoolId}`);
+      const data = await resp.json();
+      if (data.success && data.syncedGrades && data.syncedGrades.length > 0) {
+        setStudents(prevStudents => {
+          return prevStudents.map(std => {
+            let updatedMarksHistory = [...(std.marksHistory || [])];
+            let absencesCount = std.absencesCount;
+
+            data.syncedGrades.forEach((syncClass: any) => {
+              const { grade, section, subject, gradesList } = syncClass;
+              if (std.currentGrade === grade && std.section === section) {
+                const studentSync = gradesList.find((gs: any) => gs.recordNumber === std.recordNumber);
+                if (studentSync) {
+                  if (studentSync.absencesCount !== undefined) {
+                    absencesCount = studentSync.absencesCount;
+                  }
+
+                  const academicYear = '2024-2025';
+                  const existingMarkIdx = updatedMarksHistory.findIndex(
+                     m => m.subject === subject && m.year === academicYear
+                  );
+
+                  const newMarkEntry: any = {
+                    year: academicYear,
+                    subject: subject,
+                    midterm: studentSync.marks.midtermFinalGrade,
+                    finalExam: studentSync.marks.finalExamTotal,
+                    finalGrade: studentSync.marks.finalGrade,
+                    total: studentSync.marks.finalGrade,
+                    ...studentSync.marks
+                  };
+
+                  if (existingMarkIdx > -1) {
+                    updatedMarksHistory[existingMarkIdx] = {
+                      ...updatedMarksHistory[existingMarkIdx],
+                      ...newMarkEntry
+                    };
+                  } else {
+                    updatedMarksHistory.push(newMarkEntry);
+                  }
+                }
+              }
+            });
+
+            return {
+              ...std,
+              marksHistory: updatedMarksHistory,
+              absencesCount: absencesCount
+            };
+          });
+        });
+        alert('تم بنجاح سحب وتحديث كافة درجات وغيابات الطلاب من الأساتذة المعتمدين سحابياً!');
+      } else {
+        alert('لم يتم العثور على أي درجات مرفوعة من قبل الأساتذة حتى الآن.');
+      }
+    } catch (e) {
+      console.error('Error pulling synced grades:', e);
+      alert('خطأ أثناء سحب الدرجات من السحابة');
     }
     setIsSyncing(false);
   };
@@ -117,7 +187,12 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
 
           <div className="pt-4 flex flex-col items-center gap-4 relative z-10">
             <div className="bg-white p-4 rounded-3xl shadow-2xl border-4 border-amber-400 transform hover:scale-105 transition-transform">
-              <QrCodeSvg value={JSON.stringify({ url: serverUrl, code: schoolId })} size={160} />
+              <QrCodeSvg value={JSON.stringify({ 
+                url: serverUrl.startsWith('http') ? serverUrl : `http://${serverUrl}`, 
+                schoolId: schoolId, 
+                schoolName: localStorage.getItem('diyala_school_name') || 'مدرستي', 
+                pairingCode: pairingCode 
+              })} size={160} />
             </div>
             <p className="text-[12px] text-slate-400 font-bold leading-relaxed px-6">
                أو قم بمسح <span className="text-amber-400">الباركود</span> أعلاه بواسطة تطبيق المدرس للربط التلقائي.
@@ -153,14 +228,24 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
                 </div>
                 <span>المدرسون المرتبطون حالياً</span>
               </div>
-              <button
-                onClick={handleSyncAll}
-                disabled={isSyncing}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-xl shadow-indigo-200 transition-all active:scale-95 flex items-center gap-2"
-              >
-                {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
-                <span>إرسال كافة الأسماء للمدرسين</span>
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handlePullAllGrades}
+                  disabled={isSyncing}
+                  className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black shadow-xl shadow-emerald-200 transition-all active:scale-95 flex items-center gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>استيراد كافة الدرجات والغيابات</span>
+                </button>
+                <button
+                  onClick={handleSyncAll}
+                  disabled={isSyncing}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black shadow-xl shadow-indigo-200 transition-all active:scale-95 flex items-center gap-2"
+                >
+                  {isSyncing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CloudUpload className="w-4 h-4" />}
+                  <span>إرسال كافة الأسماء للمدرسين</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto flex-1">

@@ -2,6 +2,23 @@ import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+// Set production environment if packaged
+if (app.isPackaged) {
+  process.env.NODE_ENV = 'production';
+}
+
+// Start the server with error handling
+try {
+  await import('./dist/server.cjs');
+} catch (error) {
+  console.error('Failed to start internal server:', error);
+  app.whenReady().then(() => {
+    dialog.showErrorBox(
+      'خطأ في تشغيل النظام',
+      'فشل تشغيل خادم البيانات الداخلي. قد يكون هناك ملفات مفقودة.\n' + error.message
+    );
+  });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +44,7 @@ function createWindow() {
     win.setIcon(iconPath);
   }
 
-  win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+  win.loadURL('http://localhost:3000');
 }
 
 // IPC Handlers for external print file chooser
