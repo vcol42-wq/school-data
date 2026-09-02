@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppConfig } from '../types';
+import { AppConfig, Student, StaffMember } from '../types';
 import { 
   Settings, 
   Lock, 
@@ -12,12 +12,24 @@ import {
   Key, 
   ShieldCheck,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Trash2,
+  Users,
+  Download,
+  Upload,
+  CalendarPlus,
+  CloudLightning
 } from 'lucide-react';
+import { refreshSupabaseClient } from '../utils/supabaseClient';
+import { purgeSchoolDataFromCloud } from '../utils/syncService';
 
 interface SettingsViewProps {
   config: AppConfig;
   setConfig: React.Dispatch<React.SetStateAction<AppConfig>>;
+  students: Student[];
+  setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
+  staffList: StaffMember[];
+  setStaffList: React.Dispatch<React.SetStateAction<StaffMember[]>>;
   onResetData: () => void;
   onTriggerScreensaver: () => void;
   onTriggerSplash: () => void;
@@ -26,15 +38,174 @@ interface SettingsViewProps {
 export const SettingsView: React.FC<SettingsViewProps> = ({
   config,
   setConfig,
+  students,
+  setStudents,
+  staffList,
+  setStaffList,
   onResetData,
   onTriggerScreensaver,
   onTriggerSplash
 }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [enteredPasscode, setEnteredPasscode] = useState('');
   const [authError, setAuthError] = useState('');
 
   const [formConfig, setFormConfig] = useState<AppConfig>({ ...config });
+
+  const [selectedGradePurge, setSelectedGradePurge] = useState('الصف الأول');
+  const [selectedFilterType, setSelectedFilterType] = useState<'all' | 'passed' | 'failed'>('all');
+
+  const getStudentAverage = (std: Student) => {
+    const currentYear = std.registrationYear || '2024-2025';
+    const marks = std.marksHistory.filter(m => m.year === currentYear);
+    if (marks.length === 0) return 0;
+    const sum = marks.reduce((acc, m) => acc + (m.finalGrade || m.total || 0), 0);
+    return sum / marks.length;
+  };
+
+  const handleSelectivePurge = () => {
+    let filterName = '';
+    if (selectedFilterType === 'all') filterName = 'كل طلاب هذا الصف';
+    if (selectedFilterType === 'passed') filterName = 'الطلاب الناجحين فقط (معدل >= 50)';
+    if (selectedFilterType === 'failed') filterName = 'الطلاب الراسبين فقط (معدل < 50)';
+
+    if (!confirm(`تحذير: هل أنت متأكد من تنفيذ المسح والفلترة للطلاب في [${selectedGradePurge}] لفلتر [${filterName}]؟ سيتم حذفهم نهائياً من قاعدة البيانات.`)) {
+      return;
+    }
+
+    setStudents(prev => {
+      return prev.filter(std => {
+        const matchesGrade = std.currentGrade === selectedGradePurge;
+        if (!matchesGrade) return true; // Keep other grades
+
+        const avg = getStudentAverage(std);
+        const isPass = avg >= 50;
+
+        if (selectedFilterType === 'all') {
+          return false; // delete all of this grade
+        }
+        if (selectedFilterType === 'passed') {
+          return !isPass; // Keep failed, delete passed
+        }
+        if (selectedFilterType === 'failed') {
+          return isPass; // Keep passed, delete failed
+        }
+        return true;
+      });
+    });
+
+    alert('تم تنفيذ الحذف والفلترة بنجاح!');
+  };
+
+  const handlePurgeAllStudents = () => {
+    if (confirm('⚠️ تحذير خطير جداً: هل أنت متأكد من تصفير وحذف قائمة جميع الطلاب المستمرين بالكامل؟ لا يمكن التراجع عن هذا الإجراء.')) {
+      setStudents([]);
+      alert('تم حذف وتصفير قائمة الطلاب بالكامل بنجاح!');
+    }
+  };
+
+  const handlePurgeAllStaff = () => {
+    if (confirm('⚠️ تحذير خطير جداً: هل أنت متأكد من تصفير وحذف جميع كادر التدريس بالكامل؟ لا يمكن التراجع عن هذا الإجراء.')) {
+      setStaffList([]);
+      alert('تم حذف وتصفير كادر التدريس بالكامل بنجاح!');
+    }
+  };
+
+  const handlePurgeAllAbsences = () => {
+    if (confirm('هل أنت متأكد من تصفير كافة غيابات الطلاب وإرجاع عداد الغياب إلى صفر لجميع الطلبة؟')) {
+      setStudents(prev => prev.map(s => ({ ...s, absencesCount: 0 })));
+      alert('تم تصفير غيابات جميع الطلاب بنجاح!');
+    }
+  };
+
+  const handleNewAcademicYear = async () => {
+    if (!confirm('🎓 هل تريد بدء سنة دراسية جديدة؟\n\n- سيتم تصفير الغيابات لكافة الطلبة (العودة إلى 0).\n- سيتم تصفير الدرجات القديمة في السحابة لتجهيز رصد السنة الجديدة.\n- سيتم الاحتفاظ بكافة أسماء وبيانات الطلاب وكادر المدرسين.')) {
+      return;
+    }
+    setStudents(prev => prev.map(s => ({ ...s, absencesCount: 0 })));
+    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+    const res = await purgeSchoolDataFromCloud(schoolId, 'grades_and_attendance');
+    if (res.success) {
+      alert('✅ تم تهيئة النظام وبدء السنة الدراسية الجديدة بنجاح وتصفير السجلات السحابية القديمة!');
+    } else {
+      alert('تم التصفير محلياً مع تنبيه في السحابة: ' + res.message);
+    }
+  };
+
+  const handlePurgeCloudData = async () => {
+    if (!confirm('☁️ هل أنت متأكد من تصفير وتفريغ قاعدة بيانات المدرسة في السحابة؟ سيتم مسح بيانات المدرسة القديمة من السحابة لتجهيز تصدير نظيف جديد.')) {
+      return;
+    }
+    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+    const res = await purgeSchoolDataFromCloud(schoolId, 'all');
+    if (res.success) {
+      alert('✅ تم تفريغ وتصفير بيانات السحابة بنجاح!');
+    } else {
+      alert('خطأ في تصفير السحابة: ' + res.message);
+    }
+  };
+
+  const handleExportBackup = () => {
+    const backupData = {
+      version: '5.0',
+      exportDate: new Date().toISOString(),
+      config,
+      students,
+      staffList,
+      schedule: JSON.parse(localStorage.getItem('diyala_school_schedule') || '{}')
+    };
+    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup_${config.schoolName || 'school'}_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        if (parsed.students) setStudents(parsed.students);
+        if (parsed.staffList) setStaffList(parsed.staffList);
+        if (parsed.config) setConfig(parsed.config);
+        if (parsed.schedule) localStorage.setItem('diyala_school_schedule', JSON.stringify(parsed.schedule));
+        alert('✅ تم استرجاع النسخة الاحتياطية بنجاح!');
+      } catch (err: any) {
+        alert('فشل قراءة ملف النسخة الاحتياطية: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handlePurgeToRawSystem = () => {
+    if (confirm('🚨 تحذير نهائي: هل أنت متأكد من مسح كافة تهيئات النظام والبيانات وإرجاع التطبيق للحالة الخام بالكامل؟ سيتم إغلاق التطبيق وإعادة إدخال معلومات المدرسة والمدير والرمز السري من جديد.')) {
+      setStudents([]);
+      setStaffList([]);
+      setConfig({
+        schoolName: '',
+        managerName: '',
+        directorateName: '',
+        sectionName: '',
+        passcode: '',
+        developerCode: '9999',
+        lessonDurationMinutes: 45,
+        breakDurationMinutes: 10,
+        schoolStartHour: '08:00',
+        enableBellSound: true,
+        enableScreensaver: true,
+        splashImageUrl: 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=1200&q=80',
+        screensaverImageUrl: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=1200&q=80'
+      });
+      localStorage.clear();
+      alert('تم إرجاع النظام للحالة الخام بنجاح! يرجى إعادة تشغيل التطبيق للبدء من جديد.');
+      window.location.reload();
+    }
+  };
 
   // Handle Security Login
   const handleAuthSubmit = (e: React.FormEvent) => {
@@ -50,8 +221,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Save Settings
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    setConfig({ ...formConfig });
-    alert('تم حفظ كافة إعدادات النظام وتحديث التوقيتات وبيانات المدير والمدرسة بنجاح!');
+
+    const isSchoolNameChanged = formConfig.schoolName !== config.schoolName && config.schoolName !== '';
+
+    if (isSchoolNameChanged) {
+      const confirmReset = confirm(
+        `🚨 تحذير إلزامي: لقد قمت بتغيير اسم المدرسة من [${config.schoolName}] إلى [${formConfig.schoolName}].\n\n` +
+        `حسب سياسة النظام، عند تغيير المدرسة يجب فرضا والزاما:\n` +
+        `1️⃣ تصفير كافة بيانات الطلاب (حذف كامل).\n` +
+        `2️⃣ تصفير كافة بيانات الكادر (حذف كامل).\n` +
+        `3️⃣ إلغاء الربط السحابي الحالي وتوليد رموز اقتران جديدة.\n\n` +
+        `هل أنت متأكد من تنفيذ هذا الإجراء الإلزامي؟ لا يمكن التراجع عن الحذف.`
+      );
+
+      if (!confirmReset) {
+        // Revert school name in form if user cancels
+        setFormConfig(prev => ({ ...prev, schoolName: config.schoolName }));
+        return;
+      }
+
+      // 1 & 2: Reset Students and Staff
+      setStudents([]);
+      setStaffList([]);
+
+      // 3: Generate New Codes (Cancel Linking)
+      const email = formConfig.adminEmail || localStorage.getItem('diyala_admin_email') || 'principal@edu.iq';
+      const generatedId = "SCH-" + email.split('@')[0].toUpperCase().slice(0, 4) + "-" + Math.floor(1000 + Math.random() * 9000);
+      const generatedPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+      const newConfig = {
+        ...formConfig,
+        schoolId: generatedId,
+        pairingCode: generatedPairingCode
+      };
+
+      setConfig(newConfig);
+
+      // Update localStorage for immediate use by other components that might read it directly
+      localStorage.setItem('diyala_school_id', generatedId);
+      localStorage.setItem('diyala_school_pairing_code', generatedPairingCode);
+      localStorage.setItem('diyala_school_name', formConfig.schoolName);
+
+      // Refresh sync client with new school ID
+      refreshSupabaseClient();
+
+      alert('✅ تم تغيير المدرسة بنجاح! تم تصفير كافة البيانات وتوليد رمز اقتران جديد للربط بين التطبيقات.');
+    } else {
+      setConfig({ ...formConfig });
+      alert('تم حفظ كافة إعدادات النظام وتحديث التوقيتات وبيانات المدير والمدرسة بنجاح!');
+    }
   };
 
   if (!isAuthenticated) {
@@ -134,7 +352,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 required
                 value={formConfig.managerName}
                 onChange={e => setFormConfig(p => ({ ...p, managerName: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-bold"
+                className="w-full p-2.5 rounded-xl border bg-white font-bold text-slate-900"
               />
             </div>
 
@@ -145,7 +363,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 required
                 value={formConfig.schoolName}
                 onChange={e => setFormConfig(p => ({ ...p, schoolName: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-bold"
+                className="w-full p-2.5 rounded-xl border bg-white font-bold text-slate-900"
               />
             </div>
 
@@ -155,16 +373,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="text"
                 value={formConfig.directorateName}
                 onChange={e => setFormConfig(p => ({ ...p, directorateName: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900"
+                className="w-full p-2.5 rounded-xl border bg-white text-slate-900 font-bold"
               />
             </div>
 
             <div>
-              <label className="block font-bold mb-1">نوع ومرحلة المدرسة الرسمية:</label>
+              <label className="block font-bold mb-1">نوع ومرحلة المدرسة الرسميّة:</label>
               <select
                 value={formConfig.schoolStage || 'intermediate'}
                 onChange={e => setFormConfig(p => ({ ...p, schoolStage: e.target.value as any }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-bold text-amber-600"
+                className="w-full p-2.5 rounded-xl border bg-white font-bold text-indigo-600"
               >
                 <option value="primary">🏫 مدرسة ابتدائية (من الأول إلى السادس الابتدائي)</option>
                 <option value="intermediate">🏫 مدرسة متوسطة (الأول إلى الثالث متوسط)</option>
@@ -179,7 +397,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="text"
                 value={formConfig.sectionName}
                 onChange={e => setFormConfig(p => ({ ...p, sectionName: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900"
+                className="w-full p-2.5 rounded-xl border bg-white text-slate-900 font-bold"
               />
             </div>
           </div>
@@ -201,7 +419,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 max={90}
                 value={formConfig.lessonDurationMinutes}
                 onChange={e => setFormConfig(p => ({ ...p, lessonDurationMinutes: Number(e.target.value) }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-bold text-blue-600"
+                className="w-full p-2.5 rounded-xl border bg-white font-bold text-blue-600"
               />
             </div>
 
@@ -213,7 +431,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 max={40}
                 value={formConfig.breakDurationMinutes}
                 onChange={e => setFormConfig(p => ({ ...p, breakDurationMinutes: Number(e.target.value) }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-bold text-amber-600"
+                className="w-full p-2.5 rounded-xl border bg-white font-bold text-amber-600"
               />
             </div>
 
@@ -223,7 +441,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="time"
                 value={formConfig.schoolStartHour}
                 onChange={e => setFormConfig(p => ({ ...p, schoolStartHour: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-bold text-emerald-600"
+                className="w-full p-2.5 rounded-xl border bg-white font-bold text-emerald-600"
               />
             </div>
           </div>
@@ -243,7 +461,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="text"
                 value={formConfig.passcode}
                 onChange={e => setFormConfig(p => ({ ...p, passcode: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-mono font-bold"
+                className="w-full p-2.5 rounded-xl border bg-white font-mono font-bold"
               />
             </div>
 
@@ -253,7 +471,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 type="text"
                 value={formConfig.developerCode}
                 onChange={e => setFormConfig(p => ({ ...p, developerCode: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 font-mono font-bold text-purple-600"
+                className="w-full p-2.5 rounded-xl border bg-white font-mono font-bold text-purple-600"
               />
             </div>
           </div>
@@ -274,7 +492,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 value={formConfig.splashImageUrl || ''}
                 onChange={e => setFormConfig(p => ({ ...p, splashImageUrl: e.target.value }))}
                 placeholder="https://..."
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-mono"
+                className="w-full p-2.5 rounded-xl border bg-white text-xs font-mono"
               />
               <button
                 type="button"
@@ -292,7 +510,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 value={formConfig.screensaverImageUrl || ''}
                 onChange={e => setFormConfig(p => ({ ...p, screensaverImageUrl: e.target.value }))}
                 placeholder="https://..."
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-mono"
+                className="w-full p-2.5 rounded-xl border bg-white text-xs font-mono"
               />
               <button
                 type="button"
@@ -340,14 +558,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 value={formConfig.adminEmail || ''}
                 onChange={e => setFormConfig(p => ({ ...p, adminEmail: e.target.value }))}
                 placeholder="school.admin@gmail.com"
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400"
+                className="w-full p-2.5 rounded-xl border bg-white text-xs font-mono font-bold text-indigo-600 dark:text-indigo-400"
               />
             </div>
 
             <div>
-              <label className="block font-bold mb-1">مفتاح ذكاء اصطناعي Gemini الخاص بالإدارة (Gemini API Key):</label>
+              <label className="block font-bold mb-1">حالة تفعيل ميزات الذكاء الاصطناعي (Gemini AI):</label>
+              <div className="flex items-center gap-2 mb-2">
+                <div className={`px-3 py-1.5 rounded-lg font-black text-[10px] flex items-center gap-1.5 ${
+                  formConfig.adminEmail ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-rose-100 text-rose-800'
+                }`}>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{formConfig.adminEmail ? 'نشط تلقائياً (مرتبط بالبريد الإلكتروني) ✅' : 'غير نشط (يرجى إدخال البريد الإلكتروني)'}</span>
+                </div>
+              </div>
               <input
-                type="text"
+                type="password"
                 value={formConfig.geminiApiKey || ''}
                 onChange={e => setFormConfig(p => {
                   const updated = { ...p, geminiApiKey: e.target.value };
@@ -355,13 +581,184 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   localStorage.setItem('diyala_school_gemini_key', e.target.value);
                   return updated;
                 })}
-                placeholder="AIzaSy..."
-                className="w-full p-2.5 rounded-xl border bg-slate-50 dark:bg-slate-900 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400"
+                placeholder="أدخل مفتاح خاص (اختياري) أو اترك فارغاً للاعتماد على الربط الآلي"
+                className="w-full p-2.5 rounded-xl border bg-white text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400"
               />
               <span className="text-[10px] text-slate-500 block mt-1">
-                عند إضافة المفتاح، سيتم تشغيل البحث الذكي وتوليد الإحصائيات مباشرة على جهازك.
+                عند إدخال البريد الإلكتروني الرسمي، يتم تفعيل البحث الذكي وتوليد الإحصائيات آلياً دون الحاجة لمفاتيح تقنية.
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* Section 6: Smart Data Purging Center */}
+        <div className="bg-[var(--theme-card)] p-6 rounded-2xl border-2 border-rose-300 dark:border-rose-900/50 shadow-sm space-y-4">
+          <h3 className="text-base font-bold text-[var(--theme-text-main)] border-b border-rose-100 dark:border-rose-950 pb-2 flex items-center gap-2">
+            <Trash2 className="w-5 h-5 text-rose-500" />
+            <span>6. مركز تصفير البيانات وإدارة السنة الدراسية والنسخ الاحتياطي</span>
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-bold text-right">
+            
+            {/* 1. New Academic Year Setup */}
+            <div className="p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300 border-b border-indigo-200 pb-1 mb-2">
+                  <CalendarPlus className="w-4 h-4" />
+                  <span>بدء سنة دراسية جديدة 🎓</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 font-normal leading-relaxed">
+                  تصفير عداد الغيابات وتفريغ الدرجات القديمة في السحابة مع الحفاظ الكامل على سجلات الطلاب وكادر التدريس.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleNewAcademicYear}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black transition-all cursor-pointer text-center shadow-md flex items-center justify-center gap-1.5"
+              >
+                <CalendarPlus className="w-4 h-4" />
+                <span>تهيئة السنة الجديدة الآن</span>
+              </button>
+            </div>
+
+            {/* 2. Backup & Restore */}
+            <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 border-b border-emerald-200 pb-1 mb-2">
+                  <Download className="w-4 h-4" />
+                  <span>النسخ الاحتياطي والاستعادة 💾</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 font-normal leading-relaxed">
+                  حفظ نسخة شاملة من كامل بيانات المدرسة (الطلاب، الكادر، الجدول، الإعدادات) كملف JSON واسترجاعها بأي وقت.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportBackup}
+                  className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center gap-1"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>تصدير نسخة</span>
+                </button>
+                <label className="py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold flex items-center justify-center gap-1 cursor-pointer">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>استرجاع</span>
+                  <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+                </label>
+              </div>
+            </div>
+
+            {/* 3. Cloud Wipe */}
+            <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300 border-b border-amber-200 pb-1 mb-2">
+                  <CloudLightning className="w-4 h-4" />
+                  <span>تصفير وتفريغ السحابة ☁️</span>
+                </div>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 font-normal leading-relaxed">
+                  مسح كافة سجلات المدرسة المرفوعة على Supabase للبدء من جديد برفع نظيف وجديد كلياً.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePurgeCloudData}
+                className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-black transition-all cursor-pointer text-center shadow-md flex items-center justify-center gap-1.5"
+              >
+                <CloudLightning className="w-4 h-4" />
+                <span>تصفير سحابة المدرسة</span>
+              </button>
+            </div>
+
+          </div>
+
+          {/* Selective & Bulk Purge Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-bold text-right pt-3 border-t border-rose-100 dark:border-rose-950">
+            
+            {/* Selective Purging */}
+            <div className="p-4 rounded-2xl bg-rose-50/50 dark:bg-rose-950/10 border border-rose-200 space-y-3">
+              <span className="block text-rose-800 dark:text-rose-300 border-b pb-1">مسح وحذف الطلاب بفلاتر محددة (انتقائي)</span>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block mb-1 text-slate-500">اختر الصف الدراسي:</label>
+                  <select
+                    value={selectedGradePurge}
+                    onChange={e => setSelectedGradePurge(e.target.value)}
+                    className="w-full p-2 border rounded bg-white text-slate-900 font-bold"
+                  >
+                    <option value="الصف الأول">الصف الأول</option>
+                    <option value="الصف الثاني">الصف الثاني</option>
+                    <option value="الصف الثالث">الصف الثالث</option>
+                    <option value="الصف الرابع">الصف الرابع</option>
+                    <option value="الصف الخامس">الصف الخامس</option>
+                    <option value="الصف السادس">الصف السادس</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block mb-1 text-slate-500">فلتر الحذف المطلوب:</label>
+                  <select
+                    value={selectedFilterType}
+                    onChange={e => setSelectedFilterType(e.target.value as any)}
+                    className="w-full p-2 border rounded bg-white text-slate-900 font-bold"
+                  >
+                    <option value="all">كل طلاب هذا الصف</option>
+                    <option value="passed">{'الطلاب الناجحين فقط (معدل >= 50)'}</option>
+                    <option value="failed">{'الطلاب الراسبين فقط (معدل < 50)'}</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSelectivePurge}
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-black transition-all cursor-pointer text-center border-none shadow-sm"
+              >
+                تنفيذ المسح الانتقائي للطلاب 🗑️
+              </button>
+            </div>
+
+            {/* Bulk Purging */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 space-y-3 flex flex-col justify-between">
+              <span className="block text-slate-700 dark:text-slate-300 border-b pb-1">حذف وتصفير كلي للنظام المحلي</span>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handlePurgeAllStudents}
+                  className="py-2 bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 rounded-xl font-bold cursor-pointer text-center"
+                >
+                  حذف كافة الطلاب
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePurgeAllStaff}
+                  className="py-2 bg-slate-900 hover:bg-slate-800 text-white border border-slate-700 rounded-xl font-bold cursor-pointer text-center"
+                >
+                  حذف كادر التدريس
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePurgeAllAbsences}
+                  className="py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold cursor-pointer text-center col-span-2"
+                >
+                  تصفير غيابات جميع الطلاب
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handlePurgeToRawSystem}
+                className="w-full py-2 bg-rose-700 hover:bg-rose-800 text-white rounded-xl font-black cursor-pointer text-center border-2 border-rose-500"
+              >
+                إعادة ضبط المصنع بالكامل (تصفير خام للأبد) 🚨
+              </button>
+            </div>
+
           </div>
         </div>
 

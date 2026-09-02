@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1009565234497",
+    "project_id": "theprinciple",
+    "storage_bucket": "theprinciple.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009565234497:android:b11dac5f54c6b5c1789dc0",
+        "android_client_info": {
+          "package_name": "com.ThePrinciple.appname"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA92sLsbAsl9HXjEQb2fsADFeOTsvi6aGQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

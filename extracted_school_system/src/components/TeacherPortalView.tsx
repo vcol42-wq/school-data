@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Student, StaffMember, AppConfig } from '../types';
+import { Student, StaffMember, AppConfig, StudentMark } from '../types';
 import { 
   Cloud, 
   CloudCheck, 
@@ -33,8 +33,12 @@ import {
   Printer,
   Eye,
   EyeOff,
-  QrCode
+  QrCode,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
+import { isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
+import { sendPairingRequest } from '../utils/syncService';
 
 // Barcode SVG Generator Component
 const BarcodeSvg: React.FC<{ value: string; height?: number; className?: string }> = ({ value, height = 48, className = "" }) => {
@@ -135,6 +139,7 @@ interface TeacherPortalViewProps {
   setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
   staffList: StaffMember[];
   config: AppConfig;
+  scheduleMap: DayScheduleMap;
   onBackToMain: () => void;
 }
 
@@ -143,6 +148,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   setStudents,
   staffList,
   config,
+  scheduleMap,
   onBackToMain
 }) => {
   // Connection & Auth State
@@ -154,12 +160,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   });
   const [teacherName, setTeacherName] = useState('');
   const [selectedSubjects, setSelectedSubjects] = useState<string[]>(['اللغة العربية']);
-  const [selectedGrades, setSelectedGrades] = useState<string[]>(['الأول الابتدائي']);
+  const [selectedGrades, setSelectedGrades] = useState<string[]>(['الأول']);
   const [selectedSections, setSelectedSections] = useState<string[]>(['أ']);
   const [currentSubject, setCurrentSubject] = useState('اللغة العربية');
-  const [currentGrade, setCurrentGrade] = useState('الأول الابتدائي');
+  const [currentGrade, setCurrentGrade] = useState('الأول');
   const [currentSection, setCurrentSection] = useState('أ');
   const [isSessionActive, setIsSessionActive] = useState(false);
+
+  // AI Diagnosis State
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [aiReportResult, setAiReportResult] = useState<string | null>(null);
 
   // QR Sync State
   const [pairingRequests, setPairingRequests] = useState<any[]>([]);
@@ -279,7 +289,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           schoolName: config.schoolName,
           students: students,
           staff: staffList,
-          config: config
+          config: config,
+          schedule: scheduleMap
         })
       });
       const data = await response.json();
@@ -309,8 +320,43 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // Entry Method State ('manual' | 'camera' | 'image' | 'voice')
   const [entryMode, setEntryMode] = useState<'manual' | 'camera' | 'image' | 'voice'>('manual');
 
-  // Local state for modified grades in this session (StudentId -> Score)
-  const [sessionScores, setSessionScores] = useState<Record<string, number>>({});
+  // Local state for modified grades in this session (StudentId -> Full Mark Object)
+  const [sessionMarks, setSessionMarks] = useState<Record<string, StudentMark>>({});
+
+  const getStudentMarkForSubjectLocal = (std: Student, subject: string): StudentMark => {
+    const currentYear = std.registrationYear || '2024-2025';
+    let mark = std.marksHistory.find(m => m.subject === subject && m.year === currentYear);
+    if (!mark) {
+      mark = std.marksHistory.find(m => m.subject === subject);
+    }
+    return mark || {
+      year: currentYear,
+      subject: subject,
+      m1Daily: [0, 0, 0, 0, 0],
+      m1Written: 0,
+      m1MonthAvg: 0,
+      m2Daily: [0, 0, 0, 0, 0],
+      m2Written: 0,
+      m2MonthAvg: 0,
+      term1Avg: 0,
+      midtermOral: [0],
+      midtermWritten: 0,
+      midtermTotal: 0,
+      midtermFinalGrade: 0,
+      m3Daily: [0, 0, 0, 0, 0],
+      m3Written: 0,
+      m3MonthAvg: 0,
+      m4Daily: [0, 0, 0, 0, 0],
+      m4Written: 0,
+      m4MonthAvg: 0,
+      term2Avg: 0,
+      annualAverage: 0,
+      finalWrittenD1: 0,
+      finalWrittenD2: null,
+      finalGrade: 0,
+      total: 0
+    };
+  };
 
   // Voice State
   const [isListening, setIsListening] = useState(false);
@@ -339,8 +385,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   ];
 
   const availableGrades = [
-    'الأول الابتدائي', 'الثاني الابتدائي', 'الثالث الابتدائي', 
-    'الرابع الابتدائي', 'الخامس الابتدائي', 'السادس الابتدائي'
+    'الأول', 'الثاني', 'الثالث', 
+    'الرابع', 'الخامس', 'السادس'
   ];
 
   const availableSections = ['أ', 'ب', 'ج', 'د', 'هـ'];
@@ -352,6 +398,26 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   };
 
   const registerSessionOnServer = async (code: string, tName: string, subjs: string[], grds: string[], scts: string[]) => {
+    // 1. Try Supabase Cloud Pairing if configured
+    if (isSupabaseConfigured()) {
+      try {
+        const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+        await sendPairingRequest({
+          schoolId,
+          fullName: tName,
+          role: 'teacher',
+          grade: grds[0] || 'الكل',
+          section: scts[0] || 'الكل',
+          subject: subjs[0] || 'عام',
+          pairingCode: code
+        });
+        console.log('[Sync] Cloud pairing request sent to Supabase');
+      } catch (e) {
+        console.error('[Sync] Cloud pairing failed:', e);
+      }
+    }
+
+    // 2. Local Fallback (Internal Server)
     try {
       const sessionStudents = students.filter(
         s => grds.includes(s.currentGrade) && scts.includes(s.section)
@@ -435,20 +501,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           });
         });
 
-        // Update local session scores
-        const newSessionScores = { ...sessionScores };
+        // Update local session marks
+        const newSessionMarks = { ...sessionMarks };
         data.syncedGrades.forEach((syncClass: any) => {
           const { grade, section, subject, gradesList } = syncClass;
           if (grade === currentGrade && section === currentSection && subject === currentSubject) {
             gradesList.forEach((gs: any) => {
               const matchedStudent = students.find(s => s.recordNumber === gs.recordNumber && s.currentGrade === grade && s.section === section);
               if (matchedStudent) {
-                newSessionScores[matchedStudent.id] = gs.marks.finalGrade || gs.marks.midtermFinalGrade || 0;
+                newSessionMarks[matchedStudent.id] = {
+                  ...getStudentMarkForSubjectLocal(matchedStudent, subject),
+                  ...gs.marks
+                };
               }
             });
           }
         });
-        setSessionScores(newSessionScores);
+        setSessionMarks(newSessionMarks);
 
         alert(`تم بنجاح سحب وتحديث درجات وغيابات الطلاب من الأستاذ عبر السحابة!`);
       } else {
@@ -494,14 +563,12 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setCurrentGrade(selectedGrades[0]);
     setCurrentSection(selectedSections[0]);
 
-    // Initialize local session scores with existing student scores
-    const initialScores: Record<string, number> = {};
+    // Initialize local session marks with existing student data
+    const initialMarks: Record<string, StudentMark> = {};
     students.forEach(s => {
-      if (s.finalYearScore !== undefined) {
-        initialScores[s.id] = s.finalYearScore;
-      }
+      initialMarks[s.id] = getStudentMarkForSubjectLocal(s, selectedSubjects[0]);
     });
-    setSessionScores(initialScores);
+    setSessionMarks(initialMarks);
 
     if (verifiedDirectly) {
       setIsVerifiedByPrincipal(true);
@@ -539,9 +606,46 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   );
 
   // Update Score Helper
-  const handleScoreChange = (studentId: string, score: number) => {
-    const validScore = Math.min(100, Math.max(0, score || 0));
-    setSessionScores(prev => ({ ...prev, [studentId]: validScore }));
+  const handleMarkUpdate = (studentId: string, field: keyof StudentMark, value: any, arrayIndex?: number) => {
+    setSessionMarks(prev => {
+      const currentMark = prev[studentId] || getStudentMarkForSubjectLocal(students.find(s => s.id === studentId)!, currentSubject);
+      const updatedMark = { ...currentMark };
+
+      const numVal = typeof value === 'string' ? (value.trim() === '' ? 0 : Number(value)) : value;
+
+      if (arrayIndex !== undefined && Array.isArray((updatedMark as any)[field])) {
+        const arr = [...(updatedMark as any)[field]];
+        arr[arrayIndex] = numVal;
+        (updatedMark as any)[field] = arr;
+      } else {
+        (updatedMark as any)[field] = numVal;
+      }
+
+      // Re-calculate all averages (Android-style logic)
+      const calcMonthAvg = (daily: number[] = [], written: number = 0) => {
+        const dSum = daily.reduce((a, b) => a + (b || 0), 0);
+        const dAvg = daily.length > 0 ? dSum / daily.length : 0;
+        return Math.round((dAvg + (written || 0)));
+      };
+
+      updatedMark.m1MonthAvg = calcMonthAvg(updatedMark.m1Daily, updatedMark.m1Written);
+      updatedMark.m2MonthAvg = calcMonthAvg(updatedMark.m2Daily, updatedMark.m2Written);
+      updatedMark.term1Avg = Math.round(((updatedMark.m1MonthAvg || 0) + (updatedMark.m2MonthAvg || 0)) / 2);
+
+      updatedMark.midtermTotal = (updatedMark.midtermWritten || 0) + (updatedMark.midtermOral?.reduce((a,b)=>a+b,0) || 0);
+      updatedMark.midtermFinalGrade = updatedMark.midtermTotal;
+
+      updatedMark.m3MonthAvg = calcMonthAvg(updatedMark.m3Daily, updatedMark.m3Written);
+      updatedMark.m4MonthAvg = calcMonthAvg(updatedMark.m4Daily, updatedMark.m4Written);
+      updatedMark.term2Avg = Math.round(((updatedMark.m3MonthAvg || 0) + (updatedMark.m4MonthAvg || 0)) / 2);
+
+      updatedMark.annualAverage = Math.round(((updatedMark.term1Avg || 0) + (updatedMark.midtermFinalGrade || 0) + (updatedMark.term2Avg || 0)) / 3);
+
+      updatedMark.finalGrade = updatedMark.finalWrittenD2 ? (updatedMark.annualAverage + updatedMark.finalWrittenD2) : (updatedMark.annualAverage + (updatedMark.finalWrittenD1 || 0));
+      updatedMark.total = updatedMark.finalGrade;
+
+      return { ...prev, [studentId]: updatedMark };
+    });
   };
 
   // Handle Voice Listening
@@ -612,7 +716,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     );
 
     if (matchedStudent) {
-      handleScoreChange(matchedStudent.id, score);
+      handleMarkUpdate(matchedStudent.id, 'finalWrittenD1', score);
       const msg = `تم تسجيل درجة (${score}) للطالب ${matchedStudent.firstName}`;
       setVoiceFeedback(msg);
       speakArabic(`تم تسجيل درجة ${score} للطالب ${matchedStudent.firstName}`);
@@ -628,25 +732,46 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     if (file) {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        setOcrImagePreview(ev.target?.result as string);
-        runSimulatedOcrScan();
+        const base64 = ev.target?.result as string;
+        setOcrImagePreview(base64);
+        runRealOcrScan(base64);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // OCR Scan Simulation / Extraction
-  const runSimulatedOcrScan = () => {
+  // REAL Gemini AI Paper Sheet Scanner (Connected to Server API)
+  const runRealOcrScan = async (imageBase64: string) => {
     setIsOcrScanning(true);
-    setTimeout(() => {
-      const extracted = filteredStudents.map(s => ({
-        name: s.firstName,
-        mark: Math.floor(Math.random() * 35) + 65
-      }));
-      setOcrExtractedData(extracted);
+    try {
+      const userSavedApiKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('diyala_school_gemini_key') || '';
+      const response = await fetch('/api/ocr-score-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64,
+          mimeType: 'image/jpeg',
+          userApiKey: userSavedApiKey
+        })
+      });
+
+      const result = await response.json();
+      if (result.success && result.data?.students) {
+        const mapped = result.data.students.map((s: any) => ({
+          name: s.studentName,
+          mark: s.finalMark
+        }));
+        setOcrExtractedData(mapped);
+        speakArabic(`تم تحليل ورقة الدرجات بنجاح واستخراج درجات ${mapped.length} طلاب`);
+      } else {
+        alert('تعذر استخراج البيانات من الصورة بشكل دقيق.');
+      }
+    } catch (err) {
+      console.error('OCR API Error:', err);
+      alert('حدث خطأ أثناء الاتصال بخدمة الذكاء الاصطناعي.');
+    } finally {
       setIsOcrScanning(false);
-      speakArabic(`تم تحليل ورقة الدرجات بنجاح واستخراج درجات ${extracted.length} طلاب`);
-    }, 1800);
+    }
   };
 
   // Apply OCR Grades to Session
@@ -654,12 +779,66 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     ocrExtractedData.forEach(item => {
       const std = filteredStudents.find(s => s.firstName.includes(item.name));
       if (std) {
-        handleScoreChange(std.id, item.mark);
+        handleMarkUpdate(std.id, 'finalWrittenD1', item.mark);
       }
     });
     setSyncSuccessToast(`تم تطبيق درجات ${ocrExtractedData.length} طالب بنجاح من ورقة السجل`);
     setTimeout(() => setSyncSuccessToast(null), 4000);
     setEntryMode('manual');
+  };
+
+  // Smart Gemini AI Diagnosis for Teacher
+  const runAiTeacherDiagnosis = async () => {
+    if (filteredStudents.length === 0) {
+      alert('لا توجد بيانات طلاب لتحليلها.');
+      return;
+    }
+
+    setIsAiAnalyzing(true);
+    setAiReportResult(null);
+
+    const gradesDataText = filteredStudents.map((std, idx) => {
+      const m = sessionMarks[std.id] || getStudentMarkForSubjectLocal(std, currentSubject);
+      return `${idx + 1}. ${std.firstName}: السعي=${m.annualAverage}, الدرجة=${m.finalGrade}`;
+    }).join('\n');
+
+    const prompt = `أنت الخبير التعليمي والذكاء الاصطناعي بنظام الإدارة.
+أنا المعلم ${teacherName}، ولدينا تقرير درجات الصف [${currentGrade} - الشعبة ${currentSection}] في مادة [${currentSubject}].
+
+كشف الدرجات الحالي:
+${gradesDataText}
+
+المطلوب منك كخبير تربوي:
+1. تحليل سريع لمستوى الصف.
+2. نصيحة للمعلم لتحسين الأداء.
+3. تشخيص الطلاب الضعفاء.
+يرجى الكتابة باللغة العربية بأسلوب محفز ومختصر.`;
+
+    try {
+      const userSavedApiKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('diyala_school_gemini_key') || '';
+      const res = await fetch('/api/ai-assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: prompt,
+          schoolName: config?.schoolName || 'مدرستي',
+          adminEmail: config?.adminEmail || '',
+          userApiKey: userSavedApiKey
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setAiReportResult(data.responseText || 'فشل توليد التقرير.');
+      } else {
+        setAiReportResult('تعذر الحصول على استجابة من الذكاء الاصطناعي حالياً.');
+      }
+    } catch (err) {
+      console.error('AI diagnosis error:', err);
+      setAiReportResult('حدث خطأ أثناء إجراء التحليل الذكي.');
+    } finally {
+      setIsAiAnalyzing(false);
+    }
   };
 
   // Handle Final Review & Send to Cloud
@@ -673,12 +852,23 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     setIsSyncingCloud(true);
     setTimeout(() => {
       setStudents(prev => prev.map(s => {
-        const updatedScore = sessionScores[s.id];
-        if (updatedScore !== undefined && s.currentGrade === currentGrade && s.section === currentSection) {
+        const updatedMark = sessionMarks[s.id];
+        if (updatedMark && s.currentGrade === currentGrade && s.section === currentSection) {
+          const marks = [...(s.marksHistory || [])];
+          const currentYear = s.registrationYear || '2024-2025';
+          const markIdx = marks.findIndex(m => m.subject === currentSubject && m.year === currentYear);
+
+          if (markIdx !== -1) {
+            marks[markIdx] = updatedMark;
+          } else {
+            marks.push(updatedMark);
+          }
+
           return {
             ...s,
-            finalYearScore: updatedScore,
-            previousYearResult: updatedScore >= 50 ? `ناجح (${updatedScore})` : `راسب (${updatedScore})`
+            marksHistory: marks,
+            finalYearScore: updatedMark.finalGrade,
+            previousYearResult: (updatedMark.finalGrade || 0) >= 50 ? `ناجح (${updatedMark.finalGrade})` : `راسب (${updatedMark.finalGrade})`
           };
         }
         return s;
@@ -1023,6 +1213,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         /* STEP 2: ACTIVE TEACHER MARKS RECORDING PORTAL */
         <div className="space-y-6">
 
+          {/* CLOUD CONNECTION STATUS */}
+          <div className="flex justify-end">
+            <div className={`px-4 py-1.5 rounded-full border text-[10px] font-black flex items-center gap-2 shadow-sm ${
+              isSupabaseConfigured() && getSupabaseKey()?.startsWith('eyJ')
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-rose-50 text-rose-700 border-rose-200'
+            }`}>
+              {isSupabaseConfigured() && getSupabaseKey()?.startsWith('eyJ') ? (
+                <><Wifi className="w-3.5 h-3.5" /> <span>الربط السحابي الحقيقي (Supabase) نشط ✅</span></>
+              ) : (
+                <><WifiOff className="w-3.5 h-3.5" /> <span>الربط السحابي معطل (يعمل محلياً فقط) ⚠️</span></>
+              )}
+            </div>
+          </div>
+
           {/* ACTIVE SESSION BAR & QUICK FILTERS */}
           <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] p-4 rounded-2xl shadow flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -1200,14 +1405,37 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           {entryMode === 'manual' && (
             <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-3xl p-5 shadow-xl space-y-4">
               <div className="flex items-center justify-between border-b pb-3">
-                <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-blue-600" />
-                  <span>دفتر درجات الأستاذ ({currentGrade} - شعبة {currentSection} - مادة {currentSubject})</span>
-                </h3>
+                <div className="flex items-center gap-3">
+                  <h3 className="font-black text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    <span>دفتر درجات الأستاذ ({currentGrade} - شعبة {currentSection} - مادة {currentSubject})</span>
+                  </h3>
+                  <button
+                    onClick={runAiTeacherDiagnosis}
+                    disabled={isAiAnalyzing}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-100 text-indigo-700 text-[10px] font-black hover:bg-indigo-200 flex items-center gap-1.5 transition-all border border-indigo-200"
+                  >
+                    {isAiAnalyzing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    <span>تحليل الذكاء الاصطناعي</span>
+                  </button>
+                </div>
                 <span className="text-xs text-slate-500 font-bold">
                   عدد الطلاب: {filteredStudents.length} طالب
                 </span>
               </div>
+
+              {aiReportResult && (
+                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 space-y-2 relative">
+                  <button onClick={() => setAiReportResult(null)} className="absolute top-2 left-2 text-amber-600"><X className="w-4 h-4" /></button>
+                  <h4 className="text-xs font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4" />
+                    <span>تقرير التشخيص الذكي لمستوى الطلاب:</span>
+                  </h4>
+                  <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-200 whitespace-pre-wrap font-bold">
+                    {aiReportResult}
+                  </p>
+                </div>
+              )}
 
               {filteredStudents.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 text-xs font-bold space-y-2">
@@ -1221,42 +1449,80 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                       <tr>
                         <th className="p-3">#</th>
                         <th className="p-3">اسم الطالب الثلاثي</th>
-                        <th className="p-3">رقم القيد</th>
-                        <th className="p-3 text-center">درجة المادة (/100)</th>
-                        <th className="p-3 text-center">النتيجة والتقدير</th>
+                        <th className="p-2 text-center">ش1</th>
+                        <th className="p-2 text-center">ش2</th>
+                        <th className="p-2 text-center">نصف السنة</th>
+                        <th className="p-2 text-center">ش3</th>
+                        <th className="p-2 text-center">ش4</th>
+                        <th className="p-2 text-center">السعي</th>
+                        <th className="p-2 text-center">د1</th>
+                        <th className="p-2 text-center">النهائي</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y text-slate-800 dark:text-slate-200">
                       {filteredStudents.map((std, idx) => {
-                        const score = sessionScores[std.id] !== undefined ? sessionScores[std.id] : (std.finalYearScore || 0);
-                        const isPass = score >= 50;
+                        const m = sessionMarks[std.id] || getStudentMarkForSubjectLocal(std, currentSubject);
+                        const isPass = (m.finalGrade || 0) >= 50;
 
                         return (
                           <tr key={std.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                             <td className="p-3 font-mono font-bold text-slate-400">{idx + 1}</td>
                             <td className="p-3 font-black text-slate-900 dark:text-white">{std.firstName}</td>
-                            <td className="p-3 font-mono text-slate-500">{std.recordNumber}</td>
-                            <td className="p-3 text-center">
+
+                            <td className="p-2">
                               <input
                                 type="number"
-                                min={0}
-                                max={100}
-                                value={score}
-                                onChange={e => handleScoreChange(std.id, Number(e.target.value))}
-                                className={`w-20 px-2 py-1.5 text-center font-black font-mono rounded-xl border text-xs ${
-                                  isPass 
-                                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200' 
-                                    : 'bg-rose-50 border-rose-300 text-rose-900 dark:bg-rose-950/60 dark:text-rose-200'
-                                }`}
+                                value={m.m1MonthAvg || 0}
+                                onChange={e => handleMarkUpdate(std.id, 'm1MonthAvg', e.target.value)}
+                                className="w-12 p-1 text-center border rounded bg-white font-mono text-xs"
                               />
                             </td>
-                            <td className="p-3 text-center">
-                              <span className={`px-2.5 py-1 rounded-lg font-bold text-[11px] ${
-                                isPass 
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' 
-                                  : 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                value={m.m2MonthAvg || 0}
+                                onChange={e => handleMarkUpdate(std.id, 'm2MonthAvg', e.target.value)}
+                                className="w-12 p-1 text-center border rounded bg-white font-mono text-xs"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                value={m.midtermFinalGrade || 0}
+                                onChange={e => handleMarkUpdate(std.id, 'midtermFinalGrade', e.target.value)}
+                                className="w-12 p-1 text-center border rounded bg-amber-50 font-mono text-xs"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                value={m.m3MonthAvg || 0}
+                                onChange={e => handleMarkUpdate(std.id, 'm3MonthAvg', e.target.value)}
+                                className="w-12 p-1 text-center border rounded bg-white font-mono text-xs"
+                              />
+                            </td>
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                value={m.m4MonthAvg || 0}
+                                onChange={e => handleMarkUpdate(std.id, 'm4MonthAvg', e.target.value)}
+                                className="w-12 p-1 text-center border rounded bg-white font-mono text-xs"
+                              />
+                            </td>
+                            <td className="p-2 font-black text-blue-700 text-center">{m.annualAverage || 0}</td>
+                            <td className="p-2">
+                              <input
+                                type="number"
+                                value={m.finalWrittenD1 || 0}
+                                onChange={e => handleMarkUpdate(std.id, 'finalWrittenD1', e.target.value)}
+                                className="w-12 p-1 text-center border rounded bg-white font-mono text-xs"
+                              />
+                            </td>
+                            <td className="p-2 text-center">
+                              <span className={`px-2 py-1 rounded-lg font-black font-mono text-sm ${
+                                isPass ? 'text-emerald-600' : 'text-rose-600'
                               }`}>
-                                {isPass ? 'ناجح' : 'راسب'}
+                                {m.finalGrade || 0}
                               </span>
                             </td>
                           </tr>
@@ -1759,7 +2025,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-300">
                   {filteredStudents.map((std, idx) => {
-                    const score = sessionScores[std.id] !== undefined ? sessionScores[std.id] : (std.finalYearScore || 85);
+                    const markObj = sessionMarks[std.id];
+                    const score = markObj?.finalGrade !== undefined && markObj?.finalGrade !== null ? markObj.finalGrade : (std.finalYearScore || 85);
                     const isPassed = score >= 50;
                     return (
                       <tr key={std.id} className="hover:bg-slate-50">

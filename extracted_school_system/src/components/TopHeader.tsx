@@ -27,8 +27,14 @@ import {
   Mic,
   Smartphone,
   Square,
-  Circle
+  Cloud,
+  ClipboardList,
+  QrCode,
+  Copy,
+  Check
 } from 'lucide-react';
+import { QrCodeSvg } from './QrCodeSvg';
+import { getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
 
 interface TopHeaderProps {
   config: AppConfig;
@@ -56,6 +62,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   setIconShape
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [now, setNow] = useState<Date>(new Date());
   const [activeLessonInfo, setActiveLessonInfo] = useState<{
     lessonName: string;
@@ -161,18 +169,19 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
   // Navigation Items for Sidebar
   const navMenuItems = [
-    { id: 'launcher' as ActiveView, label: 'الشاشة الرئيسية (الرئيسية Home)', icon: Home, color: 'bg-amber-500' },
-    { id: 'schedule' as ActiveView, label: 'الجدول الدراسي التفاعلي', icon: CalendarDays, color: 'bg-blue-600' },
-    { id: 'students' as ActiveView, label: 'سجل ومتابعة الطلاب', icon: GraduationCap, color: 'bg-emerald-600' },
-    { id: 'former_students' as ActiveView, label: 'أرشيف الطلاب السابقين (المغادرين)', icon: UserMinus, color: 'bg-rose-600' },
-    { id: 'staff' as ActiveView, label: 'سجل الكادر التدريسي', icon: Users, color: 'bg-purple-600' },
-    { id: 'stats' as ActiveView, label: 'الإحصاءات والملاك الرسمي', icon: BarChart3, color: 'bg-orange-600' },
-    { id: 'print' as ActiveView, label: 'مركز طباعة الوثائق', icon: Printer, color: 'bg-cyan-600' },
-    { id: 'alarm' as ActiveView, label: 'المنبه والجرس المباشر', icon: BellRing, color: 'bg-yellow-600' },
-    { id: 'desktop_guide' as ActiveView, label: 'تحويل إلى تطبيق سطح مكتب (.EXE)', icon: Laptop, color: 'bg-indigo-600' },
-    { id: 'themes' as ActiveView, label: 'تخصيص ألوان الثيم', icon: Palette, color: 'bg-pink-600' },
-    { id: 'fonts' as ActiveView, label: 'تغيير الخطوط العربية', icon: Type, color: 'bg-rose-600' },
-    { id: 'settings' as ActiveView, label: 'إعدادات المدرسة والأمان', icon: Settings, color: 'bg-slate-700' },
+    { id: 'launcher' as ActiveView, label: 'الشاشة الرئيسية (Home)', icon: Home, color: 'bg-amber-500' },
+    { id: 'schedule' as ActiveView, label: '1. جدول الحصص والتوقيتات', icon: CalendarDays, color: 'bg-blue-600' },
+    { id: 'students' as ActiveView, label: '2. الطلاب المستمرون والشعب', icon: GraduationCap, color: 'bg-emerald-600' },
+    { id: 'student_grades' as ActiveView, label: '3. سجل الدرجات والتقييمات', icon: ClipboardList, color: 'bg-orange-600' },
+    { id: 'attendance' as ActiveView, label: '4. سجل ومتابعة الغيابات', icon: UserCheck, color: 'bg-rose-600' },
+    { id: 'staff' as ActiveView, label: '5. سجل وتوزيع الكادر', icon: Users, color: 'bg-purple-600' },
+    { id: 'stats' as ActiveView, label: '6. الإحصاء والملاك الرسمي', icon: BarChart3, color: 'bg-amber-600' },
+    { id: 'former_students' as ActiveView, label: '7. أرشيف الطلاب السابقين', icon: UserMinus, color: 'bg-rose-600' },
+    { id: 'print' as ActiveView, label: '8. مركز الطباعة والوثائق الرسمية', icon: Printer, color: 'bg-cyan-600' },
+    { id: 'alarm' as ActiveView, label: '9. المنبه والجرس الذكي', icon: BellRing, color: 'bg-yellow-600' },
+    { id: 'themes' as ActiveView, label: '10. الثيمات والمظهر العام', icon: Palette, color: 'bg-pink-600' },
+    { id: 'settings' as ActiveView, label: '11. إعدادات المدرسة وإدارة السنة', icon: Settings, color: 'bg-slate-700' },
+    { id: 'sync_center' as ActiveView, label: '12. مركز المزامنة والربط السحابي (QR)', icon: Cloud, color: 'bg-indigo-600' },
   ];
 
   const handleNavClick = (view: ActiveView) => {
@@ -185,13 +194,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       {/* Royal Purple Top Header Bar with Bounded Side Borders & Ornate Frame */}
       <div className="sticky top-0 z-40 w-full px-2 sm:px-4 py-1.5 pointer-events-none">
         <header 
-          className="max-w-7xl mx-auto rounded-2xl bg-gradient-to-r from-purple-950 via-indigo-950 to-purple-900 text-white border-4 border-amber-400 relative overflow-hidden pointer-events-auto shadow-2xl"
+          className="max-w-7xl mx-auto rounded-2xl bg-white text-slate-900 border-4 theme-accent-border relative overflow-hidden pointer-events-auto shadow-2xl transition-colors duration-300"
           style={{
-            boxShadow: '0px 8px 0px 0px rgba(15, 23, 42, 0.9), 0px 12px 24px -2px rgba(88, 28, 135, 0.6)'
+            boxShadow: '0px 8px 0px 0px rgba(15, 23, 42, 0.1), 0px 12px 24px -2px rgba(88, 28, 135, 0.1)'
           }}
         >
           {/* Top Ornate Pattern Background Accent Line */}
-          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500" />
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-indigo-500 via-indigo-300 to-indigo-500" />
           <div className="px-4 py-2 flex items-center justify-between gap-4 relative z-10">
             
             {/* Right Section: Hamburger Menu + Dedicated Home Button + School & Manager Info */}
@@ -201,7 +210,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 onClick={() => setIsSidebarOpen(true)}
                 aria-label="فتح القائمة الجانبية"
                 title="القائمة الجانبية للتنقل"
-                className="p-2 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-amber-300 border border-amber-400/30 flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all active:scale-95"
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-indigo-600 border border-slate-200 flex items-center justify-center shrink-0 shadow-md cursor-pointer transition-all active:scale-95"
               >
                 <Menu className="w-5 h-5" />
               </button>
@@ -213,21 +222,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 title="الذهاب إلى الشاشة الرئيسية (Home)"
                 className={`p-2 px-3 rounded-xl flex items-center gap-1.5 font-black text-xs shrink-0 shadow-md cursor-pointer transition-all active:scale-95 border ${
                   activeView === 'launcher' 
-                    ? 'bg-amber-400 text-slate-950 border-amber-300 font-black shadow-amber-500/20' 
-                    : 'bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 border-amber-400/40 hover:text-white'
+                    ? 'bg-indigo-600 text-white border-indigo-500 font-black shadow-indigo-500/20'
+                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border-indigo-200 hover:text-indigo-800'
                 }`}
               >
-                <Home className="w-4 h-4 text-amber-300" />
+                <Home className="w-4 h-4 text-indigo-600" />
                 <span className="hidden xs:inline font-bold">الرئيسية</span>
               </button>
 
               {/* School Name & Manager Info */}
               <div className="flex flex-col text-right leading-tight">
-                <span className="font-black text-xs md:text-sm text-amber-300 drop-shadow-sm">
+                <span className="font-black text-xs md:text-sm text-indigo-900 drop-shadow-sm">
                   {config.schoolName}
                 </span>
-                <span className="text-[11px] font-bold text-purple-200/90 mt-0.5">
-                  إشراف المدير: <span className="text-white font-black">{config.managerName}</span>
+                <span className="text-[11px] font-bold text-slate-500 mt-0.5">
+                  إشراف المدير: <span className="text-slate-900 font-black">{config.managerName}</span>
                 </span>
               </div>
             </div>
@@ -235,25 +244,47 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             {/* Center Section: App Brand (The Principal Logo & Title) */}
             <div 
               onClick={() => setActiveView('launcher')}
-              className="cursor-pointer hover:opacity-95 transition-opacity px-2 py-0.5 rounded-2xl bg-purple-900/40 border border-amber-400/30 shadow-inner"
+              className="cursor-pointer hover:opacity-95 transition-opacity px-2 py-0.5 rounded-2xl bg-slate-50 border border-slate-200 shadow-inner"
             >
               <AppLogo size="md" showText={true} />
             </div>
 
             {/* Left Section: Live Date & Time Widget */}
             <div className="flex items-center gap-2 shrink-0">
-              <div className="hidden sm:flex items-center gap-2 bg-purple-900/60 border border-amber-400/30 px-3.5 py-1.5 rounded-xl text-xs font-black text-amber-200 shadow-inner">
-                <Clock className="w-4 h-4 text-amber-300 animate-pulse shrink-0" />
+              <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-black text-slate-700 shadow-inner">
+                <Clock className="w-4 h-4 text-indigo-600 animate-pulse shrink-0" />
                 <span>{dayName}، {now.toLocaleDateString('ar-IQ', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-                <span className="text-purple-400/60">|</span>
-                <span className="font-mono dir-ltr text-white text-xs font-black">{now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                <span className="text-slate-300">|</span>
+                <span className="font-mono dir-ltr text-slate-900 text-xs font-black">{now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
               </div>
+
+              {/* Quick Mobile Pairing Button with Generated Code Display */}
+              <button
+                onClick={() => setShowPairingModal(true)}
+                title={`رمز الاقتران المولد: ${config.pairingCode || '112233'} - انقر لعرض الباركود QR`}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs transition-all border border-emerald-400/50 shrink-0 cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95"
+              >
+                <QrCode className="w-4 h-4 text-amber-300" />
+                <span className="hidden sm:inline">كود الاقتران:</span>
+                <span className="font-mono bg-emerald-950/60 px-2 py-0.5 rounded-md text-amber-300 font-black tracking-widest text-[11px] border border-amber-400/30">
+                  {config.pairingCode || '112233'}
+                </span>
+              </button>
+
+              {/* Quick AI Assistant Access Button */}
+              <button
+                onClick={onOpenVoiceModal}
+                title="مساعد الذكاء الاصطناعي (AI Assistant)"
+                className="p-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 transition-all border-2 border-white shrink-0 cursor-pointer shadow-lg animate-pulse"
+              >
+                <Sparkles className="w-4.5 h-4.5" />
+              </button>
 
               {/* Lock / Settings Trigger */}
               <button
                 onClick={onOpenPasscode}
                 title="رمز الحماية والإعدادات"
-                className="p-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 transition-colors border border-amber-400/30 shrink-0 cursor-pointer"
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200 shrink-0 cursor-pointer"
               >
                 <Lock className="w-4.5 h-4.5" />
               </button>
@@ -262,6 +293,74 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </div>
         </header>
       </div>
+
+      {/* Quick QR & Simple Code Pairing Modal */}
+      {showPairingModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 dir-rtl">
+          <div className="bg-white border-4 border-indigo-600 rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl relative text-right flex flex-col items-center">
+            <button 
+              onClick={() => setShowPairingModal(false)}
+              className="absolute left-6 top-6 p-2 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="p-3 bg-emerald-100 text-emerald-800 rounded-2xl mb-4">
+              <Smartphone className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-xl font-black text-slate-900 mb-1">الربط السريع للتطبيقات</h3>
+            <p className="text-xs text-slate-500 mb-6 text-center font-bold">
+              افتح تطبيق المعلم، الطالب، أو المدير وامسح هذا الباركود أو ادخل الرمز البسيط:
+            </p>
+
+            {/* Giant QR Code */}
+            <div className="bg-white p-4 rounded-3xl shadow-xl border-4 border-amber-400 mb-6">
+              <QrCodeSvg
+                value={JSON.stringify({
+                  url: getSupabaseUrl(),
+                  apiKey: getSupabaseKey(),
+                  schoolId: config.schoolId || 'SCH-MAIN-001',
+                  pairingCode: config.pairingCode || '112233',
+                  schoolName: config.schoolName || 'المدرسة النموذجية'
+                })}
+                size={180}
+              />
+            </div>
+
+            {/* 6-Digit Simple Pairing Code */}
+            <div className="w-full bg-slate-50 border-2 border-dashed border-indigo-300 rounded-2xl p-4 flex items-center justify-between mb-4">
+              <div>
+                <span className="text-[10px] font-black text-slate-400 block uppercase">الرمز السري الموحد للمدرسة:</span>
+                <span className="text-3xl font-black text-indigo-700 tracking-widest">{config.pairingCode || '112233'}</span>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(config.pairingCode || '112233');
+                  setCopiedCode(true);
+                  setTimeout(() => setCopiedCode(false), 2000);
+                }}
+                className="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md"
+              >
+                {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                <span>{copiedCode ? 'تم النسخ' : 'نسخ الرمز'}</span>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 text-center w-full mb-4">
+              ⚡ تم تفعيل الاتصال الفوري المباشر مع سحابة المدرسة لجميع الهواتف!
+            </p>
+
+            {/* Clear Close / Back Button */}
+            <button
+              onClick={() => setShowPairingModal(false)}
+              className="w-full py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-sm transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span>إغلاق والعودة للرئيسية ✕</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Side Drawer Overlay (الشريط الجانبي) */}
       {isSidebarOpen && (
@@ -273,16 +372,16 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           />
 
           {/* Slide-out Sidebar Drawer */}
-          <div className="relative w-80 max-w-[85vw] bg-slate-900 text-white shadow-2xl flex flex-col h-full border-l border-slate-800 z-10 transform transition-transform duration-300 animate-slide-in-right">
+          <div className="relative w-80 max-w-[85vw] bg-white text-slate-900 shadow-2xl flex flex-col h-full border-l border-slate-200 z-10 transform transition-transform duration-300 animate-slide-in-right">
             
             {/* Sidebar Header */}
-            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <AppLogo size="md" showText={true} />
               </div>
               <button
                 onClick={() => setIsSidebarOpen(false)}
-                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors"
                 aria-label="إغلاق القائمة"
               >
                 <X className="w-5 h-5" />
@@ -290,14 +389,14 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </div>
 
             {/* School Info Header in Sidebar */}
-            <div className="p-4 bg-gradient-to-r from-blue-900/40 via-indigo-900/30 to-slate-900 border-b border-slate-800">
+            <div className="p-4 bg-indigo-50 border-b border-indigo-100">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-400/30 text-amber-400 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0">
                   <Building2 className="w-5 h-5" />
                 </div>
                 <div className="overflow-hidden">
-                  <h3 className="text-sm font-bold text-white truncate">{config.schoolName}</h3>
-                  <p className="text-xs text-amber-300/90 truncate">{config.directorateName}</p>
+                  <h3 className="text-sm font-bold text-slate-900 truncate">{config.schoolName}</h3>
+                  <p className="text-xs text-indigo-600 truncate">{config.directorateName}</p>
                 </div>
               </div>
             </div>
@@ -317,8 +416,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                     onClick={() => handleNavClick(item.id)}
                     className={`w-full flex items-center justify-between p-3 rounded-xl text-right transition-all group ${
                       isActive 
-                        ? 'bg-blue-600 text-white font-bold shadow-md' 
-                        : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                        ? 'bg-indigo-600 text-white font-bold shadow-md'
+                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -328,19 +427,19 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                       <span className="text-sm">{item.label}</span>
                     </div>
 
-                    <ChevronLeft className={`w-4 h-4 text-slate-400 group-hover:text-white group-hover:-translate-x-1 transition-transform ${isActive ? 'text-white' : ''}`} />
+                    <ChevronLeft className={`w-4 h-4 text-slate-400 group-hover:text-slate-900 group-hover:-translate-x-1 transition-transform ${isActive ? 'text-white' : ''}`} />
                   </button>
                 );
               })}
             </div>
 
             {/* Sidebar Footer */}
-            <div className="p-4 bg-slate-950/90 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+            <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
+                <Sparkles className="w-4 h-4 text-indigo-500" />
                 <span>إصدار التطبيق v2.5</span>
               </div>
-              <span className="text-slate-500 font-mono">Principal</span>
+              <span className="text-slate-400 font-mono">Principal</span>
             </div>
 
           </div>

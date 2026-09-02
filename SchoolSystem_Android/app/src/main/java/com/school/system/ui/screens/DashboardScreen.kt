@@ -1,29 +1,25 @@
 package com.school.system.ui.screens
 
+import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.QuestionAnswer
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,176 +33,563 @@ import kotlinx.coroutines.launch
 fun DashboardScreen(
     onNavigateToGrades: (grade: String, section: String, subject: String) -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToSchedule: () -> Unit,
+    onNavigateToSmartBell: () -> Unit,
+    onNavigateToHomeworkHub: () -> Unit = {},
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
+    val config by viewModel.config.collectAsState()
     val packages by viewModel.packages.collectAsState()
-    var showAddDialog by remember { mutableStateOf(false) }
-    var showAiDialog by remember { mutableStateOf(false) }
-    
+    var showSummonDialog by remember { mutableStateOf(false) }
+    var showHelpGuideDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
+    var showEditTeacherNameDialog by remember { mutableStateOf(false) }
+    var packageToDelete by remember { mutableStateOf<ClassPackage?>(null) }
+    var packageToSetup by remember { mutableStateOf<ClassPackage?>(null) }
+
     val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
+    var teacherNameState by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
+
     val coroutineScope = rememberCoroutineScope()
-    
+    var isUploadingGrades by remember { mutableStateOf(false) }
+
+    val isOnlinePaired = (config?.isVerified == true || config?.isActivated == true) && !config?.schoolId.isNullOrEmpty()
+    val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
+
     Scaffold(
+        containerColor = currentTheme.backgroundColor,
         topBar = {
-            CenterAlignedTopAppBar(
+            TopAppBar(
                 title = { 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.School,
-                            contentDescription = null,
-                            modifier = Modifier.size(32.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text("سجل درجات المدرس الذكي", fontWeight = FontWeight.Black, fontSize = 18.sp)
+                    Surface(
+                        color = currentTheme.primaryColor.copy(alpha = 0.15f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.School,
+                                contentDescription = "أيقونة التطبيق",
+                                modifier = Modifier.size(22.dp),
+                                tint = currentTheme.primaryColor
+                            )
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showAiDialog = true }) {
+                    // Theme Selector 🎨
+                    IconButton(onClick = { showThemeDialog = true }) {
+                        Icon(Icons.Default.Palette, contentDescription = "تغيير الثيم والمظهر 🎨", tint = currentTheme.primaryColor)
+                    }
+                    // Help Guide Button 📖
+                    IconButton(onClick = { showHelpGuideDialog = true }) {
                         Icon(
-                            Icons.Default.QuestionAnswer,
-                            contentDescription = "المساعد الذكي AI",
-                            tint = MaterialTheme.colorScheme.primary
+                            Icons.Default.Info,
+                            contentDescription = "دليل الاستخدام والتعليمات",
+                            tint = currentTheme.primaryColor
                         )
                     }
-                    IconButton(onClick = {
-                        coroutineScope.launch {
-                            val success = viewModel.syncAllFromPrincipal()
-                            if (success) {
-                                Toast.makeText(context, "تم استقبال جميع الصفوف والطلاب من المدير بنجاح", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "فشلت المزامنة. تأكد من الربط في الإعدادات", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }) {
-                        Icon(Icons.Default.CloudSync, contentDescription = "Sync all")
+                    // Schedule (Calendar)
+                    IconButton(onClick = onNavigateToSchedule) {
+                        Icon(Icons.Default.DateRange, contentDescription = "جدول الدروس الأسبوعي", tint = currentTheme.primaryColor)
                     }
+                    // Smart Bell (Alarm)
+                    IconButton(onClick = onNavigateToSmartBell) {
+                        Icon(Icons.Default.NotificationsActive, contentDescription = "منبه الجرس الذكي", tint = currentTheme.primaryColor)
+                    }
+                    // Settings (Gear)
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Settings, contentDescription = "الإعدادات", tint = currentTheme.textSecondaryColor)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = currentTheme.surfaceColor)
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = Color.White,
-                shape = CircleShape
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "إضافة صف")
-            }
         }
     ) { padding ->
-        if (packages.isEmpty()) {
-            Box(modifier = Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.School, contentDescription = null, modifier = Modifier.size(100.dp).alpha(0.3f))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("ابدأ بإضافة صفوفك الدراسية الآن", color = Color.Gray, fontSize = 16.sp)
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+        ) {
+            Spacer(Modifier.height(8.dp))
+
+            // 1. ROW OF 3 CLOUD/PILL BADGES (غيمات التحكم السريعة الثلاث)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // غيمة 1: وضع الاتصال (متصل / غير متصل)
+                CloudBadge(
+                    title = if (isOnlinePaired) "متصل ☁️" else "غير متصل 👤",
+                    subtitle = if (isOnlinePaired) (config?.schoolName?.take(12) ?: "السحابة") else "محلي",
+                    backgroundColor = currentTheme.surfaceColor,
+                    borderColor = currentTheme.tableBorderColor,
+                    contentColor = if (isOnlinePaired) Color(0xFF16A34A) else currentTheme.primaryColor,
+                    icon = if (isOnlinePaired) Icons.Default.CloudDone else Icons.Default.Person,
+                    onClick = onNavigateToSettings,
+                    modifier = Modifier.weight(1f)
+                )
+
+                // غيمة 2: استدعاء شعبة (متصل أو غير متصل)
+                CloudBadge(
+                    title = "استدعاء شعبة 📥",
+                    subtitle = "إضافة صف ومادة",
+                    backgroundColor = currentTheme.surfaceColor,
+                    borderColor = currentTheme.tableBorderColor,
+                    contentColor = currentTheme.primaryColor,
+                    icon = Icons.Default.AddCircleOutline,
+                    onClick = { showSummonDialog = true },
+                    modifier = Modifier.weight(1f)
+                )
+
+                // غيمة 3: رفع الدرجات (بلون مختلف ومميز)
+                CloudBadge(
+                    title = if (isUploadingGrades) "جاري الرفع..." else "رفع الدرجات ↑",
+                    subtitle = "مزامنة السحاب",
+                    backgroundColor = currentTheme.primaryColor,
+                    borderColor = currentTheme.secondaryColor,
+                    contentColor = Color.White,
+                    icon = Icons.Default.CloudUpload,
+                    onClick = {
+                        coroutineScope.launch {
+                            isUploadingGrades = true
+                            val success = viewModel.syncGradesOnly()
+                            isUploadingGrades = false
+                            if (success) {
+                                Toast.makeText(context, "تم رفع ومزامنة كافة الدرجات للسحابة بنجاح ☁️✓", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(
+                                    context, 
+                                    if (isOnlinePaired) "تعذر الرفع، يرجى مراجعة اتصال الإنترنت" else "التطبيق يعمل بالوضع المحلي (أوفلاين)", 
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            // 2. مستطيل محدد ومضلل بشكل جميل لاسم الأستاذ
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.Transparent,
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
+                shadowElevation = 3.dp
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(currentTheme.ribbonGradient))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Surface(
+                                color = Color.White.copy(alpha = 0.2f),
+                                shape = CircleShape,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("👨‍🏫", fontSize = 18.sp)
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                val activeName = if (!config?.managerName.isNullOrBlank()) {
+                                    config!!.managerName
+                                } else if (teacherNameState.isNotBlank()) {
+                                    teacherNameState
+                                } else {
+                                    "أستاذ المادة"
+                                }
+                                Text(
+                                    text = "الأستاذ: $activeName",
+                                    color = Color.White,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = if (isOnlinePaired) (config?.schoolName ?: "مدرسة متصلة بالسحاب") else "سجل محلي مستقل (أوفلاين)",
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { showEditTeacherNameDialog = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "تعديل اسم الأستاذ",
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
             }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                contentPadding = PaddingValues(16.dp),
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(packages) { pkg ->
-                    PackageCard(
-                        pkg = pkg,
-                        onClick = { onNavigateToGrades(pkg.grade, pkg.section, pkg.subject) },
-                        onDelete = { viewModel.deletePackage(pkg) }
-                    )
+
+            Spacer(Modifier.height(6.dp))
+
+            // 3. قائمة السجلات (مستطيلات محددة ومضللة بلون مختلف عن الأرضية)
+            if (packages.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        Surface(
+                            color = Color(0xFFEFF6FF),
+                            shape = CircleShape,
+                            modifier = Modifier.size(64.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.MenuBook,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(32.dp),
+                                    tint = Color(0xFF2563EB)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "لا توجد سجلات أو شعب مضافة حتى الآن",
+                            color = Color(0xFF1E293B),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            "اضغط على غيمة (استدعاء شعبة 📥) لإضافة صفك ومادتك وتنزيل أو إضافة الطلاب",
+                            color = Color.Gray,
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = { showSummonDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("إضافة / استدعاء شعبة الآن 📥", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(packages) { pkg ->
+                        RegisterCardItem(
+                            pkg = pkg,
+                            onClick = {
+                                if (pkg.subject.isBlank() || pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر") {
+                                    packageToSetup = pkg
+                                } else {
+                                    onNavigateToGrades(pkg.grade, pkg.section, pkg.subject)
+                                }
+                            },
+                            onDelete = {
+                                packageToDelete = pkg
+                            }
+                        )
+                    }
                 }
             }
         }
 
-        if (showAddDialog) {
-            AddPackageDialog(
-                onDismiss = { showAddDialog = false },
-                onConfirm = { grade, section, subject, _ ->
-                    viewModel.addPackage(grade, section, subject, "")
-                    showAddDialog = false
+        // Dialog 1: حوار تأكيد الحذف
+        if (packageToDelete != null) {
+            val target = packageToDelete!!
+            AlertDialog(
+                onDismissRequest = { packageToDelete = null },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.WarningAmber, contentDescription = null, tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(8.dp))
+                        Text("تأكيد حذف السجل 🗑️", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFF991B1B))
+                    }
+                },
+                text = {
+                    Text(
+                        text = "هل أنت متأكد من حذف سجل مادة (${target.subject}) لشعبة ${target.grade} (${target.section})؟\n\nسيتم مسح هذا السجل من هاتفك، ويمكنك استدعاؤه لاحقاً.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF334155),
+                        lineHeight = 18.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deletePackage(target)
+                            packageToDelete = null
+                            Toast.makeText(context, "تم حذف السجل بنجاح 🗑️", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("تأكيد الحذف 🗑️", fontWeight = FontWeight.Black)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { packageToDelete = null }) {
+                        Text("إلغاء")
+                    }
                 }
             )
         }
 
-        if (showAiDialog) {
-            AiAssistantDialog(
-                onDismiss = { showAiDialog = false },
-                viewModel = viewModel,
-                onSearchStudent = { query ->
-                    Toast.makeText(context, "بحث ذكي عن الطالب: $query", Toast.LENGTH_LONG).show()
+        // Dialog 2: حوار استدعاء الشعبة
+        if (showSummonDialog) {
+            SummonSectionDialog(
+                onDismiss = { showSummonDialog = false },
+                onConfirm = { grade, section, subject ->
+                    viewModel.summonSectionDetailed(grade, section, subject) { result ->
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    }
+                    showSummonDialog = false
                 }
+            )
+        }
+
+        // Dialog 3: حوار إعداد المادة للشعب غير المعينة
+        if (packageToSetup != null) {
+            val targetPkg = packageToSetup!!
+            SetupClassSubjectDialog(
+                pkg = targetPkg,
+                onDismiss = { packageToSetup = null },
+                onConfirm = { updatedSubject, teacherName ->
+                    viewModel.addPackage(targetPkg.grade, targetPkg.section, updatedSubject, "")
+                    packageToSetup = null
+                    onNavigateToGrades(targetPkg.grade, targetPkg.section, updatedSubject)
+                }
+            )
+        }
+
+        // Dialog 4: تعديل اسم الأستاذ
+        if (showEditTeacherNameDialog) {
+            var inputName by remember { mutableStateOf(teacherNameState) }
+            AlertDialog(
+                onDismissRequest = { showEditTeacherNameDialog = false },
+                title = { Text("تعديل اسم الأستاذ 👨‍🏫", fontWeight = FontWeight.Black, fontSize = 16.sp) },
+                text = {
+                    OutlinedTextField(
+                        value = inputName,
+                        onValueChange = { inputName = it },
+                        label = { Text("اسم الأستاذ الكامل") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            teacherNameState = inputName.trim()
+                            prefs.edit().putString("teacher_name", inputName.trim()).apply()
+                            showEditTeacherNameDialog = false
+                            Toast.makeText(context, "تم حفظ الاسم بنجاح ✓", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("حفظ", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEditTeacherNameDialog = false }) { Text("إلغاء") }
+                }
+            )
+        }
+
+        // Dialog 5: دليل التعليمات
+        if (showHelpGuideDialog) {
+            com.school.system.ui.components.HelpGuideDialog(
+                onDismiss = { showHelpGuideDialog = false }
+            )
+        }
+
+        // Dialog 6: تخصيص الثيم والمظهر
+        if (showThemeDialog) {
+            com.school.system.ui.theme.ThemeSelectionDialog(
+                onDismiss = { showThemeDialog = false }
             )
         }
     }
 }
 
+/**
+ * غيمة / كبسولة أنيقة للتحكم السريع في رأس الشاشة
+ */
 @Composable
-fun PackageCard(pkg: ClassPackage, onClick: () -> Unit, onDelete: () -> Unit) {
-    Card(
+fun CloudBadge(
+    title: String,
+    subtitle: String,
+    backgroundColor: Color,
+    borderColor: Color,
+    contentColor: Color,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = backgroundColor,
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.2.dp, borderColor),
+        shadowElevation = 2.dp,
+        modifier = modifier.clickable(onClick = onClick)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = title,
+                color = contentColor,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                maxLines = 1
+            )
+            Text(
+                text = subtitle,
+                color = contentColor.copy(alpha = 0.75f),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+/**
+ * مستطيل السجل المحدد والمضلل بشكل جميل بلون مختلف عن الأرضية
+ */
+@Composable
+fun RegisterCardItem(
+    pkg: ClassPackage,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
+
+    Surface(
+        color = currentTheme.surfaceColor,
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
+        shadowElevation = 3.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .height(110.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .clickable(onClick = onClick)
     ) {
-        Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-            val gradeNumber = when (pkg.grade) {
-                "الأول" -> "1"
-                "الثاني" -> "2"
-                "الثالث" -> "3"
-                "الرابع" -> "4"
-                "الخامس" -> "5"
-                "السادس" -> "6"
-                else -> pkg.grade.take(1)
-            }
-            val badgeText = "$gradeNumber${pkg.section}"
-            
-            Surface(
-                modifier = Modifier.align(Alignment.TopStart),
-                color = MaterialTheme.colorScheme.primary,
-                shape = RoundedCornerShape(8.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Left: Section Avatar + Subject & Class Details
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = badgeText,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp
-                )
+                // Section badge
+                Surface(
+                    color = currentTheme.primaryColor.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.size(46.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = pkg.section,
+                            color = currentTheme.primaryColor,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 20.sp
+                        )
+                    }
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column {
+                    // اسم المادة
+                    Text(
+                        text = if (pkg.subject.isBlank() || pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر") "انقر لتحديد المادة ✎" else pkg.subject,
+                        color = if (pkg.subject.isBlank() || pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر") Color(0xFFD97706) else currentTheme.primaryColor,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 15.sp,
+                        maxLines = 1
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    // الصف والشعبة والسعة
+                    Text(
+                        text = "الصف: ${pkg.grade} - شعبة (${pkg.section}) | سقف الطلاب: 60",
+                        color = currentTheme.textSecondaryColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
+            // Right: Delete Button 🗑️
             IconButton(
                 onClick = onDelete,
-                modifier = Modifier.align(Alignment.TopEnd).offset(x = 12.dp, y = (-12).dp)
+                modifier = Modifier.size(36.dp)
             ) {
-                Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error.copy(alpha = 0.6f), modifier = Modifier.size(18.dp))
-            }
-
-            Column(
-                modifier = Modifier.align(Alignment.BottomStart)
-            ) {
-                Text(
-                    text = pkg.subject,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 17.sp,
-                    maxLines = 1
-                )
-                Text(
-                    text = pkg.grade,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                    fontSize = 11.sp
-                )
+                Surface(
+                    color = Color(0xFFFEE2E2),
+                    shape = CircleShape,
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "حذف السجل",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
         }
     }
@@ -214,31 +597,327 @@ fun PackageCard(pkg: ClassPackage, onClick: () -> Unit, onDelete: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddPackageDialog(onDismiss: () -> Unit, onConfirm: (String, String, String, String) -> Unit) {
-    var grade by remember { mutableStateOf("الأول") }
-    var section by remember { mutableStateOf("أ") }
-    var subject by remember { mutableStateOf("") }
+fun SummonSectionDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (grade: String, section: String, subject: String) -> Unit
+) {
+    // 1. Grade Level (الأول إلى السادس)
+    val gradesList = listOf("الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس")
+    var selectedGradeLevel by remember { mutableStateOf("الأول") }
+
+    // 2. Stage / Track / Type (ابتدائي، متوسط، علمي، أدبي، صناعة، تجارة، أخرى)
+    val stagesList = listOf("ابتدائي", "متوسط", "علمي", "أدبي", "صناعة", "تجارة", "أخرى")
+    var selectedStageType by remember { mutableStateOf("ابتدائي") }
+    var customStageType by remember { mutableStateOf("") }
+
+    // 3. Section (أ، ب، ج، ح، خ، أخرى)
+    val sectionsList = listOf("أ", "ب", "ج", "ح", "خ", "أخرى")
+    var selectedSection by remember { mutableStateOf("أ") }
+    var customSection by remember { mutableStateOf("") }
+
+    // 4. Subjects (التسميات المعروفة + لغة أخرى + أخرى)
+    val standardSubjects = listOf(
+        "تربية إسلامية",
+        "اللغة العربية",
+        "اللغة الإنكليزية",
+        "لغة أخرى",
+        "فيزياء",
+        "كيمياء",
+        "أحياء",
+        "اجتماعيات",
+        "رياضيات",
+        "أخرى"
+    )
+    var selectedSubjectCategory by remember { mutableStateOf("اللغة العربية") }
+    var customSubjectName by remember { mutableStateOf("") }
+    var customLanguageName by remember { mutableStateOf("") }
+
+    // Helper: compute unified grade name
+    fun getUnifiedGradeName(): String {
+        val branch = when (selectedStageType) {
+            "ابتدائي" -> "الابتدائي"
+            "متوسط" -> "المتوسط"
+            "علمي" -> "العلمي"
+            "أدبي" -> "الأدبي"
+            "صناعة" -> "الصناعي"
+            "تجارة" -> "التجاري"
+            "أخرى" -> customStageType.trim().ifEmpty { "العام" }
+            else -> selectedStageType
+        }
+        return "$selectedGradeLevel $branch".trim()
+    }
+
+    // Helper: compute unified section
+    fun getUnifiedSectionName(): String {
+        return if (selectedSection == "أخرى") customSection.trim().ifEmpty { "أ" } else selectedSection
+    }
+
+    // Helper: compute unified subject name
+    fun getUnifiedSubjectName(): String {
+        return when (selectedSubjectCategory) {
+            "لغة أخرى" -> {
+                val lang = customLanguageName.trim()
+                if (lang.isNotEmpty()) (if (lang.startsWith("لغة") || lang.startsWith("اللغة")) lang else "لغة $lang") else "لغة أجنبية"
+            }
+            "أخرى" -> customSubjectName.trim().ifEmpty { "المادة العامة" }
+            else -> selectedSubjectCategory
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة صف جديد") },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AddCircleOutline, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("استدعاء أو إنشاء شعبة (التحديد الثلاثي) 📥", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFF1E3A8A))
+            }
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = subject,
-                    onValueChange = { subject = it },
-                    label = { Text("المادة الدراسية") },
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Info banner
+                Surface(
+                    color = Color(0xFFEFF6FF),
+                    shape = RoundedCornerShape(10.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
                     modifier = Modifier.fillMaxWidth()
-                )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DropdownSelector(label = "الصف", options = listOf("الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس"), selected = grade, onSelect = { grade = it }, modifier = Modifier.weight(1f))
-                    DropdownSelector(label = "الشعبة", options = listOf("أ", "ب", "ج", "د"), selected = section, onSelect = { section = it }, modifier = Modifier.weight(1f))
+                ) {
+                    Text(
+                        text = "💡 نظام التحديد الثلاثي الموحد: يضمن مزامنة الصف والشعبة والمادة بدقة تامة مع السحابة والحاسبة بدون أي تداخل.",
+                        color = Color(0xFF1E40AF),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                // --- Part 1: Subject Selection (المادة الدراسية) ---
+                Text("1. المادة الدراسية المقررة:", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF1E293B))
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp)
+                ) {
+                    items(standardSubjects) { s ->
+                        val isSelected = selectedSubjectCategory == s
+                        Surface(
+                            color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp, 
+                                if (isSelected) Color(0xFF1D4ED8) else Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.clickable { selectedSubjectCategory = s }
+                        ) {
+                            Text(
+                                text = s,
+                                color = if (isSelected) Color.White else Color(0xFF1E293B),
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+                            )
+                        }
+                    }
+                }
+
+                // If "لغة أخرى" selected -> input name
+                if (selectedSubjectCategory == "لغة أخرى") {
+                    OutlinedTextField(
+                        value = customLanguageName,
+                        onValueChange = { customLanguageName = it },
+                        label = { Text("اسم اللغة (مثل: فرنسي، كردي، تركماني، ألماني...)") },
+                        placeholder = { Text("اكتب اسم اللغة...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    Text(
+                        text = "ℹ️ ستُعامل هذه اللغة معاملة سجل اللغات والعربي والإسلامية (شفهي + تحريري).",
+                        fontSize = 10.5.sp,
+                        color = Color(0xFF0D9488),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // If "أخرى" selected -> input name
+                if (selectedSubjectCategory == "أخرى") {
+                    OutlinedTextField(
+                        value = customSubjectName,
+                        onValueChange = { customSubjectName = it },
+                        label = { Text("اسم المادة المخصصة (مثل: حاسوب، علوم عامة...)") },
+                        placeholder = { Text("اكتب اسم المادة...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+
+                // --- Part 2: Grade Level (الصف من الأول إلى السادس) ---
+                Text("2. الصف الدراسي (من الأول إلى السادس):", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF1E293B))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    gradesList.forEach { g ->
+                        val isSelected = selectedGradeLevel == g
+                        Surface(
+                            color = if (isSelected) Color(0xFF0284C7) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) Color(0xFF0369A1) else Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedGradeLevel = g }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 7.dp)) {
+                                Text(
+                                    text = g,
+                                    color = if (isSelected) Color.White else Color(0xFF1E293B),
+                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+
+                // --- Part 3: Type / Stage (النوع: ابتدائي، متوسط، علمي، أدبي، صناعة، تجارة، أخرى) ---
+                Text("3. النوع / المرحلة / الفرع:", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF1E293B))
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp)
+                ) {
+                    items(stagesList) { st ->
+                        val isSelected = selectedStageType == st
+                        Surface(
+                            color = if (isSelected) Color(0xFF7C3AED) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) Color(0xFF6D28D9) else Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.clickable { selectedStageType = st }
+                        ) {
+                            Text(
+                                text = st,
+                                color = if (isSelected) Color.White else Color(0xFF1E293B),
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (selectedStageType == "أخرى") {
+                    OutlinedTextField(
+                        value = customStageType,
+                        onValueChange = { customStageType = it },
+                        label = { Text("اكتب نوع المرحلة أو الفرع (مثل: مهني، زراعي، تطبيقي...)") },
+                        placeholder = { Text("مثال: مهني") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
+
+                // --- Part 4: Section (الشعبة: أ، ب، ج، ح، خ، أخرى) ---
+                Text("4. الشعبة (أ، ب، ج، ح، خ، أخرى):", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFF1E293B))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    sectionsList.forEach { sec ->
+                        val isSelected = selectedSection == sec
+                        Surface(
+                            color = if (isSelected) Color(0xFF16A34A) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) Color(0xFF15803D) else Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { selectedSection = sec }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(vertical = 7.dp)) {
+                                Text(
+                                    text = sec,
+                                    color = if (isSelected) Color.White else Color(0xFF1E293B),
+                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if (selectedSection == "أخرى") {
+                    OutlinedTextField(
+                        value = customSection,
+                        onValueChange = { customSection = it },
+                        label = { Text("رمز أو اسم الشعبة المخصصة (مثل: د، هـ، 1...)") },
+                        placeholder = { Text("مثال: د") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                // Preview Box for Final Standardized String
+                Surface(
+                    color = Color(0xFFFEF3C7),
+                    shape = RoundedCornerShape(10.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text(
+                            text = "📌 معاينة السجل الموحد:",
+                            color = Color(0xFF92400E),
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "الصف: ${getUnifiedGradeName()} | الشعبة: (${getUnifiedSectionName()}) | المادة: ${getUnifiedSubjectName()}",
+                            color = Color(0xFF78350F),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = { if (subject.isNotBlank()) onConfirm(grade, section, subject, "") }) {
-                Text("إضافة")
+            Button(
+                onClick = { 
+                    val finalGrade = getUnifiedGradeName()
+                    val finalSection = getUnifiedSectionName()
+                    val finalSubject = getUnifiedSubjectName()
+                    if (finalSubject.isNotBlank()) {
+                        onConfirm(finalGrade, finalSection, finalSubject)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("تأكيد وتنزيل/إضافة الشعبة ✓", fontWeight = FontWeight.Black)
             }
         },
         dismissButton = {
@@ -262,11 +941,23 @@ fun DropdownSelector(label: String, options: List<String>, selected: String, onS
             readOnly = true,
             label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
         )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
             options.forEach { option ->
-                DropdownMenuItem(text = { Text(option) }, onClick = { onSelect(option); expanded = false })
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
+                )
             }
         }
     }
@@ -274,131 +965,118 @@ fun DropdownSelector(label: String, options: List<String>, selected: String, onS
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AiAssistantDialog(
+fun SetupClassSubjectDialog(
+    pkg: ClassPackage,
     onDismiss: () -> Unit,
-    viewModel: DashboardViewModel,
-    onSearchStudent: (String) -> Unit
+    onConfirm: (subject: String, teacherName: String) -> Unit
 ) {
-    var queryText by remember { mutableStateOf("") }
-    var chatHistory by remember { mutableStateOf(listOf<Pair<String, Boolean>>(
-        Pair("مرحباً بك! أنا مساعد الذكاء الاصطناعي لسجل المدرس. كيف يمكنني مساعدتك اليوم؟ يمكنك سؤالي عن إحصائيات الطلاب، أو البحث، أو المزامنة.", false)
-    )) }
-    var isLoading by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
+    var teacherName by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
+    var subject by remember { mutableStateOf(if (pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر") "" else pkg.subject) }
+
+    val quickSubjects = listOf(
+        "اللغة العربية", "الرياضيات", "التربية الإسلامية", "اللغة الإنكليزية",
+        "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
+        "الحاسوب", "التربية الفنية", "التربية الرياضية", "النشيد والموسيقى", "الفرنسية"
+    )
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.School,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
+            Column {
+                Text(
+                    text = "إعداد المادة والمعلم 📝",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 17.sp,
+                    color = Color(0xFF1E3A8A)
                 )
-                Spacer(Modifier.width(8.dp))
-                Text("المساعد والبحث الذكي (AI)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(
+                    text = "الشعبة: ${pkg.grade} - شعبة (${pkg.section})",
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Bold
+                )
             }
         },
         text = {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(350.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Chat history container
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), shape = RoundedCornerShape(12.dp))
-                        .padding(8.dp)
-                ) {
-                    androidx.compose.foundation.lazy.LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(chatHistory) { message ->
-                            val isUser = message.second
-                            val text = message.first
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-                            ) {
-                                Surface(
-                                    color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-                                    shape = RoundedCornerShape(
-                                        topStart = 12.dp,
-                                        topEnd = 12.dp,
-                                        bottomStart = if (isUser) 12.dp else 0.dp,
-                                        bottomEnd = if (isUser) 0.dp else 12.dp
-                                    ),
-                                    modifier = Modifier.widthIn(max = 220.dp)
-                                ) {
-                                    Text(
-                                        text = text,
-                                        modifier = Modifier.padding(10.dp),
-                                        fontSize = 12.sp,
-                                        color = if (isUser) Color.White else MaterialTheme.colorScheme.onSecondaryContainer,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-                        if (isLoading) {
-                            item {
-                                Box(modifier = Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterStart) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Chat Input field
                 OutlinedTextField(
-                    value = queryText,
-                    onValueChange = { queryText = it },
-                    placeholder = { Text("مثال: ابحث عن الطالب علي أحمد، أو كم عدد الطلاب؟") },
+                    value = teacherName,
+                    onValueChange = { 
+                        teacherName = it
+                        prefs.edit().putString("teacher_name", it).apply()
+                    },
+                    label = { Text("اسم الأستاذ") },
+                    placeholder = { Text("اكتب اسمك الكامل") },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp),
-                    maxLines = 2,
-                    trailingIcon = {
-                        IconButton(
-                            onClick = {
-                                if (queryText.isNotBlank() && !isLoading) {
-                                    val userQuery = queryText
-                                    chatHistory = chatHistory + Pair(userQuery, true)
-                                    queryText = ""
-                                    isLoading = true
-                                    coroutineScope.launch {
-                                        val aiResponse = viewModel.queryAi(userQuery)
-                                        isLoading = false
-                                        val reply = aiResponse.responseText ?: aiResponse.error ?: "عذرًا، لم أتمكن من معالجة الطلب."
-                                        chatHistory = chatHistory + Pair(reply, false)
-                                        
-                                        if (aiResponse.action == "SEARCH_STUDENT" && !aiResponse.searchQuery.isNullOrEmpty()) {
-                                            onSearchStudent(aiResponse.searchQuery)
-                                        }
-                                    }
-                                }
-                            },
-                            enabled = queryText.isNotBlank() && !isLoading
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = subject,
+                    onValueChange = { subject = it },
+                    label = { Text("المادة التي تدرّسها لهذه الشعبة") },
+                    placeholder = { Text("اكتب اسم المادة (مثال: اللغة العربية)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text(
+                    text = "اختيار سريع للمادة (انقر للاختيار):",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF1E293B)
+                )
+
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp)
+                ) {
+                    items(quickSubjects) { s ->
+                        Surface(
+                            color = if (subject == s) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp, 
+                                if (subject == s) Color(0xFF1D4ED8) else Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.clickable { subject = s }
                         ) {
-                            Icon(
-                                Icons.Default.Send,
-                                contentDescription = "Send",
-                                tint = if (queryText.isNotBlank()) MaterialTheme.colorScheme.primary else Color.Gray
+                            Text(
+                                text = s,
+                                color = if (subject == s) Color.White else Color(0xFF1E293B),
+                                fontSize = 12.sp,
+                                fontWeight = if (subject == s) FontWeight.Black else FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                             )
                         }
                     }
-                )
+                }
             }
         },
         confirmButton = {
+            Button(
+                onClick = {
+                    if (subject.isNotBlank()) {
+                        onConfirm(subject.trim(), teacherName.trim())
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("تأكيد وفتح السجل ✓", fontWeight = FontWeight.Black)
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("إغلاق")
+                Text("إلغاء")
             }
         }
     )

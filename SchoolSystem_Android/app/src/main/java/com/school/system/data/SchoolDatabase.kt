@@ -8,7 +8,19 @@ import com.school.system.data.dao.*
 import com.school.system.data.model.*
 import com.school.system.data.utils.Converters
 
-@Database(entities = [Student::class, SchoolConfig::class, ColumnSetting::class, DailyColumnSetting::class, ClassPackage::class, AbsenceRecord::class], version = 12, exportSchema = false)
+@Database(
+    entities = [
+        Student::class, 
+        SchoolConfig::class, 
+        ColumnSetting::class, 
+        DailyColumnSetting::class, 
+        ClassPackage::class, 
+        AbsenceRecord::class,
+        LessonAlarm::class
+    ], 
+    version = 16, 
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 @SkipQueryVerification
 abstract class SchoolDatabase : RoomDatabase() {
@@ -18,4 +30,5 @@ abstract class SchoolDatabase : RoomDatabase() {
     abstract fun dailyColumnDao(): DailyColumnDao
     abstract fun classPackageDao(): ClassPackageDao
     abstract fun absenceDao(): AbsenceDao
+    abstract fun lessonAlarmDao(): LessonAlarmDao
 }

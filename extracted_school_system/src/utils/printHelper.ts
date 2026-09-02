@@ -11,7 +11,7 @@ export const printElement = (
     ? document.getElementById(elementIdOrElement) 
     : elementIdOrElement;
 
-  const title = options?.title || 'مستند مدرسي رسمية';
+  const title = options?.title || 'مستند مدرسي رسمي';
   const orientation = options?.orientation || 'portrait';
 
   if (!elem) {
@@ -47,10 +47,21 @@ export const printElement = (
   const clone = elem.cloneNode(true) as HTMLElement;
   clone.style.transform = 'none';
   clone.style.boxShadow = 'none';
-  clone.style.border = 'none';
+  clone.style.border = '2px solid #0f172a';
+  clone.style.padding = '10mm 12mm';
   clone.style.margin = '0 auto';
   clone.style.width = '100%';
-  clone.style.minHeight = 'auto';
+  clone.style.maxWidth = '100%';
+  clone.style.minHeight = orientation === 'landscape' ? '195mm' : '275mm';
+  clone.style.display = 'flex';
+  clone.style.flexDirection = 'column';
+  clone.style.justifyContent = 'space-between';
+  clone.style.boxSizing = 'border-box';
+
+  // Collect parent style tags & linked CSS stylesheets
+  const styleTags = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+    .map(node => node.outerHTML)
+    .join('\n');
 
   doc.open();
   doc.write(`
@@ -60,10 +71,11 @@ export const printElement = (
       <meta charset="utf-8">
       <title>${title}</title>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400;1,700&family=Tajawal:wght@400;700;900&display=swap">
+      ${styleTags}
       <style>
         @page {
           size: A4 ${orientation};
-          margin: 8mm;
+          margin: 6mm 8mm;
         }
         @media print {
           html, body {
@@ -71,30 +83,59 @@ export const printElement = (
             color: #0f172a !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
-          .no-print {
+          .no-print, .no-print-modal {
             display: none !important;
           }
         }
         body {
-          font-family: 'Amiri', 'Traditional Arabic', serif;
+          font-family: 'Amiri', 'Traditional Arabic', 'Tajawal', serif;
           direction: rtl;
           margin: 0;
           padding: 0;
           background: #ffffff !important;
           color: #0f172a !important;
           box-sizing: border-box;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
         * {
           box-sizing: border-box;
         }
+        img {
+          max-width: 100%;
+          height: auto;
+          object-fit: contain;
+        }
+        img[alt*="وزارة التربية"], .ministry-logo, .ministry-emblem {
+          width: 110px !important;
+          height: 110px !important;
+          max-width: 110px !important;
+          max-height: 110px !important;
+          object-fit: contain !important;
+        }
+        img[alt*="الختم"], .official-seal, .official-stamp {
+          width: 80px !important;
+          height: 80px !important;
+          max-width: 80px !important;
+          max-height: 80px !important;
+        }
         table {
-          width: 100%;
-          border-collapse: collapse;
+          width: 100% !important;
+          border-collapse: collapse !important;
+          page-break-inside: auto;
+        }
+        tr {
+          page-break-inside: avoid;
+          page-break-after: auto;
         }
         th, td {
-          border-color: #cbd5e1 !important;
+          border: 1px solid #94a3b8 !important;
           color: #0f172a !important;
+          padding: 4px 6px !important;
         }
       </style>
     </head>
@@ -117,6 +158,6 @@ export const printElement = (
       if (document.body.contains(iframe)) {
         document.body.removeChild(iframe);
       }
-    }, 2000);
-  }, 400);
+    }, 2500);
+  }, 500);
 };

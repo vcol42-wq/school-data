@@ -36,6 +36,11 @@ interface DiyalaSchoolApi {
     @retrofit2.http.GET("api/health")
     suspend fun checkHealth(): Response<Map<String, String>>
 
+    @retrofit2.http.GET("api/sync/download-schedule")
+    suspend fun downloadSchedule(
+        @retrofit2.http.Query("schoolId") schoolId: String
+    ): Response<ScheduleResponse>
+
     @POST("api/ai-assistant")
     suspend fun askAiAssistant(@Body request: AiAssistantRequest): Response<AiAssistantResponse>
 }
@@ -45,6 +50,7 @@ data class AiAssistantRequest(
     val studentsCount: Int,
     val staffCount: Int,
     val schoolName: String,
+    val userEmail: String? = null,
     val userApiKey: String? = null
 )
 
@@ -164,5 +170,10 @@ data class SimpleClassDto(
 data class SimpleRosterResponse(
     val success: Boolean,
     val students: List<StudentDto>
+)
+
+data class ScheduleResponse(
+    val success: Boolean,
+    val schedule: Map<String, Any>?
 )
 

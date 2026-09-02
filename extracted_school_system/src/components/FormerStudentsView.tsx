@@ -28,7 +28,14 @@ export const FormerStudentsView: React.FC<FormerStudentsViewProps> = ({
 
   // Filter departed, graduated, or transferred students
   const formerStudents = students.filter(
-    s => s.status === 'غادر المدرسة' || s.status === 'متخرج' || s.status === 'مفصول'
+    s => s.status === 'غادر المدرسة' || 
+         s.status === 'متخرج' || 
+         s.status === 'مفصول' || 
+         s.status === 'graduated' || 
+         s.status === 'transferred' ||
+         s.promotionDestination === 'تخرج' ||
+         s.promotionDestination === 'فصل' ||
+         s.promotionDestination === 'نقل إلى المسائي'
   );
 
   const filteredFormer = formerStudents.filter(s => {
@@ -110,14 +117,14 @@ export const FormerStudentsView: React.FC<FormerStudentsViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-right border-collapse">
             <thead>
-              <tr className="bg-gradient-to-r from-sky-800 via-sky-700 to-indigo-800 text-white font-black text-center">
-                <th className="py-3 px-3 border-r border-sky-600 w-12">ت</th>
-                <th className="py-3 px-3 border-r border-sky-600">رقم القيد</th>
-                <th className="py-3 px-3 border-r border-sky-600">الصفحة والقيد</th>
-                <th className="py-3 px-3 border-r border-sky-600">الاسم الرباعي واللقب</th>
-                <th className="py-3 px-3 border-r border-sky-600">اسم الأم</th>
-                <th className="py-3 px-3 border-r border-sky-600">حالة الترحيل والأرشفة</th>
-                <th className="py-3 px-3 no-print w-32">الإجراءات</th>
+              <tr className="bg-slate-100 text-slate-900 font-black text-center border-b-2 border-slate-300">
+                <th className="py-3.5 px-3 border-r border-slate-300 w-12 text-center text-slate-950 font-black">ت</th>
+                <th className="py-3.5 px-3 border-r border-slate-300 w-24 text-center text-slate-950 font-black">رقم القيد</th>
+                <th className="py-3.5 px-3 border-r border-slate-300 w-24 text-center text-slate-950 font-black">رقم الصفحة</th>
+                <th className="py-3.5 px-3 border-r border-slate-300 text-right text-slate-950 font-black">الاسم الرباعي واللقب</th>
+                <th className="py-3.5 px-3 border-r border-slate-300 text-right text-slate-950 font-black">اسم الأم</th>
+                <th className="py-3.5 px-3 border-r border-slate-300 text-center text-slate-950 font-black">حالته السابقة</th>
+                <th className="py-3.5 px-3 no-print w-28 text-center text-slate-950 font-black">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -128,52 +135,57 @@ export const FormerStudentsView: React.FC<FormerStudentsViewProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredFormer.map((std, idx) => (
-                  <tr key={std.id} className="hover:bg-sky-50/60 transition-colors">
-                    <td className="py-3 px-3 text-center font-mono font-black text-slate-900 border-r border-slate-200">
-                      {idx + 1}
-                    </td>
-                    <td className="py-3 px-3 text-center font-mono font-black text-sky-950 border-r border-slate-200">
-                      {std.recordNumber}
-                    </td>
-                    <td className="py-3 px-3 text-center font-mono font-black text-slate-950 border-r border-slate-200">
-                      ص {std.registerPageNumber} / و {std.wasatiPageNumber}
-                    </td>
-                    <td className="py-3 px-3 font-black text-slate-950 text-right border-r border-slate-200">
-                      {std.firstName} {std.secondName} {std.thirdName} {std.fourthName} {std.titleName}
-                    </td>
-                    <td className="py-3 px-3 font-black text-slate-900 text-right border-r border-slate-200">
-                      {std.motherName || 'غير مسجل'}
-                    </td>
-                    <td className="py-3 px-3 text-center border-r border-slate-200">
-                      <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] border ${
-                        std.status === 'غادر المدرسة'
-                          ? 'bg-rose-100 text-rose-950 border-rose-300'
-                          : std.status === 'متخرج'
-                          ? 'bg-amber-100 text-amber-950 border-amber-300'
-                          : 'bg-slate-100 text-slate-950 border-slate-300'
-                      }`}>
-                        {std.status} (مؤرشف)
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-center no-print flex items-center justify-center gap-1.5">
-                      <button
-                        onClick={() => setSelectedStudentForDetails(std)}
-                        className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-black text-[11px] border border-sky-300 transition-all"
-                        title="معاينة بطاقة الأرشيف المضغوط"
-                      >
-                        معاينة
-                      </button>
-                      <button
-                        onClick={() => handleRestoreStudent(std.id)}
-                        className="p-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold border border-emerald-300 transition-all"
-                        title="إعادة للسجل المستمر"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                filteredFormer.map((std, idx) => {
+                  const formerState = std.promotionDestination || std.status;
+                  return (
+                    <tr key={std.id} className="hover:bg-sky-50/60 transition-colors">
+                      <td className="py-3 px-3 text-center font-mono font-black text-slate-900 border-r border-slate-200">
+                        {idx + 1}
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-black text-sky-950 border-r border-slate-200">
+                        #{std.recordNumber}
+                      </td>
+                      <td className="py-3 px-3 text-center font-mono font-black text-amber-900 border-r border-slate-200">
+                        ص {std.registerPageNumber || '1'}
+                      </td>
+                      <td className="py-3 px-3 font-black text-slate-950 text-right border-r border-slate-200 text-xs">
+                        {std.firstName} {std.secondName} {std.thirdName} {std.fourthName || ''} {std.titleName || ''}
+                      </td>
+                      <td className="py-3 px-3 font-black text-slate-900 text-right border-r border-slate-200 text-xs">
+                        {std.motherName || 'غير مسجل'}
+                      </td>
+                      <td className="py-3 px-3 text-center border-r border-slate-200">
+                        <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] border ${
+                          formerState === 'تخرج' || formerState === 'متخرج'
+                            ? 'bg-amber-100 text-amber-950 border-amber-300'
+                            : formerState === 'فصل' || formerState === 'مفصول'
+                            ? 'bg-rose-100 text-rose-950 border-rose-300'
+                            : formerState === 'نقل إلى المسائي'
+                            ? 'bg-indigo-100 text-indigo-950 border-indigo-300'
+                            : 'bg-slate-100 text-slate-950 border-slate-300'
+                        }`}>
+                          {formerState}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-center no-print flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedStudentForDetails(std)}
+                          className="px-2.5 py-1 rounded-lg bg-sky-100 hover:bg-sky-200 text-sky-900 font-black text-[11px] border border-sky-300 transition-all cursor-pointer"
+                          title="معاينة بطاقة الأرشيف"
+                        >
+                          معاينة
+                        </button>
+                        <button
+                          onClick={() => handleRestoreStudent(std.id)}
+                          className="p-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-bold border border-emerald-300 transition-all cursor-pointer"
+                          title="إعادة للسجل المستمر"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

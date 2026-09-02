@@ -21,7 +21,9 @@ import {
   HardDriveDownload
 } from 'lucide-react';
 import { AppConfig } from '../types';
-import { OFFICIAL_SEAL_DATA_URI } from '../assets/officialSealDataUri';
+import { MinistryLogo } from './MinistryLogo';
+// Removed heavy Base64 import for better performance
+const OFFICIAL_SEAL_URL = "/official_seal.png";
 import { printElement } from '../utils/printHelper';
 
 interface PrintPreviewModalProps {
@@ -34,6 +36,10 @@ interface PrintPreviewModalProps {
   defaultOrientation?: 'portrait' | 'landscape';
   documentDate?: string;
   documentRef?: string;
+  hideOfficialHeader?: boolean;
+  hideFooterSignatures?: boolean;
+  hideWatermark?: boolean;
+  hideSeal?: boolean;
 }
 
 export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
@@ -45,14 +51,18 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   children,
   defaultOrientation = 'portrait',
   documentDate = new Date().toLocaleDateString('ar-IQ'),
-  documentRef = `م.ت/${Math.floor(1000 + Math.random() * 9000)}`
+  documentRef = `م.ت/${Math.floor(1000 + Math.random() * 9000)}`,
+  hideOfficialHeader = false,
+  hideFooterSignatures = false,
+  hideWatermark = false,
+  hideSeal = false
 }) => {
   const [zoom, setZoom] = useState<number>(100);
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(defaultOrientation);
   const [paperTheme, setPaperTheme] = useState<'white' | 'ivory' | 'classic'>('white');
-  const [showWatermark, setShowWatermark] = useState<boolean>(true);
-  const [showSeal, setShowSeal] = useState<boolean>(true);
-  const [showOfficialHeader, setShowOfficialHeader] = useState<boolean>(true);
+  const [showWatermark, setShowWatermark] = useState<boolean>(!hideWatermark);
+  const [showSeal, setShowSeal] = useState<boolean>(!hideSeal);
+  const [showOfficialHeader, setShowOfficialHeader] = useState<boolean>(!hideOfficialHeader);
 
   // Local & Cloud Save States
   const [localSaveStatus, setLocalSaveStatus] = useState<string | null>(null);
@@ -266,13 +276,13 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             <span>{isCloudSyncing ? 'جاري المزامنة...' : 'حفظ سحابي ☁️'}</span>
           </button>
 
-          {/* Direct Print & PDF */}
+          {/* Direct Print Button */}
           <button
             onClick={handlePrint}
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black transition-all shadow-lg shadow-emerald-900/30 cursor-pointer scale-105 border border-emerald-400/30"
           >
             <Printer className="w-4 h-4 text-amber-300" />
-            <span>طباعة / تصدير PDF</span>
+            <span>طباعة فورية للمستند 🖨️</span>
           </button>
 
           <button
@@ -313,22 +323,26 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
           {/* Printable Page Frame */}
           <div 
             id="printable-area-frame"
-            className={`print-page print-page-a4 relative ${paperBgColor} text-slate-900 shadow-2xl rounded-sm border border-slate-300 font-amiri p-8 transition-all ${
+            className={`print-page print-page-a4 relative ${paperBgColor} text-slate-900 shadow-2xl rounded-sm font-amiri p-8 md:p-10 flex flex-col justify-between transition-all border-2 border-slate-900 ${
               orientation === 'landscape' 
-                ? 'w-[297mm] min-h-[210mm]' 
-                : 'w-[210mm] min-h-[297mm]'
+                ? 'w-[297mm] min-h-[205mm]' 
+                : 'w-[210mm] min-h-[285mm]'
             }`}
-            style={{ boxSizing: 'border-box' }}
+            style={{ 
+              boxSizing: 'border-box',
+              border: '2px solid #0f172a'
+            }}
           >
             
-            {/* Background Watermark */}
+            {/* Background Official Ministry Watermark */}
             {showWatermark && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.04] select-none z-0">
-                <div className="text-center transform -rotate-12">
-                  <span className="text-7xl font-black block text-slate-900 font-amiri tracking-widest">
-                    {config?.schoolName || 'نظام الإدارة المدرسية'}
+                <div className="text-center flex flex-col items-center justify-center">
+                  <MinistryLogo className="w-48 h-48 watermark-logo" style={{ width: '180px', height: '180px', maxWidth: '180px', maxHeight: '180px' }} />
+                  <span className="text-2xl font-black block text-slate-900 font-amiri tracking-widest mt-2">
+                    {config?.schoolName || 'وزارة التربية العراقية'}
                   </span>
-                  <span className="text-3xl font-bold block text-slate-800 mt-2 font-tajawal">
+                  <span className="text-sm font-bold block text-slate-800 mt-0.5 font-tajawal">
                     وثيقة رسمية معتمدة
                   </span>
                 </div>
@@ -337,41 +351,30 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
 
             {/* Official Header */}
             {showOfficialHeader && (
-              <div className="border-b-2 border-slate-900 pb-4 mb-6 relative z-10">
+              <div className="border-b-2 border-slate-900 pb-3 mb-4 relative z-10">
                 <div className="grid grid-cols-3 items-center text-center">
                   
-                  {/* Right Header */}
-                  <div className="text-right text-xs font-bold text-slate-800 leading-relaxed font-amiri">
-                    <p>جمهورية العراق</p>
-                    <p>{config?.directorateName || 'مديرية تربية ديالى'}</p>
-                    <p className="font-black text-slate-900">{config?.schoolName || 'مدرسة كعب بن مالك المسائية للبنين'}</p>
-                    <p className="text-[10px] text-slate-600 font-tajawal">نوع المدرسة: {config?.schoolType || 'مسائي'}</p>
+                  {/* Right Header: ONLY School Name */}
+                  <div className="text-right text-sm md:text-base font-black text-slate-950 font-amiri leading-normal flex items-center">
+                    <p className="font-black text-base md:text-lg text-slate-950">
+                      {(config?.schoolName || 'المدرسة النموذجية')}
+                    </p>
                   </div>
 
-                  {/* Center Header: Ministry / School Emblem */}
+                  {/* Center Header: Official Ministry Golden Emblem - Doubled in Size */}
                   <div className="flex flex-col items-center justify-center">
-                    <div className="w-14 h-14 rounded-full border-2 border-slate-800 p-1 flex items-center justify-center mb-1 bg-white shadow-sm">
-                      <img 
-                        src="/logo.png" 
-                        alt="Logo" 
-                        className="max-h-full max-w-full object-contain"
-                        onError={(e) => {
-                          // Fallback icon if logo image not found
-                          (e.target as HTMLElement).style.display = 'none';
-                        }} 
+                    <div className="w-24 h-24 md:w-28 md:h-28 p-1 flex items-center justify-center mb-1 drop-shadow-md">
+                      <MinistryLogo 
+                        className="ministry-logo w-24 h-24 md:w-28 md:h-28 object-contain" 
+                        style={{ width: '110px', height: '110px', maxWidth: '110px', maxHeight: '110px' }} 
                       />
-                      <Award className="w-8 h-8 text-amber-700" />
                     </div>
-                    <span className="text-sm font-black text-slate-900 font-amiri tracking-wide">
-                      {config?.schoolName || 'نظام الإدارة المدرسية المتكامل'}
-                    </span>
                   </div>
 
                   {/* Left Header */}
-                  <div className="text-left text-xs font-bold text-slate-800 leading-relaxed font-amiri">
-                    <p>العدد: <span className="font-mono text-slate-900">{documentRef}</span></p>
-                    <p>التاريخ: <span className="font-mono text-slate-900">{documentDate}</span></p>
-                    <p>المرفقات: <span className="font-tajawal">لا يوجد</span></p>
+                  <div className="text-left text-xs md:text-sm font-bold text-slate-900 leading-tight font-amiri space-y-1">
+                    <p>العدد: <span className="font-mono text-slate-950 font-black">{documentRef}</span></p>
+                    <p>التاريخ: <span className="font-mono text-slate-950 font-bold">{documentDate}</span></p>
                   </div>
 
                 </div>
@@ -379,47 +382,54 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             )}
 
             {/* Document Content View */}
-            <div className="relative z-10 my-4 min-h-[400px]">
+            <div className="relative z-10 my-4 flex-1">
               {children}
             </div>
 
             {/* Official Footer with Signature & Stamp */}
-            <div className="mt-12 pt-6 border-t border-slate-300 relative z-10 font-amiri">
-              <div className="flex justify-between items-end">
-                
-                {/* Audit & Verification info */}
-                <div className="text-right text-[11px] text-slate-600 font-tajawal space-y-1">
-                  <div className="flex items-center gap-1 text-emerald-700 font-bold">
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>تم التدقيق والمصادقة إلكترونياً</span>
-                  </div>
-                  <p>رمز التحقق الرقمي: <span className="font-mono text-slate-800">IQ-SCH-{Math.floor(100000 + Math.random() * 900000)}</span></p>
-                  <p>تاريخ استخراج المعاينة: {new Date().toLocaleString('ar-IQ')}</p>
-                </div>
-
-                {/* Stamp & Manager Signature */}
-                <div className="text-center relative">
+            {!hideFooterSignatures && (
+              <div className="mt-auto pt-4 relative z-10 font-amiri">
+                <div className="flex justify-end items-end mb-2">
                   
-                  {/* Official Stamp Overlay */}
-                  {showSeal && (
-                    <div className="absolute -top-10 -right-8 w-24 h-24 opacity-85 pointer-events-none transform -rotate-12 select-none">
-                      <img 
-                        src={OFFICIAL_SEAL_DATA_URI} 
-                        alt="الختم الرسمي" 
-                        className="w-full h-full object-contain"
-                      />
-                    </div>
-                  )}
+                  {/* Stamp & Manager Signature Block Aligned Near Bottom Frame */}
+                  <div className="text-center relative pl-4 min-w-[200px]">
+                    
+                    {/* Official Stamp Overlay */}
+                    {showSeal && (
+                      <div className="absolute -top-7 -right-6 w-24 h-24 opacity-85 pointer-events-none transform -rotate-12 select-none">
+                        <img 
+                          src={OFFICIAL_SEAL_URL}
+                          alt="الختم الرسمي" 
+                          className="official-stamp w-full h-full object-contain"
+                          style={{ width: '85px', height: '85px', maxWidth: '85px', maxHeight: '85px' }}
+                        />
+                      </div>
+                    )}
 
-                  <p className="text-sm font-bold text-slate-800 mb-1">مدير المدرسة</p>
-                  <p className="text-base font-black text-slate-950 font-amiri">
-                    {config?.managerName || 'الأستاذ مدير المدرسة'}
-                  </p>
-                  <p className="text-[10px] text-slate-500 font-tajawal mt-1">التوقيع والختم الرسمي</p>
+                    <p className="text-sm font-bold text-slate-900 mb-0.5">مدير المدرسة</p>
+                    <p className="text-base font-black text-slate-950 font-amiri mb-0.5">
+                      {config?.managerName || 'الأستاذ مدير المدرسة'}
+                    </p>
+                    <p className="text-xs font-mono font-bold text-slate-700 font-tajawal">
+                      التاريخ: {documentDate}
+                    </p>
+                  </div>
+
                 </div>
 
+                {/* Bottom Contact Margin Bar (At the Very Bottom of Page) */}
+                <div className="pt-2 border-t border-slate-300 text-center text-xs font-tajawal text-slate-600 flex flex-wrap items-center justify-between px-1">
+                  <span className="font-bold text-slate-700">
+                    للتواصل: يمكن مراسلة المدرسة على البريد الإلكتروني: <span className="font-mono font-black text-sky-900 underline dir-ltr inline-block">{config?.schoolEmail || (config?.schoolCode ? `${config.schoolCode}@school.iq` : 'info.school@gmail.com')}</span>
+                  </span>
+                  {config?.schoolPhone && (
+                    <span className="text-xs font-mono font-bold text-slate-600">
+                      هاتف: {config.schoolPhone}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
           </div>
         </div>
@@ -456,11 +466,13 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
             left: 0 !important;
             top: 0 !important;
             width: 100% !important;
+            min-height: 100% !important;
             box-shadow: none !important;
-            border: none !important;
+            border: 2px solid #0f172a !important;
             margin: 0 !important;
-            padding: 15mm !important;
+            padding: 10mm 12mm !important;
             transform: none !important;
+            box-sizing: border-box !important;
           }
         }
       `}</style>

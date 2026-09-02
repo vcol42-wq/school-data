@@ -43,4 +43,7 @@ object DatabaseModule {
 
     @Provides
     fun provideAbsenceDao(db: SchoolDatabase): AbsenceDao = db.absenceDao()
+
+    @Provides
+    fun provideLessonAlarmDao(db: SchoolDatabase): LessonAlarmDao = db.lessonAlarmDao()
 }

@@ -27,6 +27,8 @@ import { TopHeader } from './components/TopHeader';
 import { MainLauncher } from './components/MainLauncher';
 import { ScheduleView } from './components/ScheduleView';
 import { StudentRegisterView } from './components/StudentRegisterView';
+import { StudentGradesView } from './components/StudentGradesView';
+import { StudentAttendanceView } from './components/StudentAttendanceView';
 import { FormerStudentsView } from './components/FormerStudentsView';
 import { StaffRegisterView } from './components/StaffRegisterView';
 import { StatisticsView } from './components/StatisticsView';
@@ -36,52 +38,159 @@ import { FontsView } from './components/FontsView';
 import { AlarmTimerView } from './components/AlarmTimerView';
 import { SettingsView } from './components/SettingsView';
 import { DesktopGuideView } from './components/DesktopGuideView';
+import { SmartScheduleGeneratorView } from './components/SmartScheduleGeneratorView';
 import { TeacherPortalView } from './components/TeacherPortalView';
 import { VoiceAssistantModal } from './components/VoiceAssistantModal';
 import { SplashModal } from './components/SplashModal';
 import { ScreensaverModal } from './components/ScreensaverModal';
 import { OnboardingModal } from './components/OnboardingModal';
+import { ApprovalDashboard } from './components/ApprovalDashboard';
+import { SyncCenterView } from './components/SyncCenterView';
+import { ManagementTipsView } from './components/ManagementTipsView';
+import { CloudScheduleView } from './components/CloudScheduleView';
+import { MobilePrincipalDashboard } from './components/MobilePrincipalDashboard';
+import { Sparkles } from 'lucide-react';
+import { exportSchoolData } from './utils/syncService';
 
 export default function App() {
   // Navigation & Theme
   const [activeView, setActiveView] = useState<ActiveView>('launcher');
   const [theme, setTheme] = useState<AppTheme>(() => {
-    return (localStorage.getItem('diyala_school_theme') as AppTheme) || 'vibrant';
+    const saved = localStorage.getItem('diyala_school_theme') as AppTheme;
+    if (saved === 'dark' || saved === 'lunar' || saved === 'cream' || saved === 'burgundy') {
+      return saved;
+    }
+    return 'lunar';
   });
   const [font, setFont] = useState<AppFont>(() => {
     return (localStorage.getItem('diyala_school_font') as AppFont) || 'tajawal';
   });
 
-  // Data Persistence
+  // Data Persistence with Safety Checks
   const [config, setConfig] = useState<AppConfig>(() => {
-    const saved = localStorage.getItem('diyala_school_config');
-    return saved ? JSON.parse(saved) : { ...defaultAppConfig, schoolName: '' }; // Force onboarding if no schoolName
+    try {
+      const saved = localStorage.getItem('diyala_school_config');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed.schoolName === 'م.كعب بن مالك المسائية للبنين' || 
+          parsed.schoolName === 'م. كعب بن مالك المسائية للبنين' || 
+          parsed.schoolId === 'SCH-VCOL-6072' ||
+          parsed.schoolId === 'SCH-1001'
+        ) {
+          localStorage.setItem('diyala_school_config', JSON.stringify(defaultAppConfig));
+          return defaultAppConfig;
+        }
+        return { ...defaultAppConfig, ...parsed };
+      }
+      return defaultAppConfig;
+    } catch (e) {
+      console.error('Failed to parse config:', e);
+      return defaultAppConfig;
+    }
   });
 
   const [scheduleMap, setScheduleMap] = useState<DayScheduleMap>(() => {
-    const saved = localStorage.getItem('diyala_school_schedule');
-    return saved ? JSON.parse(saved) : defaultDayScheduleMap;
+    try {
+      const saved = localStorage.getItem('diyala_school_schedule');
+      return (saved && saved !== 'undefined') ? JSON.parse(saved) : { 'الأحد': [], 'الإثنين': [], 'الثلاثاء': [], 'الأربعاء': [], 'الخميس': [] };
+    } catch (e) {
+      return { 'الأحد': [], 'الإثنين': [], 'الثلاثاء': [], 'الأربعاء': [], 'الخميس': [] };
+    }
   });
 
   const [students, setStudents] = useState<Student[]>(() => {
-    const saved = localStorage.getItem('diyala_school_students');
-    return saved ? JSON.parse(saved) : defaultStudents;
+    try {
+      const saved = localStorage.getItem('diyala_school_students');
+      if (saved && saved !== 'undefined') {
+        const list = JSON.parse(saved);
+        if (Array.isArray(list)) {
+          return list;
+        }
+      }
+      return defaultStudents;
+    } catch (e) {
+      return defaultStudents;
+    }
   });
 
   const [staffList, setStaffList] = useState<StaffMember[]>(() => {
-    const saved = localStorage.getItem('diyala_school_staff');
-    return saved ? JSON.parse(saved) : defaultStaff;
+    try {
+      const saved = localStorage.getItem('diyala_school_staff');
+      if (saved && saved !== 'undefined') {
+        const list = JSON.parse(saved);
+        if (Array.isArray(list)) {
+          return list;
+        }
+      }
+      return defaultStaff;
+    } catch (e) {
+      return defaultStaff;
+    }
   });
 
   const [documents, setDocuments] = useState<OfficialDocument[]>(() => {
-    const saved = localStorage.getItem('diyala_school_documents');
-    return saved ? JSON.parse(saved) : defaultDocuments;
+    try {
+      const saved = localStorage.getItem('diyala_school_documents');
+      return (saved && saved !== 'undefined') ? JSON.parse(saved) : defaultDocuments;
+    } catch (e) {
+      return defaultDocuments;
+    }
   });
 
   // Modal Overlays
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(false);
   const [showScreensaver, setShowScreensaver] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
+
+  // Auto-migrate older configs missing schoolId or pairingCode to clean school identity
+  useEffect(() => {
+    const targetSchoolId = config.schoolId || `SCH-${Math.floor(1000 + Math.random() * 9000)}`;
+    const targetPairingCode = config.pairingCode || Math.floor(100000 + Math.random() * 900000).toString();
+    const targetSchoolName = config.schoolName || 'مدرستي النموذجية';
+    const targetAdminEmail = config.adminEmail || '';
+
+    localStorage.setItem('diyala_school_id', targetSchoolId);
+    localStorage.setItem('diyala_pairing_code', targetPairingCode);
+
+    if (!config.schoolId || !config.pairingCode || !config.schoolName) {
+      setConfig(prev => ({
+        ...prev,
+        schoolId: targetSchoolId,
+        pairingCode: targetPairingCode,
+        schoolName: targetSchoolName,
+        adminEmail: targetAdminEmail
+      }));
+    }
+  }, [config.schoolName, config.schoolId, config.pairingCode]);
+
+  // Automatic Background Cloud Sync for School, Students, Staff, and Classes
+  useEffect(() => {
+    if (!config.schoolId || !config.schoolName) return;
+
+    const activeSchoolId = config.schoolId;
+    const activeSchoolName = config.schoolName;
+    const activePairingCode = config.pairingCode || '112233';
+    const activeEmail = config.adminEmail || '';
+
+    const timer = setTimeout(() => {
+      exportSchoolData(
+        activeSchoolId,
+        activeSchoolName,
+        activePairingCode,
+        activeEmail,
+        students,
+        staffList,
+        scheduleMap
+      ).then(res => {
+        if (res.success) {
+          console.log('✓ Auto Cloud Sync Completed:', res.message);
+        }
+      }).catch(e => console.warn('Auto Cloud Sync warning:', e));
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [config.schoolId, config.schoolName, config.pairingCode, config.adminEmail, students, staffList, scheduleMap]);
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -114,16 +223,28 @@ export default function App() {
     localStorage.setItem('diyala_school_documents', JSON.stringify(documents));
   }, [documents]);
 
-  // Reset to default sample data
+  // Theme & Font Synchronization
+  useEffect(() => {
+    localStorage.setItem('diyala_school_theme', theme);
+    localStorage.setItem('diyala_school_font', font);
+    document.documentElement.className = `theme-${theme} font-${font}`;
+    document.body.className = `theme-${theme} font-${font}`;
+  }, [theme, font]);
+
+  // Reset to empty fresh state from scratch
   const handleResetData = () => {
-    if (confirm('هل أنت تأكد من إعادة ضبط كافة البيانات إلى الحالة الافتراضية؟')) {
+    if (confirm('هل أنت متأكد من تصفير كافة البيانات ومسح السجلات للبدء من الصفر تماماً؟')) {
+      localStorage.clear();
       setConfig(defaultAppConfig);
       setScheduleMap(defaultDayScheduleMap);
-      setStudents(defaultStudents);
-      setStaffList(defaultStaff);
-      setDocuments(defaultDocuments);
-      localStorage.clear();
-      alert('تمت إعادة ضبط البيانات بنجاح!');
+      setStudents([]);
+      setStaffList([]);
+      setDocuments([]);
+      localStorage.setItem('diyala_school_students', JSON.stringify([]));
+      localStorage.setItem('diyala_school_staff', JSON.stringify([]));
+      localStorage.setItem('diyala_school_documents', JSON.stringify([]));
+      localStorage.setItem('diyala_school_config', JSON.stringify(defaultAppConfig));
+      alert('تم تصفير كافة البيانات بنجاح! النظام الآن فارغ ونظيف وجاهز لاستقبال بيانات مدرستكم من الصفر.');
     }
   };
 
@@ -162,7 +283,7 @@ export default function App() {
   const [iconShape, setIconShape] = useState<'squircle' | 'round'>('squircle');
 
   return (
-    <div className="min-h-screen flex flex-col font-sans transition-colors duration-300">
+    <div className={`h-screen flex flex-col theme-${theme} font-${font} transition-colors duration-300 overflow-hidden bg-[var(--theme-bg)] text-[var(--theme-text-main)]`}>
       
       {/* Fixed Header Bar */}
       <TopHeader
@@ -178,117 +299,212 @@ export default function App() {
         setIconShape={setIconShape}
       />
 
-      {/* Main View Area */}
-      <main className="flex-1 pb-16">
-        {activeView === 'launcher' && (
-          <MainLauncher
-            setActiveView={setActiveView}
-            studentsCount={students.length}
-            staffCount={staffList.length}
-            onOpenVoiceModal={() => setShowVoiceModal(true)}
-            students={students}
-            setStudents={setStudents}
-            scheduleMap={scheduleMap}
-          />
-        )}
+      {/* Scrollable Main View Area - FORCED SCROLL FIX */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+        <main className="pb-24 max-w-7xl mx-auto w-full">
+          {!config.schoolId ? (
+          <div className="flex-1 flex items-center justify-center p-4">
+             <OnboardingModal
+                onComplete={(data) => {
+                  const { restoredStudents, restoredTeachers, ...onboardConfig } = data;
+                  setConfig(prev => ({ ...prev, ...onboardConfig }));
+                  if (restoredStudents) setStudents(restoredStudents);
+                  if (restoredTeachers) setStaffList(restoredTeachers);
+                }}
+              />
+          </div>
+        ) : (
+          <>
+            {activeView === 'launcher' && (
+              <MainLauncher
+                setActiveView={setActiveView}
+                studentsCount={students.length}
+                staffCount={staffList.length}
+                onOpenVoiceModal={() => setShowVoiceModal(true)}
+                students={students}
+                setStudents={setStudents}
+                scheduleMap={scheduleMap}
+                config={config}
+                onResetData={handleResetData}
+              />
+            )}
 
-        {activeView === 'schedule' && (
-          <ScheduleView
-            scheduleMap={scheduleMap}
-            setScheduleMap={setScheduleMap}
-            config={config}
-          />
-        )}
+            {activeView === 'schedule' && (
+              <ScheduleView
+                scheduleMap={scheduleMap}
+                setScheduleMap={setScheduleMap}
+                config={config}
+                onOpenSmartGenerator={() => setActiveView('smart_schedule')}
+              />
+            )}
 
-        {activeView === 'students' && (
-          <StudentRegisterView
-            students={students}
-            setStudents={setStudents}
-            config={config}
-          />
-        )}
+            {activeView === 'smart_schedule' && (
+              <SmartScheduleGeneratorView
+                scheduleMap={scheduleMap}
+                setScheduleMap={setScheduleMap}
+                staffList={staffList}
+                config={config}
+                onBackToLauncher={() => setActiveView('launcher')}
+              />
+            )}
 
-        {activeView === 'former_students' && (
-          <FormerStudentsView
-            students={students}
-            setStudents={setStudents}
-            config={config}
-          />
-        )}
+            {activeView === 'students' && (
+              <StudentRegisterView
+                students={students}
+                setStudents={setStudents}
+                config={config}
+              />
+            )}
 
-        {activeView === 'staff' && (
-          <StaffRegisterView
-            staffList={staffList}
-            setStaffList={setStaffList}
-            config={config}
-          />
-        )}
+            {activeView === 'student_grades' && (
+              <StudentGradesView
+                students={students}
+                setStudents={setStudents}
+                config={config}
+              />
+            )}
 
-        {activeView === 'stats' && (
-          <StatisticsView
-            staffList={staffList}
-            students={students}
-            scheduleMap={scheduleMap}
-          />
-        )}
+            {activeView === 'attendance' && (
+              <StudentAttendanceView
+                students={students}
+                setStudents={setStudents}
+                config={config}
+                onBackToMain={() => setActiveView('launcher')}
+              />
+            )}
 
-        {activeView === 'print' && (
-          <PrintingCenterView
-            documents={documents}
-            setDocuments={setDocuments}
-            config={config}
-          />
-        )}
+            {activeView === 'former_students' && (
+              <FormerStudentsView
+                students={students}
+                setStudents={setStudents}
+                config={config}
+              />
+            )}
 
-        {activeView === 'themes' && (
-          <ThemesView
-            currentTheme={theme}
-            setTheme={setTheme}
-          />
-        )}
+            {activeView === 'staff' && (
+              <StaffRegisterView
+                staffList={staffList}
+                setStaffList={setStaffList}
+                config={config}
+                scheduleMap={scheduleMap}
+              />
+            )}
 
-        {activeView === 'fonts' && (
-          <FontsView
-            currentFont={font}
-            setFont={setFont}
-          />
-        )}
+            {activeView === 'stats' && (
+              <StatisticsView
+                staffList={staffList}
+                students={students}
+                scheduleMap={scheduleMap}
+              />
+            )}
 
-        {activeView === 'alarm' && (
-          <AlarmTimerView
-            config={config}
-            setConfig={setConfig}
-          />
-        )}
+            {activeView === 'print' && (
+              <PrintingCenterView
+                documents={documents}
+                setDocuments={setDocuments}
+                config={config}
+              />
+            )}
 
-        {activeView === 'desktop_guide' && (
-          <DesktopGuideView
-            config={config}
-          />
-        )}
+            {activeView === 'themes' && (
+              <ThemesView
+                currentTheme={theme}
+                setTheme={setTheme}
+                currentFont={font}
+                setFont={setFont}
+              />
+            )}
 
-        {activeView === 'teacher_portal' && (
-          <TeacherPortalView
-            students={students}
-            setStudents={setStudents}
-            staffList={staffList}
-            config={config}
-            onBackToMain={() => setActiveView('launcher')}
-          />
-        )}
+            {activeView === 'fonts' && (
+              <FontsView
+                currentFont={font}
+                setFont={setFont}
+              />
+            )}
 
-        {activeView === 'settings' && (
-          <SettingsView
-            config={config}
-            setConfig={setConfig}
-            onResetData={handleResetData}
-            onTriggerScreensaver={() => setShowScreensaver(true)}
-            onTriggerSplash={() => setShowSplash(true)}
-          />
-        )}
-      </main>
+            {activeView === 'alarm' && (
+              <AlarmTimerView
+                config={config}
+                setConfig={setConfig}
+              />
+            )}
 
-      {/* Voice Assistant Speech Control Modal */}
+            {activeView === 'desktop_guide' && (
+              <DesktopGuideView
+                config={config}
+              />
+            )}
+
+            {activeView === 'teacher_portal' && (
+              <TeacherPortalView
+                students={students}
+                setStudents={setStudents}
+                staffList={staffList}
+                config={config}
+                onBackToMain={() => setActiveView('launcher')}
+              />
+            )}
+
+            {activeView === 'settings' && (
+              <SettingsView
+                config={config}
+                setConfig={setConfig}
+                students={students}
+                setStudents={setStudents}
+                staffList={staffList}
+                setStaffList={setStaffList}
+                onResetData={handleResetData}
+                onTriggerScreensaver={() => setShowScreensaver(true)}
+                onTriggerSplash={() => setShowSplash(true)}
+              />
+            )}
+
+            {activeView === 'approval_dashboard' && (
+              <ApprovalDashboard schoolId={config.schoolId || 'school_01'} />
+            )}
+
+            {activeView === 'sync_center' && (
+              <SyncCenterView
+                students={students}
+                setStudents={setStudents}
+                staffList={staffList}
+                config={config}
+                scheduleMap={scheduleMap}
+                onBackToMain={() => setActiveView('launcher')}
+              />
+            )}
+
+            {activeView === 'management_tips' && (
+              <ManagementTipsView
+                onBack={() => setActiveView('launcher')}
+              />
+            )}
+
+            {activeView === 'cloud_schedule' && (
+              <CloudScheduleView
+                currentSchedule={scheduleMap}
+                onImport={(newSchedule) => setScheduleMap(newSchedule)}
+                onBack={() => setActiveView('launcher')}
+                students={students}
+                staffList={staffList}
+              />
+            )}
+
+            {activeView === 'mobile_dashboard' && (
+              <MobilePrincipalDashboard
+                students={students}
+                staffList={staffList}
+                schedule={scheduleMap}
+                schoolName={config.schoolName || 'مدرستنا'}
+                onBack={() => setActiveView('launcher')}
+              />
+            )}
+          </>
+        )}
+        </main>
+      </div>
+
+      {/* Voice Assistant Modal */}
       <VoiceAssistantModal
         isOpen={showVoiceModal}
         onClose={() => setShowVoiceModal(false)}
@@ -317,14 +533,14 @@ export default function App() {
         />
       )}
 
-      {/* New: First-time Onboarding Modal */}
-      {!config.schoolName && (
-        <OnboardingModal
-          onComplete={(data) => {
-            setConfig(prev => ({ ...prev, ...data }));
-          }}
-        />
-      )}
+      {/* Floating AI Assistant Button */}
+      <button
+        onClick={() => setShowVoiceModal(true)}
+        className="fixed bottom-20 right-6 z-50 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-indigo-700 hover:scale-110 transition-all cursor-pointer group border-4 border-white"
+        title="مساعد الإدارة الذكي (AI Assistant)"
+      >
+        <Sparkles className="w-7 h-7 group-hover:animate-pulse" />
+      </button>
 
     </div>
   );

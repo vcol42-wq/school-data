@@ -8,19 +8,40 @@ app_stdout.log
 dev_stderr.log
 dev_stdout.log
 
-# === SchoolSystem_Android (Android Application) ===
+# === SchoolSystem_Android ===
 SchoolSystem_Android/.gradle/
 SchoolSystem_Android/build/
 SchoolSystem_Android/app/build/
 SchoolSystem_Android/local.properties
 SchoolSystem_Android/.artifacts/
 
+# === Principal_Android ===
+Principal_Android/.gradle/
+Principal_Android/build/
+Principal_Android/app/build/
+Principal_Android/local.properties
+Principal_Android/.artifacts/
+
+# === TheBoss3 ===
+TheBoss3/.gradle/
+TheBoss3/build/
+TheBoss3/app/build/
+TheBoss3/local.properties
+TheBoss3/.artifacts/
+
 # === extracted_school_system (Electron / Web Application) ===
 extracted_school_system/node_modules/
 extracted_school_system/build/
 extracted_school_system/dist/
 extracted_school_system/dist_electron/
+extracted_school_system/app_staging/
 extracted_school_system/coverage/
 extracted_school_system/sync_database.json
 extracted_school_system/.env*
 !extracted_school_system/.env.example
+LATEST_BUILDS/The_Principal_v*_Desktop_App/
+LATEST_BUILDS/*_Desktop_App/
+*.exe
+*.zip
+jdk-*/
+extracted_school_system/scratch_sync.js

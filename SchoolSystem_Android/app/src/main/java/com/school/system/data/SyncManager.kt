@@ -7,6 +7,8 @@ import com.school.system.data.dao.AbsenceDao
 import com.school.system.data.model.SchoolConfig
 import com.school.system.data.model.Student
 import com.school.system.data.model.ClassPackage
+import com.school.system.data.repository.SchoolRepository
+import com.school.system.data.network.GeminiAssistantService
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,13 +22,19 @@ class SyncManager @Inject constructor(
     private val configDao: ConfigDao,
     private val studentDao: StudentDao,
     private val packageDao: ClassPackageDao,
-    private val absenceDao: AbsenceDao
+    private val absenceDao: AbsenceDao,
+    private val syncRepository: SyncRepository,
+    private val schoolRepository: SchoolRepository,
+    private val geminiAssistantService: GeminiAssistantService
 ) {
+    companion object {
+        const val DEFAULT_AI_GATEWAY = "https://theprinciple-ai.up.railway.app/" // Example global AI gateway
+    }
 
     private fun getApi(baseUrl: String): DiyalaSchoolApi {
         var formattedUrl = baseUrl.trim()
-        if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
-            formattedUrl = "http://$formattedUrl"
+        if (!formattedUrl.startsWith("http")) {
+            formattedUrl = "https://$formattedUrl"
         }
         val url = if (formattedUrl.endsWith("/")) formattedUrl else "$formattedUrl/"
         
@@ -48,17 +56,28 @@ class SyncManager @Inject constructor(
     suspend fun connectToCloud(url: String): Boolean {
         return try {
             var formattedUrl = url.trim()
-            if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
-                formattedUrl = "http://$formattedUrl"
+            if (!formattedUrl.startsWith("http")) {
+                formattedUrl = "https://$formattedUrl"
             }
-            val api = getApi(formattedUrl)
-            val response = api.checkHealth()
-            if (response.isSuccessful) {
+            
+            val isSupabase = formattedUrl.contains("supabase.co")
+            
+            if (isSupabase) {
                 val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-                configDao.saveConfig(currentConfig.copy(cloudUrl = formattedUrl))
+                
+                // Fetch Gemini Key from Supabase app_config
+                val cloudGeminiKey = schoolRepository.fetchCloudGeminiKey()
+                
+                configDao.saveConfig(currentConfig.copy(
+                    cloudUrl = formattedUrl,
+                    cloudKey = currentConfig.cloudKey.ifEmpty { SyncRepository.DEFAULT_ANON_KEY },
+                    cloudGeminiKey = cloudGeminiKey ?: ""
+                ))
                 true
             } else {
-                if (formattedUrl.contains(".")) {
+                val api = getApi(formattedUrl)
+                val response = api.checkHealth()
+                if (response.isSuccessful) {
                     val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
                     configDao.saveConfig(currentConfig.copy(cloudUrl = formattedUrl))
                     true
@@ -68,275 +87,223 @@ class SyncManager @Inject constructor(
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            var formattedUrl = url.trim()
-            if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
-                formattedUrl = "http://$formattedUrl"
-            }
-            if (formattedUrl.contains(".")) {
-                val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-                configDao.saveConfig(currentConfig.copy(cloudUrl = formattedUrl))
-                true
-            } else {
-                false
-            }
+            false
         }
     }
 
-    suspend fun connectAndPairQr(qrJson: String): Boolean {
+    suspend fun connectAndPairQr(qrContent: String): Boolean {
         return try {
-            val gson = com.google.gson.Gson()
-            val mapType = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
-            val data: Map<String, String> = gson.fromJson(qrJson, mapType)
+            val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+            val trimmed = qrContent.trim()
 
-            var url = data["url"] ?: return false
-            url = url.trim()
-            if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                url = "http://$url"
+            var url = SyncRepository.DEFAULT_SUPABASE_URL
+            var apiKey = SyncRepository.DEFAULT_ANON_KEY
+            var schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
+            var pairingCode = currentConfig.pairingCode
+            var teacherName = ""
+
+            if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+                val gson = com.google.gson.Gson()
+                val mapType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+                val data: Map<String, Any> = gson.fromJson(trimmed, mapType)
+
+                url = data["url"]?.toString() ?: data["supabaseUrl"]?.toString() ?: data["cloudUrl"]?.toString() ?: SyncRepository.DEFAULT_SUPABASE_URL
+                apiKey = data["apiKey"]?.toString() ?: data["cloudKey"]?.toString() ?: data["api_key"]?.toString() ?: data["anonKey"]?.toString() ?: SyncRepository.DEFAULT_ANON_KEY
+                schoolId = data["schoolId"]?.toString() ?: data["school_id"]?.toString() ?: data["id"]?.toString() ?: schoolId
+                pairingCode = data["pairingCode"]?.toString() ?: data["pairing_code"]?.toString() ?: pairingCode
+                teacherName = data["teacherName"]?.toString() ?: data["teacher_name"]?.toString() ?: data["name"]?.toString() ?: ""
+            } else if (trimmed.startsWith("OTP:", ignoreCase = true)) {
+                val parts = trimmed.split(":")
+                pairingCode = parts.getOrNull(1) ?: pairingCode
+                teacherName = parts.getOrNull(2) ?: ""
+            } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+                url = trimmed
+            } else if (trimmed.length in 4..12 && trimmed.all { it.isDigit() || it.isLetter() || it == '-' }) {
+                pairingCode = trimmed
             }
-            val schoolId = data["schoolId"] ?: "school_01"
-            val schoolName = data["schoolName"] ?: "المدرسة"
-            val pairingCode = data["pairingCode"] ?: ""
 
-            // Fallback: save anyway so that even if the PC server is not reachable right now,
-            // the teacher's config is successfully updated to the correct server IP.
+            // Save basic settings to config
             configDao.saveConfig(
-                SchoolConfig(
-                    id = 1,
+                currentConfig.copy(
                     cloudUrl = url,
-                    schoolName = schoolName,
+                    cloudKey = apiKey,
                     schoolId = schoolId,
-                    directorateName = schoolId,
-                    isVerified = false,
-                    syncSealToken = "",
-                    pairingCode = pairingCode
+                    pairingCode = pairingCode,
+                    isVerified = false
                 )
             )
+
+            // Auto-verify with school in background
+            requestPairing(
+                teacherName = teacherName,
+                grade = "",
+                section = "",
+                subject = "",
+                pairingCode = pairingCode
+            )
+
             true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // If QR json is not standard, check if it's a raw URL string
-            try {
-                var url = qrJson.trim()
-                if (url.contains(".") || url.startsWith("http")) {
-                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                        url = "http://$url"
-                    }
-                    val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-                    configDao.saveConfig(currentConfig.copy(cloudUrl = url, isVerified = false, syncSealToken = ""))
-                    true
-                } else {
-                    false
-                }
-            } catch(ex: Exception) {
-                false
-            }
-        }
-    }
-
-    suspend fun requestPairing(teacherName: String, grade: String, section: String, subject: String, pairingCode: String): PairingResult {
-        return try {
-            val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-            val url = currentConfig.cloudUrl
-            val schoolId = currentConfig.schoolId // Updated to use schoolId
-            val email = currentConfig.userEmail   // Added userEmail
-
-            if (url.isEmpty()) return PairingResult(success = false, warning = false, message = "الرجاء مسح باركود المدرسة أولاً للاتصال بالخادم.")
-
-            val api = getApi(url)
-            val response = api.requestPairing(PairingRequest(schoolId, teacherName, grade, section, subject, pairingCode, email))
-
-            if (response.isSuccessful) {
-                val body = response.body()!!
-                if (body.success) {
-                    if (body.status == "approved") {
-                        configDao.saveConfig(
-                            currentConfig.copy(
-                                managerName = teacherName,
-                                isVerified = true,
-                                syncSealToken = body.token
-                            )
-                        )
-                        val downloaded = downloadClassRoster(schoolId, body.token!!)
-                        PairingResult(success = true, warning = false, message = if (downloaded) "تم الربط وتنزيل الأسماء بنجاح!" else "تمت الموافقة ولكن فشل تنزيل الأسماء.")
-                    } else {
-                        configDao.saveConfig(
-                            currentConfig.copy(
-                                managerName = teacherName,
-                                isVerified = false,
-                                syncSealToken = body.token
-                            )
-                        )
-                        PairingResult(success = true, warning = false, message = body.message)
-                    }
-                } else if (body.warning) {
-                    PairingResult(success = false, warning = true, message = body.message)
-                } else {
-                    PairingResult(success = false, warning = false, message = body.message)
-                }
-            } else {
-                val errorMsg = response.errorBody()?.string() ?: ""
-                val msg = if (errorMsg.contains("رمز") || errorMsg.contains("الرمز")) {
-                    "رمز الاقتران الموحد غير صحيح! يرجى التأكد من الرمز وإعادة المحاولة."
-                } else {
-                    "فشل الاتصال بخادم المدرسة. كود الخطأ: ${response.code()}"
-                }
-                PairingResult(success = false, warning = false, message = msg)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            PairingResult(success = false, warning = false, message = "خطأ في الشبكة أو خادم المدرسة: ${e.message}")
-        }
-    }
-
-    suspend fun downloadClassRoster(schoolId: String, token: String): Boolean {
-        return try {
-            val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-            val url = currentConfig.cloudUrl
-            if (url.isEmpty()) return false
-
-            val api = getApi(url)
-            val response = api.downloadRoster(schoolId, token)
-
-            if (response.isSuccessful && response.body()?.success == true) {
-                val body = response.body()!!
-                
-                // Safe offline-first merge: Get all existing students with their entered marks
-                val existingStudents = studentDao.getAllStudentsList()
-
-                packageDao.clearAll()
-                studentDao.clearAll()
-
-                body.classes.forEach { classDto ->
-                    packageDao.insertPackage(
-                        ClassPackage(
-                            grade = classDto.grade,
-                            section = classDto.section,
-                            subject = classDto.subject,
-                            iconName = "yrd"
-                        )
-                    )
-                }
-
-                body.students.forEach { studentDto ->
-                    studentDao.insertStudent(
-                        Student(
-                            recordNumber = studentDto.recordNumber,
-                            fullName = studentDto.fullName,
-                            grade = studentDto.grade,
-                            section = studentDto.section,
-                            subject = "",
-                            historicalAbsences = studentDto.historicalAbsences
-                        )
-                    )
-                }
-
-                propagateStudents()
-
-                // Restore marks for the propagated student records
-                val propagatedStudents = studentDao.getAllStudentsList()
-                propagatedStudents.forEach { newStudent ->
-                    val matchedOld = existingStudents.find { oldStudent ->
-                        oldStudent.recordNumber == newStudent.recordNumber &&
-                        oldStudent.grade == newStudent.grade &&
-                        oldStudent.section == newStudent.section &&
-                        oldStudent.subject == newStudent.subject
-                    }
-                    if (matchedOld != null) {
-                        studentDao.updateStudent(
-                            newStudent.copy(marks = matchedOld.marks)
-                        )
-                    }
-                }
-
-                true
-            } else {
-                // If the link is revoked/stopped by manager, check and reset verification
-                val errorBody = response.errorBody()?.string() ?: ""
-                if (response.code() == 400 && errorBody.contains("REVOKED")) {
-                    configDao.saveConfig(
-                        currentConfig.copy(
-                            isVerified = false,
-                            syncSealToken = ""
-                        )
-                    )
-                }
-                false
-            }
         } catch (e: Exception) {
             e.printStackTrace()
             false
         }
     }
 
+    suspend fun requestPairing(teacherName: String, grade: String, section: String, subject: String, pairingCode: String): PairingResult {
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        val schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
+        return syncRepository.verifySchoolAndTeacher(
+            schoolId = schoolId,
+            teacherInput = teacherName,
+            pairingCode = pairingCode,
+            providedUrl = currentConfig.cloudUrl,
+            providedKey = currentConfig.cloudKey
+        )
+    }
+
+    suspend fun downloadClassRoster(schoolId: String, token: String): Boolean {
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        return syncRepository.downloadRoster(
+            schoolId = schoolId,
+            teacherId = token,
+            providedUrl = currentConfig.cloudUrl
+        )
+    }
+
     suspend fun fetchDataFromPrincipal(): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = currentConfig.schoolId.ifEmpty { currentConfig.directorateName }
-        val token = currentConfig.syncSealToken
-        if (token.isNullOrEmpty()) {
-            // Fallback to simple sync if no pairing token is present
-            return syncSimpleAll()
-        }
-        if (schoolId.isEmpty()) return false
+        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId else "SCH-VCOL-6072"
+        val token = currentConfig.syncSealToken ?: ""
         return downloadClassRoster(schoolId, token)
     }
 
     suspend fun downloadSimpleRosterForClass(grade: String, section: String, subject: String): Boolean {
+        val result = summonClassRosterDetailed(grade, section, subject)
+        return result.success
+    }
+
+    suspend fun summonClassRosterDetailed(grade: String, section: String, subject: String): SummonResult {
         return try {
+            val cleanGrade = grade.trim()
+            val cleanSection = section.trim()
+            val cleanSubject = subject.trim().ifEmpty { "المادة العامة" }
+
             val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
             val url = currentConfig.cloudUrl
-            if (url.isEmpty()) return false
+            val schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
+            val isSupabase = url.contains("supabase.co")
 
-            val api = getApi(url)
-            val response = api.downloadSimpleRoster(grade, section)
+            // 1. Ensure ClassPackage exists without creating duplicates
+            val allPackages = packageDao.getAllPackagesList()
+            val existingPkg = allPackages.find { 
+                syncRepository.normalizeArabic(it.grade) == syncRepository.normalizeArabic(cleanGrade) &&
+                syncRepository.normalizeArabic(it.section) == syncRepository.normalizeArabic(cleanSection) &&
+                syncRepository.normalizeArabic(it.subject) == syncRepository.normalizeArabic(cleanSubject)
+            }
 
-            if (response.isSuccessful && response.body()?.success == true) {
-                val body = response.body()!!
-
-                // Insert the ClassPackage if it doesn't exist
-                val existingPkg = packageDao.getAllPackagesList().find { 
-                    it.grade == grade && it.section == section && it.subject == subject 
-                }
-                if (existingPkg == null) {
-                    packageDao.insertPackage(
-                        ClassPackage(
-                            grade = grade,
-                            section = section,
-                            subject = subject,
-                            iconName = "yrd"
-                        )
+            val isNewPackage = existingPkg == null
+            if (isNewPackage) {
+                packageDao.insertPackage(
+                    ClassPackage(
+                        grade = cleanGrade,
+                        section = cleanSection,
+                        subject = cleanSubject,
+                        iconName = "yrd"
                     )
-                }
+                )
+            }
 
-                // Insert or update students safely (avoiding duplicate records and preserving existing marks)
-                body.students.forEach { studentDto ->
-                    val existingStudent = studentDao.getStudentByDetails(grade, section, studentDto.recordNumber, subject)
+            // 2. Fetch students from Cloud if URL is configured
+            val studentsFromCloud = if (url.isNotEmpty()) {
+                if (isSupabase) {
+                    syncRepository.downloadSimpleRoster(schoolId, cleanGrade, cleanSection).map {
+                        StudentDto(
+                            recordNumber = it.record_number,
+                            fullName = it.full_name,
+                            grade = it.current_grade,
+                            section = it.section,
+                            historicalAbsences = it.absences_count
+                        )
+                    }
+                } else {
+                    val api = getApi(url)
+                    val response = api.downloadSimpleRoster(cleanGrade, cleanSection)
+                    if (response.isSuccessful && response.body()?.success == true) {
+                        response.body()!!.students
+                    } else {
+                        emptyList()
+                    }
+                }
+            } else {
+                emptyList()
+            }
+
+            var mergedCount = 0
+            if (studentsFromCloud.isNotEmpty()) {
+                val currentLocalStudents = studentDao.getStudentsForGradeAndSection(cleanGrade, cleanSection)
+                    .filter { syncRepository.normalizeArabic(it.subject) == syncRepository.normalizeArabic(cleanSubject) }
+
+                studentsFromCloud.forEach { studentDto ->
+                    val cleanDtoName = studentDto.fullName.trim()
+                    val existingStudent = currentLocalStudents.find { old ->
+                        (old.recordNumber.isNotBlank() && old.recordNumber == studentDto.recordNumber) ||
+                        (syncRepository.normalizeArabic(old.fullName) == syncRepository.normalizeArabic(cleanDtoName))
+                    }
+
                     if (existingStudent != null) {
+                        // Update basic info without touching marks
                         studentDao.updateStudent(
                             existingStudent.copy(
-                                fullName = studentDto.fullName,
+                                fullName = cleanDtoName,
+                                recordNumber = if (studentDto.recordNumber.isNotBlank()) studentDto.recordNumber else existingStudent.recordNumber,
                                 historicalAbsences = studentDto.historicalAbsences
                             )
                         )
                     } else {
                         studentDao.insertStudent(
                             Student(
-                                recordNumber = studentDto.recordNumber,
-                                fullName = studentDto.fullName,
-                                grade = grade,
-                                section = section,
-                                subject = subject,
+                                recordNumber = if (studentDto.recordNumber.isNotBlank()) studentDto.recordNumber else (1000..9999).random().toString(),
+                                fullName = cleanDtoName,
+                                grade = cleanGrade,
+                                section = cleanSection,
+                                subject = cleanSubject,
                                 historicalAbsences = studentDto.historicalAbsences
                             )
                         )
                     }
+                    mergedCount++
                 }
-                true
+                SummonResult(
+                    success = true,
+                    studentCount = mergedCount,
+                    isNewPackage = isNewPackage,
+                    message = "تم بنجاح استدعاء وتحديث ($mergedCount) طالباً لشعبة $cleanGrade ($cleanSection) - $cleanSubject ✓"
+                )
             } else {
-                false
+                if (isNewPackage) {
+                    SummonResult(
+                        success = true,
+                        studentCount = 0,
+                        isNewPackage = true,
+                        message = "تم إنشاء سجل لشعبة $cleanGrade ($cleanSection) - $cleanSubject بنجاح."
+                    )
+                } else {
+                    SummonResult(
+                        success = true,
+                        studentCount = 0,
+                        isNewPackage = false,
+                        message = "السجل موجود مسبقاً وتم التأكد من مزامنته بنجاح."
+                    )
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            false
+            SummonResult(
+                success = false,
+                studentCount = 0,
+                isNewPackage = false,
+                message = "حدث خطأ أثناء الاستدعاء: ${e.localizedMessage ?: "تأكد من الاتصال بالسحابة"}"
+            )
         }
     }
 
@@ -391,109 +358,73 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun syncGrades(grade: String, section: String, subject: String): Boolean {
-        return try {
-            val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-            val url = currentConfig.cloudUrl
-            val schoolId = currentConfig.schoolId.ifEmpty { currentConfig.directorateName }
-            val token = currentConfig.syncSealToken
-
-            if (url.isEmpty() || token.isNullOrEmpty()) return false
-
-            val api = getApi(url)
-            val studentsInClass = studentDao.getStudentsForClass(grade, section, subject).first()
-            val allAbsences = absenceDao.getAllAbsences().first()
-
-            val gradesList = studentsInClass.map { std ->
-                val activeCount = allAbsences.count { it.studentId == std.id }
-                val totalAbsences = std.historicalAbsences + activeCount
-
-                StudentGradeSyncDto(
-                    recordNumber = std.recordNumber,
-                    marks = StudentMarksDto(
-                        m1Daily = std.marks.m1Daily,
-                        m1Written = std.marks.m1Written,
-                        m1MonthAvg = std.marks.m1MonthAvg,
-                        m2Daily = std.marks.m2Daily,
-                        m2Written = std.marks.m2Written,
-                        m2MonthAvg = std.marks.m2MonthAvg,
-                        term1Avg = std.marks.term1Avg,
-                        midtermOral = std.marks.midtermOral,
-                        midtermScore = std.marks.midtermScore,
-                        midtermTotal = std.marks.midtermTotal,
-                        midtermFinalGrade = std.marks.midtermFinalGrade,
-                        m3Daily = std.marks.m3Daily,
-                        m3Written = std.marks.m3Written,
-                        m3MonthAvg = std.marks.m3MonthAvg,
-                        m4Daily = std.marks.m4Daily,
-                        m4Written = std.marks.m4Written,
-                        m4MonthAvg = std.marks.m4MonthAvg,
-                        term2Avg = std.marks.term2Avg,
-                        annualAverage = std.marks.annualAverage,
-                        finalOral = std.marks.finalOral,
-                        finalWrittenD1 = std.marks.finalWrittenD1,
-                        finalWrittenD2 = std.marks.finalWrittenD2,
-                        finalExamTotal = std.marks.finalExamTotal,
-                        finalGrade = std.marks.finalGrade,
-                        result = std.marks.result,
-                        status = std.marks.status
-                    ),
-                    absencesCount = totalAbsences
-                )
-            }
-
-            val response = api.uploadGrades(
-                UploadGradesRequest(
-                    schoolId = schoolId,
-                    token = token,
-                    grade = grade,
-                    section = section,
-                    subject = subject,
-                    gradesList = gradesList
-                )
-            )
-
-            response.isSuccessful && response.body()?.success == true
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId.trim() else "SCH-VCOL-6072"
+        val token = if (!currentConfig.syncSealToken.isNullOrEmpty()) currentConfig.syncSealToken!!.trim() else null
+        return syncRepository.syncGradesAndAttendance(
+            schoolId = schoolId,
+            teacherId = token,
+            targetGrade = grade,
+            targetSection = section,
+            targetSubject = subject
+        )
     }
 
     suspend fun queryAiAssistant(queryText: String): AiAssistantResponse {
-        return try {
-            val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-            val url = currentConfig.cloudUrl
-            if (url.isEmpty()) {
-                return AiAssistantResponse(false, "يرجى ربط التطبيق بالسحابة أولاً لتمكين المساعد الذكي.", null, null, null, null, null)
-            }
-
-            // Fetch statistics
-            val uniqueStudents = studentDao.getUniqueStudentsCount()
-            val api = getApi(url)
-            val request = AiAssistantRequest(
-                query = queryText,
-                studentsCount = uniqueStudents,
-                staffCount = 1, // Simulated teacher count (1) or list size
-                schoolName = currentConfig.schoolName,
-                userApiKey = if (currentConfig.geminiApiKey.isNotEmpty()) currentConfig.geminiApiKey else null
+        val reply = geminiAssistantService.askGemini(queryText)
+        
+        if (reply == "AI_DISABLED") {
+            return AiAssistantResponse(
+                success = false,
+                responseText = null,
+                action = null,
+                targetView = null,
+                targetTheme = null,
+                searchQuery = null,
+                error = "الذكاء الاصطناعي غير مفعل. يرجى التأكد من ربط المدرسة أو إضافة مفتاح Gemini الخاص بك في الإعدادات."
             )
-
-            val response = api.askAiAssistant(request)
-            if (response.isSuccessful && response.body() != null) {
-                response.body()!!
-            } else {
-                val errorMsg = response.errorBody()?.string() ?: response.message()
-                AiAssistantResponse(false, "عذرًا، فشل الحصول على استجابة من الذكاء الاصطناعي: $errorMsg", null, null, null, null, null)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            AiAssistantResponse(false, "فشل الاتصال بخادم الذكاء الاصطناعي: ${e.localizedMessage}", null, null, null, null, null)
         }
+
+        return AiAssistantResponse(
+            success = true,
+            responseText = reply,
+            action = if (reply.contains("بحث") || reply.contains("أين")) "SEARCH_STUDENT" else null,
+            targetView = null,
+            targetTheme = null,
+            searchQuery = if (reply.contains("بحث")) reply.split(" ").lastOrNull() else null,
+            error = null
+        )
+    }
+
+    suspend fun pairSchoolByCode(pairingCode: String, teacherName: String): PairingResult {
+        val result = syncRepository.pairSchoolByCode(pairingCode, teacherName)
+        if (result.success) {
+            // After successful pairing, fetch Gemini Key
+            val cloudGeminiKey = schoolRepository.fetchCloudGeminiKey()
+            val currentConfig = configDao.getConfig().first()
+            if (currentConfig != null && !cloudGeminiKey.isNullOrEmpty()) {
+                configDao.saveConfig(currentConfig.copy(cloudGeminiKey = cloudGeminiKey))
+            }
+        }
+        return result
+    }
+
+    suspend fun downloadSchedule(context: android.content.Context): Boolean {
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        val schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
+        return syncRepository.downloadSchedule(context, schoolId)
     }
 }
 
 data class PairingResult(
     val success: Boolean,
     val warning: Boolean,
+    val message: String
+)
+
+data class SummonResult(
+    val success: Boolean,
+    val studentCount: Int,
+    val isNewPackage: Boolean,
     val message: String
 )

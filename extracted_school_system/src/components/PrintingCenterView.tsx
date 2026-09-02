@@ -33,7 +33,8 @@ import {
   Type,
   Code
 } from 'lucide-react';
-import { OFFICIAL_SEAL_DATA_URI } from '../assets/officialSealDataUri';
+// Using Iraq Education Golden Crest SVG as official logo & watermark
+const OFFICIAL_LOGO_URL = "./iraq_education_logo.svg";
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { printElement } from '../utils/printHelper';
 
@@ -127,7 +128,7 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
     bodyContent: 'نود إعلامكم بأن مجموع غيابات الطالب <b>{اسم_الطالب}</b> في الصف <b>{الصف_والشعبة}</b> بلغ <b>({عدد_الغيابات})</b> يوماً لغاية تاريخ اليوم، وقد تم خصم درجات المواظبة على الدوام.<br/><br/>نحيطكم علماً بأنه في حال استمرار الطالب في الغياب، فسيعتبر راسباً في صفه لهذا العام عملاً بأحكام المادة (45) المعدلة من نظام المدارس الثانوية.<br/><br/>نرجو تحمل المسؤولية اتجاه أبنائكم مع التقدير.',
     managerTitle: 'مدير المدرسة',
     managerName: (config?.managerName || 'مدير المدرسة'),
-    watermarkText: `إدارة: ${(config?.schoolName || 'م. كعب بن مالك المسائية للبنين')}`
+    watermarkText: `إدارة: ${(config?.schoolName || 'المدرسة النموذجية')}`
   });
 
   const [isEditing, setIsEditing] = useState(true);
@@ -396,8 +397,15 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
   // Change External Print File Path Handler
   const handleChangeExternalPrintPath = async () => {
     try {
-      if (window.require) {
-        const { ipcRenderer } = window.require('electron');
+      const api = (window as any).electronAPI;
+      if (api?.selectExternalPrintFile) {
+        const selected = await api.selectExternalPrintFile();
+        if (selected) {
+          setExternalPrintPath(selected);
+          localStorage.setItem('external_print_file_path', selected);
+        }
+      } else if (typeof (window as any).require === 'function') {
+        const { ipcRenderer } = (window as any).require('electron');
         const selected = await ipcRenderer.invoke('select-external-print-file');
         if (selected) {
           setExternalPrintPath(selected);
@@ -414,8 +422,28 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
   // Handle External Print Launcher Button
   const handleExternalPrintLaunch = async () => {
     try {
-      if (window.require) {
-        const { ipcRenderer } = window.require('electron');
+      const api = (window as any).electronAPI;
+      if (api?.selectExternalPrintFile && api?.openExternalPrintFile) {
+        if (!externalPrintPath) {
+          const selected = await api.selectExternalPrintFile();
+          if (selected) {
+            setExternalPrintPath(selected);
+            localStorage.setItem('external_print_file_path', selected);
+            await api.openExternalPrintFile(selected);
+          }
+        } else {
+          const opened = await api.openExternalPrintFile(externalPrintPath);
+          if (!opened) {
+            const selected = await api.selectExternalPrintFile();
+            if (selected) {
+              setExternalPrintPath(selected);
+              localStorage.setItem('external_print_file_path', selected);
+              await api.openExternalPrintFile(selected);
+            }
+          }
+        }
+      } else if (typeof (window as any).require === 'function') {
+        const { ipcRenderer } = (window as any).require('electron');
         if (!externalPrintPath) {
           const selected = await ipcRenderer.invoke('select-external-print-file');
           if (selected) {
@@ -426,7 +454,6 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
         } else {
           const opened = await ipcRenderer.invoke('open-external-print-file', externalPrintPath);
           if (!opened) {
-            // Path broken or moved, re-select
             const selected = await ipcRenderer.invoke('select-external-print-file');
             if (selected) {
               setExternalPrintPath(selected);
@@ -449,8 +476,8 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
       {/* Top Action Header */}
       <div className="bg-[var(--theme-card)] p-5 rounded-2xl border border-[var(--theme-card-border)] shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 no-print">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 text-xs font-bold mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-100 text-indigo-950 border border-indigo-300 text-xs font-black mb-2 shadow-xs">
+            <Sparkles className="w-4 h-4 text-amber-500" />
             <span>نظام محرر القوالب القابلة للتحرير بالكامل (Rich Text / HTML Engine)</span>
           </div>
           <h2 className="text-xl md:text-2xl font-black text-[var(--theme-text-main)]">
@@ -560,48 +587,48 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
             {/* Live Student Sample Data Tester Inputs */}
             <div className="pt-2 border-t border-sky-800 space-y-2 text-[10px]">
               <span className="font-black text-amber-300 block">اختبار استبدال البيانات التلقائي:</span>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
                   placeholder="اسم الطالب"
                   value={sampleStudent.name}
                   onChange={e => setSampleStudent(p => ({ ...p, name: e.target.value }))}
-                  className="p-1.5 rounded bg-sky-950 border border-sky-700 text-white font-bold text-[10px]"
+                  className="p-2 rounded-xl bg-white border-2 border-indigo-300 text-slate-950 font-black text-xs placeholder-slate-400 focus:border-indigo-600 focus:outline-none shadow-sm"
                 />
                 <input
                   type="text"
                   placeholder="الصف"
                   value={sampleStudent.grade}
                   onChange={e => setSampleStudent(p => ({ ...p, grade: e.target.value }))}
-                  className="p-1.5 rounded bg-sky-950 border border-sky-700 text-white font-bold text-[10px]"
+                  className="p-2 rounded-xl bg-white border-2 border-indigo-300 text-slate-950 font-black text-xs placeholder-slate-400 focus:border-indigo-600 focus:outline-none shadow-sm"
                 />
                 <input
                   type="text"
                   placeholder="عدد الغيابات"
                   value={sampleStudent.absences}
                   onChange={e => setSampleStudent(p => ({ ...p, absences: e.target.value }))}
-                  className="p-1.5 rounded bg-sky-950 border border-sky-700 text-white font-bold text-[10px]"
+                  className="p-2 rounded-xl bg-white border-2 border-indigo-300 text-slate-950 font-black text-xs placeholder-slate-400 focus:border-indigo-600 focus:outline-none shadow-sm"
                 />
                 <input
                   type="text"
                   placeholder="المعلم"
                   value={sampleStudent.teacher}
                   onChange={e => setSampleStudent(p => ({ ...p, teacher: e.target.value }))}
-                  className="p-1.5 rounded bg-sky-950 border border-sky-700 text-white font-bold text-[10px]"
+                  className="p-2 rounded-xl bg-white border-2 border-indigo-300 text-slate-950 font-black text-xs placeholder-slate-400 focus:border-indigo-600 focus:outline-none shadow-sm"
                 />
                 <input
                   type="text"
                   placeholder="رقم القيد"
                   value={sampleStudent.recordNo}
                   onChange={e => setSampleStudent(p => ({ ...p, recordNo: e.target.value }))}
-                  className="p-1.5 rounded bg-sky-950 border border-sky-700 text-white font-bold text-[10px]"
+                  className="p-2 rounded-xl bg-white border-2 border-indigo-300 text-slate-950 font-black text-xs placeholder-slate-400 focus:border-indigo-600 focus:outline-none shadow-sm"
                 />
                 <input
                   type="text"
                   placeholder="موقف الطالب"
                   value={sampleStudent.status}
                   onChange={e => setSampleStudent(p => ({ ...p, status: e.target.value }))}
-                  className="p-1.5 rounded bg-sky-950 border border-sky-700 text-white font-bold text-[10px]"
+                  className="p-2 rounded-xl bg-white border-2 border-indigo-300 text-slate-950 font-black text-xs placeholder-slate-400 focus:border-indigo-600 focus:outline-none shadow-sm"
                 />
               </div>
             </div>
@@ -863,33 +890,38 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
             <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-amber-900/60 pointer-events-none"></div>
             <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-amber-900/60 pointer-events-none"></div>
 
-            {/* Central Ministry Watermark */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-15 select-none z-0">
+            {/* Central Ministry Watermark (Official Golden Crest) */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-10 select-none z-0">
               <img 
-                src={OFFICIAL_SEAL_DATA_URI} 
+                src={OFFICIAL_LOGO_URL}
                 alt="العلامة المائية لوزارة التربية" 
                 className="w-96 h-96 object-contain drop-shadow-2xl" 
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = './iraq_education_logo.png';
+                }}
               />
             </div>
 
             {/* Top Official Header Grid - 3 Equal Column Grid for Perfect Centering */}
-            <div className="relative z-10 grid grid-cols-3 items-center border-b-2 border-slate-900 pb-3 font-amiri">
+            <div className="relative z-10 grid grid-cols-3 items-center border-b-2 border-slate-900 pb-3 font-amiri min-h-[90px]">
               
-              {/* Right Side: Directorate, Section & School Name Header */}
-              <div className="text-right text-sm md:text-base font-bold leading-relaxed space-y-0.5 text-slate-950 font-amiri">
-                <p className="font-bold text-sm md:text-base">{(config?.directorateName || 'مديرية تربية ديالى')}</p>
-                <p className="font-bold text-sm md:text-base">{(config?.sectionName || 'قسم تربية المقدادية')}</p>
-                <p className="font-extrabold text-base md:text-lg text-slate-950 pt-0.5">
+              {/* Right Side: ONLY School Name Header */}
+              <div className="text-right font-black text-slate-950 font-amiri leading-relaxed flex items-center">
+                <p className="font-extrabold text-lg md:text-xl text-slate-950">
                   {((config?.schoolName || 'م. كعب بن مالك المسائية للبنين')).replace(/متوسطة/g, 'م.')}
                 </p>
               </div>
 
-              {/* Center: Ministry Official Seal Crest - Perfectly Centered in Column 2 */}
+              {/* Center: Ministry Official Golden Seal Crest - Doubled in Size */}
               <div className="flex flex-col items-center justify-center text-center">
                 <img 
-                  src={OFFICIAL_SEAL_DATA_URI} 
-                  alt="شعار وزارة التربية" 
-                  className="w-20 h-20 md:w-22 md:h-22 object-contain drop-shadow-md" 
+                  src={OFFICIAL_LOGO_URL}
+                  alt="شعار وزارة التربية الذهبي" 
+                  className="w-24 h-24 md:w-28 md:h-28 object-contain drop-shadow-md" 
+                  style={{ width: '110px', height: '110px', maxWidth: '110px', maxHeight: '110px' }}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = './iraq_education_logo.png';
+                  }}
                 />
               </div>
 
@@ -990,38 +1022,40 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
 
             </div>
 
-            {/* Bottom Margins: Signature & Copies To ABOVE the Two Bottom Lines */}
-            <div className="relative z-10 pt-4 space-y-4">
-              
-              {/* Manager Name (Right) & Copies To (Left) */}
-              <div className="flex justify-between items-start text-xs font-black px-2">
-                {/* Left: Copies To & Attachments */}
-                <div className="text-right space-y-0.5 text-slate-900">
-                  <p className="font-black text-slate-950 underline">نسخة إلى:</p>
-                  <p>- ملف الطالب / المعلم الإداري</p>
-                  <p>- لوحة الإعلانات الرسمية</p>
-                  <p>- أرشيف الإدارة الموحد</p>
-                  <p className="pt-1.5 font-black text-amber-950 underline">المرفقات: لا يوجد</p>
-                </div>
-
-                {/* Right: Manager Name & Title with EMPTY SPACE BELOW for Signature */}
-                <div className="text-center space-y-1">
-                  <p className="font-black text-sm">{selectedDoc?.managerTitle}</p>
-                  <p className="font-black text-base text-amber-950">{(config?.managerName || 'مدير المدرسة')}</p>
-                  <div className="w-44 h-14 my-1"></div>
-                </div>
-              </div>
-
-              {/* TWO LINES AT THE VERY BOTTOM OF THE PAGE */}
-              <div className="space-y-1 pt-2 border-t-2 border-slate-900">
-                <div className="text-center text-xs font-mono text-slate-600 overflow-hidden whitespace-nowrap select-none">
-                  ...................................................................................................................................................................................
-                </div>
-                <div className="text-center text-xs font-mono text-slate-600 overflow-hidden whitespace-nowrap select-none">
-                  ...................................................................................................................................................................................
+            {/* Bottom Margins: Signature & Contact Footer */}
+            <div className="relative z-10 pt-6 mt-auto">
+              <div className="flex justify-end items-end px-6 mb-4">
+                <div className="text-center space-y-1 min-w-[200px]">
+                  <p className="font-bold text-sm text-slate-900">
+                    مدير المدرسة
+                  </p>
+                  <p 
+                    contentEditable={isEditing}
+                    suppressContentEditableWarning
+                    onBlur={(e) => setSelectedDoc(prev => ({ ...prev, managerName: e.currentTarget.innerText }))}
+                    className={`font-black text-lg text-slate-950 font-amiri p-1 rounded transition-all ${
+                      isEditing ? 'hover:bg-amber-100/60 focus:bg-amber-100 focus:outline-amber-500' : ''
+                    }`}
+                  >
+                    {(selectedDoc?.managerName || config?.managerName || 'الأستاذ مدير المدرسة')}
+                  </p>
+                  <p className="text-xs font-mono font-bold text-slate-700 font-tajawal">
+                    التاريخ: {selectedDoc?.date ? `${selectedDoc?.date.split('-')[2] || ''} / ${selectedDoc?.date.split('-')[1] || ''} / ${selectedDoc?.date.split('-')[0] || ''}م` : new Date().toLocaleDateString('ar-IQ')}
+                  </p>
                 </div>
               </div>
 
+              {/* Bottom Contact Margin Bar (At the Very Bottom) */}
+              <div className="pt-2 border-t border-slate-300 text-center text-xs font-tajawal text-slate-600 flex flex-wrap items-center justify-between px-2">
+                <span className="font-bold text-slate-700">
+                  للتواصل: يمكن مراسلة المدرسة على البريد الإلكتروني: <span className="font-mono font-black text-sky-900 underline dir-ltr inline-block">{config?.schoolEmail || (config?.schoolCode ? `${config.schoolCode}@school.iq` : 'info.school@gmail.com')}</span>
+                </span>
+                {config?.schoolPhone && (
+                  <span className="text-xs font-mono font-bold text-slate-600">
+                    هاتف: {config.schoolPhone}
+                  </span>
+                )}
+              </div>
             </div>
 
           </div>
@@ -1059,25 +1093,16 @@ const PrintingCenterViewInner: React.FC<PrintingCenterViewProps> = ({
             dangerouslySetInnerHTML={{ __html: replacePlaceholders(selectedDoc?.bodyContent || '') }}
           />
 
-          <div className="pt-8 flex justify-between items-end">
-            <div className="text-xs text-slate-600 font-tajawal">
-              {selectedDoc?.copiesTo && selectedDoc.copiesTo.length > 0 && (
-                <div>
-                  <p className="font-bold text-slate-800 mb-1">نسخة منه إلى:</p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    {selectedDoc.copiesTo.map((c, i) => (
-                      <li key={i}>{c}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+          {selectedDoc?.copiesTo && selectedDoc.copiesTo.length > 0 && (
+            <div className="pt-4 text-xs text-slate-600 font-tajawal">
+              <p className="font-bold text-slate-800 mb-1">نسخة منه إلى:</p>
+              <ul className="list-disc list-inside space-y-0.5">
+                {selectedDoc.copiesTo.map((c, i) => (
+                  <li key={i}>{c}</li>
+                ))}
+              </ul>
             </div>
-
-            <div className="text-center">
-              <p className="text-sm font-bold text-slate-800">{selectedDoc?.managerTitle || 'مدير المدرسة'}</p>
-              <p className="text-base font-black text-slate-950">{selectedDoc?.managerName || config.managerName}</p>
-            </div>
-          </div>
+          )}
 
         </div>
       </PrintPreviewModal>

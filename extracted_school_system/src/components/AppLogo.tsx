@@ -30,9 +30,9 @@ export const AppLogo: React.FC<AppLogoProps> = ({
     <div className={`flex items-center gap-3 ${className}`}>
       {/* Ultra-Sharp Vector Icon Box (Gradient Squircle + 3D Letter P + Graduation Cap) */}
       <div 
-        className={`relative ${sizeClasses[size]} rounded-[24%] bg-gradient-to-b from-blue-600 via-indigo-600 to-purple-900 text-white flex flex-col items-center justify-center font-bold shadow-lg shrink-0 border-2 border-amber-300/90 select-none overflow-visible group`}
+        className={`relative ${sizeClasses[size]} rounded-[24%] bg-indigo-600 text-white flex flex-col items-center justify-center font-bold shadow-lg shrink-0 border-2 border-white select-none overflow-visible group`}
         style={{
-          boxShadow: '0 6px 16px -2px rgba(124, 58, 237, 0.5), 0 0 0 1px rgba(251, 191, 36, 0.4)'
+          boxShadow: '0 6px 16px -2px rgba(79, 70, 229, 0.3)'
         }}
       >
         {/* White Letter P in center */}
@@ -44,10 +44,10 @@ export const AppLogo: React.FC<AppLogoProps> = ({
         <div className={`absolute ${capSizes[size]} drop-shadow-xl pointer-events-none z-10`}>
           <svg viewBox="0 0 100 100" className="w-full h-full">
             {/* Diamond top surface of mortarboard */}
-            <polygon points="50,15 90,32 50,49 10,32" fill="#f8fafc" stroke="#1e293b" strokeWidth="4" />
+            <polygon points="50,15 90,32 50,49 10,32" fill="#ffffff" stroke="#4f46e5" strokeWidth="4" />
             <polygon points="50,18 85,32 50,46 15,32" fill="#ffffff" />
             {/* Skullcap underneath */}
-            <path d="M28,38 L28,58 C28,68 72,68 72,58 L72,38" fill="#e2e8f0" stroke="#1e293b" strokeWidth="4" />
+            <path d="M28,38 L28,58 C28,68 72,68 72,58 L72,38" fill="#f8fafc" stroke="#4f46e5" strokeWidth="4" />
             {/* Tassel button */}
             <circle cx="50" cy="32" r="4" fill="#fbbf24" />
             {/* Tassel hanging down to the right */}
@@ -66,14 +66,14 @@ export const AppLogo: React.FC<AppLogoProps> = ({
       {showText && (
         <div className="flex flex-col text-right leading-tight">
           <div className="flex items-center gap-1.5">
-            <span className="font-black text-amber-300 text-base md:text-lg tracking-wide drop-shadow-md font-sans">
+            <span className="font-black text-indigo-600 text-base md:text-lg tracking-wide drop-shadow-sm font-sans">
               The Principal
             </span>
-            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 shadow-xs">
+            <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-600 text-white shadow-xs">
               المُدير
             </span>
           </div>
-          <span className="text-[11px] text-purple-200 font-bold tracking-normal hidden sm:inline">
+          <span className="text-[11px] text-slate-500 font-bold tracking-normal hidden sm:inline">
             نظام الإدارة المدرسية الموحد
           </span>
         </div>

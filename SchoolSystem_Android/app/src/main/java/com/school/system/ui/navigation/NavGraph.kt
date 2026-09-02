@@ -15,9 +15,12 @@ import com.school.system.ui.screens.DashboardScreen
 import com.school.system.ui.screens.GradeRegisterScreen
 import com.school.system.ui.screens.SettingsScreen
 import com.school.system.ui.screens.QrScannerScreen
+import com.school.system.ui.screens.ScheduleScreen
+import com.school.system.ui.screens.SmartBellScreen
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import com.school.system.ui.screens.SplashScreen
 import com.school.system.ui.screens.TeacherPortalScreen
 import com.school.system.ui.screens.OnboardingScreen
 import com.school.system.ui.screens.SettingsViewModel
@@ -38,9 +41,18 @@ fun SchoolSystemNavHost(navController: NavHostController) {
         return
     }
 
-    val startDestination = if (config?.isActivated == true) "dashboard" else "onboarding"
+    NavHost(navController = navController, startDestination = "splash") {
+        composable("splash") {
+            SplashScreen(
+                onAnimationFinished = {
+                    val nextRoute = if (config?.isActivated == true) "dashboard" else "onboarding"
+                    navController.navigate(nextRoute) {
+                        popUpTo("splash") { inclusive = true }
+                    }
+                }
+            )
+        }
 
-    NavHost(navController = navController, startDestination = startDestination) {
         composable("onboarding") {
             OnboardingScreen(
                 onActivationComplete = {
@@ -71,7 +83,22 @@ fun SchoolSystemNavHost(navController: NavHostController) {
                 },
                 onNavigateToSettings = {
                     navController.navigate("settings")
+                },
+                onNavigateToSchedule = {
+                    navController.navigate("schedule")
+                },
+                onNavigateToSmartBell = {
+                    navController.navigate("smart_bell")
+                },
+                onNavigateToHomeworkHub = {
+                    navController.navigate("homework_hub")
                 }
+            )
+        }
+
+        composable("homework_hub") {
+            com.school.system.ui.screens.HomeworkHubScreen(
+                onBack = { navController.popBackStack() }
             )
         }
 
@@ -83,12 +110,26 @@ fun SchoolSystemNavHost(navController: NavHostController) {
             )
         }
 
+        composable("schedule") {
+            val dashboardViewModel: com.school.system.ui.screens.DashboardViewModel = hiltViewModel()
+            ScheduleScreen(
+                syncManager = dashboardViewModel.syncManager,
+                onBack = { navController.popBackStack() }
+            )
+        }
+
         composable("qr_scanner") {
             QrScannerScreen(
                 onCodeScanned = { code ->
                     navController.previousBackStackEntry?.savedStateHandle?.set("scanned_code", code)
                     navController.popBackStack()
                 },
+                onBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("smart_bell") {
+            SmartBellScreen(
                 onBack = { navController.popBackStack() }
             )
         }

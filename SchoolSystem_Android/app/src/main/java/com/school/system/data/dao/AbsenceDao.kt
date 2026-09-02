@@ -12,6 +12,9 @@ interface AbsenceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAbsence(absence: AbsenceRecord)
 
+    @Query("DELETE FROM absences WHERE studentId = :studentId AND dateString = :dateString AND periodNumber = :periodNumber")
+    suspend fun deleteAbsence(studentId: Long, dateString: String, periodNumber: Int)
+
     @Query("DELETE FROM absences WHERE studentId = :studentId AND dateString = :dateString")
     suspend fun deleteAbsence(studentId: Long, dateString: String)
 

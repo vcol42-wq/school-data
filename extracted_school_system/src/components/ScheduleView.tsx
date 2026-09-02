@@ -13,20 +13,25 @@ import {
   Info,
   SlidersHorizontal,
   BellRing,
-  Printer
+  Printer,
+  CloudUpload,
+  Loader2
 } from 'lucide-react';
 import { PrintPreviewModal } from './PrintPreviewModal';
+import { getSupabase } from '../utils/supabaseClient';
 
 interface ScheduleViewProps {
   scheduleMap: DayScheduleMap;
   setScheduleMap: React.Dispatch<React.SetStateAction<DayScheduleMap>>;
   config: AppConfig;
+  onOpenSmartGenerator?: () => void;
 }
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({
   scheduleMap,
   setScheduleMap,
-  config
+  config,
+  onOpenSmartGenerator
 }) => {
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('الأحد');
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
@@ -44,9 +49,40 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [showAddRowModal, setShowAddRowModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showPrintPreviewModal, setShowPrintPreviewModal] = useState(false);
+  const [isUploadingSchedule, setIsUploadingSchedule] = useState(false);
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState('');
   const [newRowGrade, setNewRowGrade] = useState('الصف الأول');
   const [newRowSection, setNewRowSection] = useState('أ');
   const [newRowTeacher, setNewRowTeacher] = useState('أ. أستاذ المادة');
+
+  const handleUploadScheduleToCloud = async () => {
+    setIsUploadingSchedule(true);
+    setUploadSuccessMsg('');
+    try {
+      const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+      const client = getSupabase(schoolId);
+
+      // 1. Save locally to localStorage
+      localStorage.setItem('diyala_school_schedule', JSON.stringify(scheduleMap));
+
+      // 2. Direct upsert to Supabase
+      const { error } = await client.from('schedules').upsert({
+        id: schoolId,
+        schedule_map: scheduleMap
+      }, { onConflict: 'id', ignoreDuplicates: false });
+
+      if (error) {
+        throw error;
+      }
+
+      setUploadSuccessMsg('تم رفع وحفظ جدول الحصص الأسبوعي إلى السحابة بنجاح! 🚀');
+      setTimeout(() => setUploadSuccessMsg(''), 5000);
+    } catch (e: any) {
+      alert('فشل في رفع الجدول للسحابة: ' + (e.message || 'تأكد من الاتصال بالإنترنت'));
+    } finally {
+      setIsUploadingSchedule(false);
+    }
+  };
 
   // Schedule Custom Names State
   const [customLessonNames, setCustomLessonNames] = useState<{ [key: string]: string }>({
@@ -57,6 +93,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     lesson5: 'الدرس الخامس',
     lesson6: 'الدرس السادس',
   });
+
+  const [replaceOldTeacher, setReplaceOldTeacher] = useState('');
+  const [replaceNewTeacher, setReplaceNewTeacher] = useState('');
+  const [replaceStatus, setReplaceStatus] = useState('');
 
   const daysList: DayOfWeek[] = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
@@ -223,9 +263,31 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       if (typeof val === 'object' && val && 'teacherName' in val) {
         const cell = val as ScheduleCell;
         if (!cell.isOff && cell.teacherName) {
-          teacherLoadMap[cell.teacherName] = (teacherLoadMap[cell.teacherName] || 0) + 1;
+          const clean = cleanTeacherName(cell.teacherName);
+          if (clean && clean !== 'شاغر' && clean !== 'مفرغ') {
+            teacherLoadMap[clean] = (teacherLoadMap[clean] || 0) + 1;
+          }
         }
       }
+    });
+  });
+
+  // Compute Weekly Teacher Quota across ALL 5 days of the week
+  const weeklyTeacherLoadMap: { [teacher: string]: number } = {};
+  daysList.forEach(day => {
+    const dayRows = scheduleMap[day] || [];
+    dayRows.forEach(row => {
+      Object.values(row.lessons).forEach(val => {
+        if (typeof val === 'object' && val && 'teacherName' in val) {
+          const cell = val as ScheduleCell;
+          if (!cell.isOff && cell.teacherName) {
+            const clean = cleanTeacherName(cell.teacherName);
+            if (clean && clean !== 'شاغر' && clean !== 'مفرغ') {
+              weeklyTeacherLoadMap[clean] = (weeklyTeacherLoadMap[clean] || 0) + 1;
+            }
+          }
+        }
+      });
     });
   });
 
@@ -248,15 +310,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         </div>
 
         {/* Days Bar */}
-        <div className="flex items-center gap-1.5 overflow-x-auto p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="flex items-center gap-2 overflow-x-auto p-1.5 bg-slate-900 rounded-2xl border-2 border-indigo-500 shadow-md">
           {daysList.map(day => (
             <button
               key={day}
               onClick={() => setSelectedDay(day)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              className={`px-5 py-2.5 rounded-xl text-xs font-black transition-all whitespace-nowrap cursor-pointer ${
                 selectedDay === day
-                  ? 'bg-amber-500 text-slate-950 shadow-md font-extrabold scale-105'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-lg font-black scale-105 border-2 border-amber-300 ring-2 ring-amber-400/50'
+                  : 'bg-slate-800 hover:bg-slate-700 text-white font-bold border border-slate-700 hover:scale-102'
               }`}
             >
               {day}
@@ -275,7 +337,38 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {uploadSuccessMsg && (
+              <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-300 animate-pulse">
+                {uploadSuccessMsg}
+              </span>
+            )}
+
+            {onOpenSmartGenerator && (
+              <button
+                onClick={onOpenSmartGenerator}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white text-xs font-black transition-all cursor-pointer shadow-md border border-purple-400"
+                title="فتح معالج التوليد الآلي والعادل للجدول المدرسي ومنع تضارب المدرسين"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                <span>المولّد الذكي للجدول 🪄</span>
+              </button>
+            )}
+
+            <button
+              onClick={handleUploadScheduleToCloud}
+              disabled={isUploadingSchedule}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-700 hover:from-blue-600 hover:to-indigo-600 text-white text-xs font-black transition-all cursor-pointer shadow-md border border-blue-400/40 disabled:opacity-50"
+              title="رفع وحفظ خريطة جدول الحصص في السحابة لتصل لتطبيقات المدرسين فوراً"
+            >
+              {isUploadingSchedule ? (
+                <Loader2 className="w-4 h-4 text-amber-300 animate-spin" />
+              ) : (
+                <CloudUpload className="w-4 h-4 text-amber-300" />
+              )}
+              <span>{isUploadingSchedule ? 'جاري الرفع السحابي...' : 'حفظ ورفع الجدول للسحابة 📤'}</span>
+            </button>
+
             <button
               onClick={() => setShowSettingsModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-amber-400 text-xs font-bold transition-colors cursor-pointer shadow border border-slate-700"
@@ -436,33 +529,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     <td className="p-0.5 align-middle bg-[#e6f4f1]">
                       <div className="px-1.5 py-1.5 rounded-xl border-2 border-slate-300 bg-white flex items-center justify-center gap-1 shadow-xs min-h-[56px]">
                         <button
-                          onClick={() => {
-                            const newSubject = prompt('تغيير مادة الحصة لجميع الحصص بالصف أو صف محدد؟ أدخل اسم المادة:');
-                            if (newSubject) {
-                              setScheduleMap(prev => {
-                                const dayRows = prev[selectedDay] || [];
-                                return {
-                                  ...prev,
-                                  [selectedDay]: dayRows.map(r => r.id === row.id ? {
-                                    ...r,
-                                    lessons: {
-                                      ...r.lessons,
-                                      lesson1: { ...r.lessons.lesson1, subject: newSubject }
-                                    }
-                                  } : r)
-                                };
-                              });
-                            }
-                          }}
-                          className="p-1 rounded-lg text-slate-600 hover:bg-slate-200"
-                          title="ضبط سريع"
+                          onClick={() => handleEditCell(row.id, 'lesson1')}
+                          className="p-1 rounded-lg text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                          title="تعديل حصص هذا الصف"
                         >
                           <SlidersHorizontal className="w-3.5 h-3.5" />
                         </button>
 
                         <button
                           onClick={() => handleDeleteRow(row.id)}
-                          className="p-1 rounded-lg text-rose-600 hover:bg-rose-100 transition-colors"
+                          className="p-1 rounded-lg text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
                           title="حذف هذا الصف"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -480,11 +556,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
       {/* Teacher Load / Quota Section (نصاب كل مدرس أو معلم - مخفي في الطباعة بطلب المدير) */}
       <div className="bg-white rounded-2xl border-2 border-sky-300 p-5 shadow-lg no-print">
-        <div className="flex items-center gap-2 mb-4 border-b border-sky-200 pb-3">
-          <Sparkles className="w-5 h-5 text-sky-600" />
-          <h3 className="text-base font-black text-slate-900">
-            نصاب المدرسين اليومي لمدرسين المدرسة (عدد الحصص اليومية - {selectedDay})
-          </h3>
+        <div className="flex items-center justify-between gap-2 mb-4 border-b border-sky-200 pb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-sky-600" />
+            <h3 className="text-base font-black text-slate-900">
+              نصاب المدرسين اليومي (عدد الحصص اليومية - {selectedDay})
+            </h3>
+          </div>
+          <span className="text-xs font-black text-sky-700 bg-sky-50 px-3 py-1 rounded-full border border-sky-200">
+            {Object.keys(teacherLoadMap).length} مدرس نشط اليوم
+          </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
@@ -502,6 +583,48 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 </div>
               </div>
             ))
+          )}
+        </div>
+      </div>
+
+      {/* Weekly Teacher Quota Section (نصاب الأسبوع الكلي) */}
+      <div className="bg-white rounded-2xl border-2 border-indigo-300 p-5 shadow-lg no-print">
+        <div className="flex items-center justify-between gap-2 mb-4 border-b border-indigo-200 pb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-900">
+                نصاب الأسبوع الكلي للمدرسين (إجمالي الحصص الأسبوعية)
+              </h3>
+              <p className="text-xs text-slate-500 font-bold">
+                مجموع الحصص الأسبوعية الفعلية لكل مدرس في الجدول الأسبوعي كاملاً (أحد إلى خميس)
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-black text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200">
+            {Object.keys(weeklyTeacherLoadMap).length} مدرس مسند بالجدول الأسبوعي
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {Object.entries(weeklyTeacherLoadMap).length === 0 ? (
+            <div className="col-span-full text-xs text-slate-500 font-bold">لا توجد حصص مسندة للمدرسين في الجدول الأسبوعي.</div>
+          ) : (
+            Object.entries(weeklyTeacherLoadMap)
+              .sort((a, b) => b[1] - a[1])
+              .map(([teacher, count]) => (
+                <div key={teacher} className="p-3 rounded-xl bg-indigo-50/40 border-2 border-indigo-200 flex flex-col justify-between shadow-sm hover:bg-indigo-50 transition">
+                  <span className="text-xs font-black text-slate-900 truncate">{teacher}</span>
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-indigo-100">
+                    <span className="text-[11px] text-slate-600 font-bold">نصاب الأسبوع:</span>
+                    <span className="text-sm font-black text-indigo-900 bg-indigo-100 px-2.5 py-0.5 rounded-full border border-indigo-300">
+                      {count} حصة
+                    </span>
+                  </div>
+                </div>
+              ))
           )}
         </div>
       </div>
@@ -823,23 +946,48 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 ))}
               </div>
 
-              <div className="pt-3 border-t space-y-2">
+              <div className="pt-3 border-t space-y-3">
                 <p className="font-bold text-slate-700 dark:text-slate-300">
-                  2. إعادة تخصيص الأستاذ لجميع الشعب في اليوم الحالي ({selectedDay}):
+                  2. إعادة تخصيص واستبدال الأستاذ في جدول اليوم ({selectedDay}):
                 </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1">اسم الأستاذ الحالي للبحث عنه:</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: أ. أحمد"
+                      value={replaceOldTeacher}
+                      onChange={e => setReplaceOldTeacher(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 mb-1">اسم الأستاذ البديل الجديد:</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: أ. حيدر"
+                      value={replaceNewTeacher}
+                      onChange={e => setReplaceNewTeacher(e.target.value)}
+                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-xs"
+                    />
+                  </div>
+                </div>
+
                 <button
                   onClick={() => {
-                    const oldT = prompt('أدخل اسم الأستاذ القديم للبحث عنه واستبداله:');
-                    if (!oldT) return;
-                    const newT = prompt('أدخل اسم الأستاذ الجديد:');
-                    if (!newT) return;
+                    const oldT = replaceOldTeacher.trim();
+                    const newT = replaceNewTeacher.trim();
+                    if (!oldT || !newT) {
+                      setReplaceStatus('يرجى إدخال اسم الأستاذ الحالي والجديد أولاً.');
+                      return;
+                    }
 
                     setScheduleMap(prev => {
                       const dayRows = prev[selectedDay] || [];
                       const updated = dayRows.map(row => {
                         const newLessons = { ...row.lessons };
                         (Object.keys(newLessons) as Array<keyof typeof newLessons>).forEach(k => {
-                          if (newLessons[k].teacherName === oldT) {
+                          if (newLessons[k].teacherName && newLessons[k].teacherName.includes(oldT)) {
                             newLessons[k] = { ...newLessons[k], teacherName: newT };
                           }
                         });
@@ -848,12 +996,21 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                       return { ...prev, [selectedDay]: updated };
                     });
 
-                    alert(`تم استبدال الأستاذ "${oldT}" بالأستاذ "${newT}" في جدول يوم ${selectedDay} بنجاح!`);
+                    setReplaceStatus(`تم استبدال الأستاذ "${oldT}" بـ "${newT}" بنجاح! ✓`);
+                    setReplaceOldTeacher('');
+                    setReplaceNewTeacher('');
+                    setTimeout(() => setReplaceStatus(''), 3500);
                   }}
-                  className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black transition-all shadow"
+                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black transition-all shadow cursor-pointer text-xs"
                 >
-                  استبدال مدرس بمدرس آخر بالجدول الحالي
+                  استبدال الأستاذ في جدول اليوم الحالي ✓
                 </button>
+
+                {replaceStatus && (
+                  <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold rounded-lg text-center">
+                    {replaceStatus}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -873,75 +1030,135 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       <PrintPreviewModal
         isOpen={showPrintPreviewModal}
         onClose={() => setShowPrintPreviewModal(false)}
-        title={`معاينة الجدول الدراسي ورقية - يوم ${selectedDay}`}
-        subtitle="معاينة الجدول والدروس والحصص قبل الطباعة وتدقيق الأخطاء والشكل"
+        title={`جدول الحصص والتوقيتات - يوم (${selectedDay})`}
+        subtitle="معاينة الجدول الدراسي والتوقيتات للطباعة الرسمية"
         config={config}
         defaultOrientation="landscape"
+        hideOfficialHeader={true}
+        hideFooterSignatures={true}
+        hideWatermark={true}
+        hideSeal={true}
       >
-        <div className="space-y-4 font-amiri dir-rtl">
+        <div className="space-y-3 font-tajawal dir-rtl text-slate-900">
           
-          <div className="text-center bg-slate-100 p-3 rounded-xl border border-slate-300">
-            <h3 className="text-base font-black text-slate-900">
-              الجدول الدراسي اليومي - يوم ({selectedDay})
-            </h3>
-            <p className="text-xs text-slate-700 font-tajawal mt-1 font-bold">
-              بداية الدوام الرسمي: {config.schoolStartHour} صباحاً | مدة الحصه: {config.lessonDurationMinutes} دقيقة | مدة الاستراحة: {config.breakDurationMinutes} دقائق
-            </p>
+          {/* Top Title Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between bg-gradient-to-r from-sky-900 via-indigo-900 to-sky-900 text-white px-4 py-2.5 rounded-2xl border-2 border-sky-600 shadow-sm gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-base md:text-lg font-black text-amber-300">{config.schoolName || 'المدرسة النموذجية'}</span>
+              <span className="text-xs text-sky-200 font-bold">| جدول توزيع الحصص والتوقيتات الأسبوعي - يوم ({selectedDay})</span>
+            </div>
+            <div className="text-xs text-sky-100 font-mono font-bold bg-white/10 px-3 py-1 rounded-xl border border-white/20">
+              بداية الدوام: <span className="text-amber-300 font-black">{config.schoolStartHour}</span> | الحصة: <span className="text-amber-300 font-black">{config.lessonDurationMinutes} د</span> | الفرصة: <span className="text-pink-300 font-black">{config.breakDurationMinutes} د</span>
+            </div>
           </div>
 
-          {/* Table Preview */}
-          <div className="border border-slate-400 rounded-lg overflow-hidden">
-            <table className="w-full text-center border-collapse text-xs">
+          {/* Table Matching the Live Schedule Style Exactly */}
+          <div className="overflow-x-auto bg-[#e6f4f1] p-2 rounded-2xl border-2 border-sky-300 shadow-sm">
+            <table className="w-full text-center border-separate border-spacing-1 text-xs">
               <thead>
-                <tr className="bg-slate-800 text-white font-black">
-                  <th className="py-2.5 px-2 border-r border-slate-600">الصف والشعبة</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الأول</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الثاني</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الثالث</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الرابع</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600">الدرس الخامس</th>
-                  <th className="py-2.5 px-2 border-r border-slate-600 bg-slate-700">فرصة</th>
-                  <th className="py-2.5 px-2">الدرس السادس</th>
+                {/* Row 1: Timings Header */}
+                <tr className="bg-sky-900 text-white text-xs font-mono">
+                  <th className="py-2 px-2 rounded-xl bg-sky-950 text-amber-300 font-sans font-black w-36 text-center">
+                    توقيت الدرس ←
+                  </th>
+                  {slotTimings.map((st, i) => (
+                    <th 
+                      key={i} 
+                      className={`py-2 px-1 rounded-xl font-black text-[11px] ${
+                        st.type === 'break' ? 'bg-pink-600 text-white' : 'bg-sky-800 text-white'
+                      }`}
+                    >
+                      {st.start} - {st.end}
+                    </th>
+                  ))}
+                </tr>
+
+                {/* Row 2: Columns Titles with Distinct Colors */}
+                <tr className="text-xs font-black">
+                  <th className="py-2 px-2 rounded-xl bg-sky-800 text-amber-200">الصفوف والشعب</th>
+                  <th className="py-2 px-1 rounded-xl bg-sky-200 text-sky-950">الدرس الأول</th>
+                  <th className="py-2 px-1 rounded-xl bg-pink-200 text-pink-950 text-[11px]">{config.breakDurationMinutes} د</th>
+                  <th className="py-2 px-1 rounded-xl bg-cyan-200 text-cyan-950">الدرس الثاني</th>
+                  <th className="py-2 px-1 rounded-xl bg-pink-200 text-pink-950 text-[11px]">{config.breakDurationMinutes} د</th>
+                  <th className="py-2 px-1 rounded-xl bg-amber-200 text-amber-950">الدرس الثالث</th>
+                  <th className="py-2 px-1 rounded-xl bg-pink-200 text-pink-950 text-[11px]">{config.breakDurationMinutes} د</th>
+                  <th className="py-2 px-1 rounded-xl bg-emerald-200 text-emerald-950">الدرس الرابع</th>
+                  <th className="py-2 px-1 rounded-xl bg-pink-200 text-pink-950 text-[11px]">{config.breakDurationMinutes} د</th>
+                  <th className="py-2 px-1 rounded-xl bg-indigo-200 text-indigo-950">الدرس الخامس</th>
+                  <th className="py-2 px-1 rounded-xl bg-pink-200 text-pink-950 text-[11px]">{config.breakDurationMinutes} د</th>
+                  <th className="py-2 px-1 rounded-xl bg-rose-200 text-rose-950">الدرس السادس</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-300">
+
+              <tbody className="text-xs">
                 {currentDayRows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="py-6 text-center text-slate-500 font-bold">
+                    <td colSpan={12} className="py-8 text-center text-slate-500 font-bold bg-white rounded-xl">
                       لا توجد حصص مضافة لهذا اليوم
                     </td>
                   </tr>
                 ) : (
                   currentDayRows.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50">
-                      <td className="py-2 px-2 border-r border-slate-300 font-black text-slate-900 bg-slate-100">
-                        <div>{row.grade} ({row.section})</div>
-                        <div className="text-[10px] text-slate-600 font-normal">مرشد: {cleanTeacherName(row.teacherInCharge)}</div>
+                    <tr key={row.id}>
+                      {/* Class & Section */}
+                      <td className="p-0.5 align-middle bg-[#e6f4f1]">
+                        <div className="px-2.5 py-1.5 rounded-xl border-2 border-sky-300 bg-white font-black text-slate-900 text-right shadow-2xs min-h-[54px] flex flex-col justify-center">
+                          <span className="text-sky-950 font-black text-xs block leading-tight">
+                            {row.grade} ({row.section})
+                          </span>
+                          <span className="text-[10px] text-slate-600 font-bold block mt-0.5">
+                            مرشد: {cleanTeacherName(row.teacherInCharge)}
+                          </span>
+                        </div>
                       </td>
 
-                      {['lesson1', 'lesson2', 'lesson3', 'lesson4', 'lesson5', 'lesson6'].map((lKey, idx) => (
-                        <React.Fragment key={lKey}>
-                          <td className="py-2 px-1 border-r border-slate-300 font-bold">
-                            {row.lessons[lKey as keyof typeof row.lessons]?.isOff ? (
-                              <span className="text-rose-600 font-normal">شاغرة</span>
-                            ) : (
-                              <div>
-                                <div className="text-slate-950 font-black">{row.lessons[lKey as keyof typeof row.lessons]?.subject || 'مادة'}</div>
-                                <div className="text-[10px] text-slate-700">{cleanTeacherName(row.lessons[lKey as keyof typeof row.lessons]?.teacherName)}</div>
+                      {/* 6 Lessons & 5 Breaks */}
+                      {['lesson1', 'lesson2', 'lesson3', 'lesson4', 'lesson5', 'lesson6'].map((lKey, idx) => {
+                        const cell = row.lessons[lKey as keyof typeof row.lessons];
+                        const isVacant = cell?.isOff || cell?.subject === 'شاغر / نشاط حر' || cell?.teacherName === 'شاغر';
+
+                        return (
+                          <React.Fragment key={lKey}>
+                            <td className="p-0.5 align-middle bg-[#e6f4f1]">
+                              <div className={`px-1.5 py-1 rounded-xl border-2 text-center min-h-[54px] flex flex-col justify-center items-center shadow-2xs ${
+                                cell?.isOff 
+                                  ? 'bg-rose-50 text-rose-900 border-rose-300 font-bold' 
+                                  : isVacant
+                                  ? 'bg-slate-100/90 text-slate-500 border-dashed border-slate-300 font-bold'
+                                  : 'bg-white text-slate-900 border-slate-300'
+                              }`}>
+                                {cell?.isOff ? (
+                                  <span className="text-[10px] font-black text-rose-700 bg-rose-200/80 px-2 py-0.5 rounded-md border border-rose-300">
+                                    شاغرة
+                                  </span>
+                                ) : isVacant ? (
+                                  <span className="text-[11px] font-bold text-slate-500">
+                                    شاغر
+                                  </span>
+                                ) : (
+                                  <div className="space-y-0.5 w-full">
+                                    <span className="font-black text-xs block leading-tight text-slate-900 truncate">
+                                      {cell?.subject || 'مادة'}
+                                    </span>
+                                    <span className="text-[10px] font-bold block leading-tight text-slate-600 truncate">
+                                      {cleanTeacherName(cell?.teacherName)}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </td>
-                          {idx < 5 && (
-                            <td className="py-2 px-1 border-r border-slate-300 bg-slate-100 text-[10px] text-slate-500 font-bold">
-                              ـ
                             </td>
-                          )}
-                        </React.Fragment>
-                      ))}
+
+                            {/* Break column */}
+                            {idx < 5 && (
+                              <td className="p-0.5 align-middle bg-[#e6f4f1] text-center w-8">
+                                <div className="py-1 rounded-xl bg-pink-100 text-pink-950 border border-pink-300 text-[10px] font-black flex items-center justify-center min-h-[54px]">
+                                  {config.breakDurationMinutes}د
+                                </div>
+                              </td>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </tr>
                   ))
                 )}
@@ -949,9 +1166,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </table>
           </div>
 
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-300 text-xs font-tajawal text-slate-700 flex justify-between items-center">
-            <span>عدد الصفوف بالجدول: <strong>{currentDayRows.length} صف وشعبة</strong></span>
-            <span>حالة الجدول: <strong className="text-emerald-700 font-black">مكتمل ومدقق 100%</strong></span>
+          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-300 text-xs font-tajawal text-slate-700 flex justify-between items-center">
+            <span>عدد الشعب في الجدول: <strong>{currentDayRows.length} شعبة</strong></span>
+            <span>حالة الجدول: <strong className="text-emerald-700 font-black">مكتمل ومدقق بنسبة 100% ✓</strong></span>
           </div>
 
         </div>

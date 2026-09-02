@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StaffMember, AppConfig } from '../types';
+import React, { useState, useMemo, useCallback } from 'react';
+import { StaffMember, AppConfig, DayScheduleMap } from '../types';
 import { parseExcelFileForStaff } from '../utils/parser';
 import { 
   Users, 
@@ -20,19 +20,346 @@ import {
   Printer,
   Upload,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  BookOpen,
+  Clock,
+  ChevronDown,
+  Trash2,
+  Edit3,
+  Save
 } from 'lucide-react';
 
 interface StaffRegisterViewProps {
   staffList: StaffMember[];
   setStaffList: React.Dispatch<React.SetStateAction<StaffMember[]>>;
   config: AppConfig;
+  scheduleMap?: DayScheduleMap;
 }
+
+export const JOB_TITLE_OPTIONS = [
+  'مدرس',
+  'معلم',
+  'معاون مدير',
+  'مدير',
+  'مرشد تربوي',
+  'أمين مكتبة',
+  'كاتب',
+  'موظف خدمة',
+  'مشرف'
+];
+
+import { canonicalSubject, matchStaffWithScheduleCell, MASTER_SUBJECTS_LIST } from '../utils/subjectHelper';
+import { getSupabase } from '../utils/supabaseClient';
+
+export const ALL_SUBJECTS = [
+  'مفرغ إدارياً / إدارة',
+  'التربية الإسلامية',
+  'اللغة العربية',
+  'اللغة الإنكليزية',
+  'الرياضيات',
+  'الاجتماعيات',
+  'الأحياء',
+  'الكيمياء',
+  'الفيزياء',
+  'الحاسوب',
+  'التربية الرياضية',
+  'التربية الفنية',
+  'التربية الأخلاقية',
+  'العلوم'
+];
+
+// Component: Isolated AddStaffModal to prevent parent re-renders while typing
+interface AddStaffModalProps {
+  onClose: () => void;
+  onAdd: (newMember: StaffMember) => void;
+}
+
+const AddStaffModal: React.FC<AddStaffModalProps> = ({ onClose, onAdd }) => {
+  const [formData, setFormData] = useState({
+    jobTitle: 'مدرس',
+    status: 'مستمر في الملاك' as StaffMember['status'],
+    firstName: '',
+    secondName: '',
+    thirdName: '',
+    titleName: '',
+    specialization: 'اللغة العربية',
+    classesTaughtText: 'الصف الأول',
+    phoneNumber: '',
+    nationalCardNumber: '',
+    academicDegree: 'بكالوريوس',
+    teachingQuota: 18
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.firstName.trim() || !formData.secondName.trim()) {
+      alert('يرجى إدخال الاسم الأول واسم الأب والجد على الأقل');
+      return;
+    }
+
+    const isZero = ['مدير', 'معاون مدير', 'مرشد تربوي', 'أمين مكتبة', 'كاتب', 'موظف خدمة', 'مشرف'].includes(formData.jobTitle) || formData.teachingQuota === 0;
+    const finalQuota = isZero ? 0 : formData.teachingQuota;
+    const spec = canonicalSubject(formData.specialization || 'اللغة العربية');
+    const actualSub = isZero ? 'مفرغ إدارياً / إدارة' : spec;
+    const classParts = formData.classesTaughtText.split(/[،,]/).map(c => c.trim()).filter(Boolean);
+
+    const newMember: StaffMember = {
+      id: `stf-manual-${Date.now()}`,
+      jobTitle: formData.jobTitle,
+      firstName: formData.firstName.trim(),
+      secondName: formData.secondName.trim(),
+      thirdName: formData.thirdName.trim(),
+      fourthName: '',
+      titleName: formData.titleName.trim(),
+      motherName: 'زينب كاظم',
+      birthDay: '01',
+      birthMonth: '01',
+      birthYear: '1985',
+      nationalCardNumber: formData.nationalCardNumber.trim() || `${Date.now()}`,
+      rationCardNumber: '',
+      rationCenterNumber: '304',
+      spouseOccupation: 'ربة بيت',
+      phoneNumber: formData.phoneNumber.trim(),
+      specialization: spec,
+      actualSubjectTaught: actualSub,
+      firstDirectDay: '01',
+      firstDirectMonth: '10',
+      firstDirectYear: '2010',
+      hasMasterDegree: false,
+      schoolDirectDay: '01',
+      schoolDirectMonth: '10',
+      schoolDirectYear: '2018',
+      academicDegree: formData.academicDegree.trim() || 'بكالوريوس',
+      yearsOfService: 10,
+      status: formData.status,
+      appointmentOrderNo: '',
+      firstDirectOrderNo: '',
+      functionalTitle: 'مدرس أول',
+      residenceDistrict: 'بعقوبة - المركز',
+      nearestLandmark: '',
+      residenceCardNumber: '',
+      salaryAccountNumber: '',
+      classesTaught: isZero ? [] : (classParts.length > 0 ? classParts : ['الصف الأول']),
+      sectionsTaughtCount: isZero ? 0 : 3,
+      teachingQuota: finalQuota
+    };
+
+    onAdd(newMember);
+  };
+
+  return (
+    <div 
+      onClick={onClose}
+      className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+    >
+      <form 
+        onClick={e => e.stopPropagation()}
+        onSubmit={handleSubmit} 
+        className="bg-white border-2 border-purple-400 rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl space-y-4 my-8 max-h-[90vh] overflow-y-auto text-slate-900"
+      >
+        <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+          <h3 className="text-base font-black text-purple-950 flex items-center gap-2">
+            <Plus className="w-5 h-5 text-purple-600" />
+            <span>إضافة منتسب جديد بكادر المدرسة</span>
+          </h3>
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="p-1 rounded-lg hover:bg-slate-100 text-slate-700 cursor-pointer"
+            title="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <label className="block font-black text-slate-800 mb-1">الوظيفة بالمدرسة:</label>
+            <select 
+              value={formData.jobTitle || 'مدرس'} 
+              onChange={e => {
+                const title = e.target.value;
+                const isZero = ['مدير', 'معاون مدير', 'مرشد تربوي', 'أمين مكتبة', 'كاتب', 'موظف خدمة', 'مشرف'].includes(title);
+                setFormData(p => ({ 
+                  ...p, 
+                  jobTitle: title,
+                  teachingQuota: isZero ? 0 : (p.teachingQuota === 0 ? 18 : p.teachingQuota)
+                }));
+              }} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none cursor-pointer"
+            >
+              {JOB_TITLE_OPTIONS.map(title => (
+                <option key={title} value={title}>{title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">الموقف / حالة الملاك:</label>
+            <select 
+              value={formData.status || 'مستمر في الملاك'} 
+              onChange={e => setFormData(p => ({ ...p, status: e.target.value as StaffMember['status'] }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none cursor-pointer"
+            >
+              <option value="مستمر في الملاك">مستمر في الملاك</option>
+              <option value="مجاز إجازة طويلة">مجاز إجازة طويلة</option>
+              <option value="منسب إلى المدرسة">منسب إلى المدرسة</option>
+              <option value="منسب خارج المدرسة">منسب خارج المدرسة</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">الاسم الأول (مطلوب):</label>
+            <input 
+              type="text" 
+              required 
+              placeholder="مثال: أحمد"
+              value={formData.firstName} 
+              onChange={e => setFormData(p => ({ ...p, firstName: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">اسم الأب والجد (مطلوب):</label>
+            <input 
+              type="text" 
+              required 
+              placeholder="مثال: محمد علي"
+              value={formData.secondName} 
+              onChange={e => setFormData(p => ({ ...p, secondName: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">اسم والد الجد (الرابع):</label>
+            <input 
+              type="text" 
+              placeholder="مثال: حسن"
+              value={formData.thirdName} 
+              onChange={e => setFormData(p => ({ ...p, thirdName: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">اللقب / العشيرة:</label>
+            <input 
+              type="text" 
+              placeholder="مثال: الجبوري"
+              value={formData.titleName} 
+              onChange={e => setFormData(p => ({ ...p, titleName: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">الاختصاص الأكاديمي / المادة:</label>
+            <select 
+              value={formData.specialization || 'اللغة العربية'} 
+              onChange={e => setFormData(p => ({ ...p, specialization: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none cursor-pointer"
+            >
+              {ALL_SUBJECTS.map(subj => (
+                <option key={subj} value={subj}>{subj}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">الصفوف والشعب المكلف بها:</label>
+            <input 
+              type="text" 
+              placeholder="مثال: الأول أ، الثاني ب"
+              value={formData.classesTaughtText} 
+              onChange={e => setFormData(p => ({ ...p, classesTaughtText: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">رقم الهاتف:</label>
+            <input 
+              type="text" 
+              placeholder="0770xxxxxxx"
+              value={formData.phoneNumber} 
+              onChange={e => setFormData(p => ({ ...p, phoneNumber: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold font-mono focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">رقم البطاقة الوطنية:</label>
+            <input 
+              type="text" 
+              placeholder="19xxxxxxxxxx"
+              value={formData.nationalCardNumber} 
+              onChange={e => setFormData(p => ({ ...p, nationalCardNumber: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold font-mono focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div>
+            <label className="block font-black text-slate-800 mb-1">الشهادة والتحصيل الدراسي:</label>
+            <input 
+              type="text" 
+              placeholder="بكالوريوس / ماجستير"
+              value={formData.academicDegree} 
+              onChange={e => setFormData(p => ({ ...p, academicDegree: e.target.value }))} 
+              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none" 
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block font-black text-slate-800 mb-1">نصاب الحصص الأسبوعي:</label>
+            <div className="flex items-center gap-2">
+              <input 
+                type="number" 
+                min="0" 
+                max="40" 
+                value={formData.teachingQuota !== undefined ? formData.teachingQuota : 18} 
+                onChange={e => setFormData(p => ({ ...p, teachingQuota: Math.max(0, parseInt(e.target.value, 10) || 0) }))} 
+                className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-blue-900 font-black text-base focus:border-purple-600 focus:outline-none" 
+              />
+              <button 
+                type="button" 
+                onClick={() => setFormData(p => ({ ...p, teachingQuota: 0 }))} 
+                className="px-4 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-950 border border-purple-300 text-xs font-black whitespace-nowrap cursor-pointer"
+                title="تفريغ إداري (0 حصة)"
+              >
+                تفريغ إداري (0)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 border-2 border-slate-300 text-xs font-black transition-all cursor-pointer"
+          >
+            إلغاء التراجع
+          </button>
+          <button 
+            type="submit" 
+            className="px-6 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة وتثبيت المنتسب بالسجل ➕</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
 
 export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
   staffList,
   setStaffList,
-  config
+  config,
+  scheduleMap
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialization, setSelectedSpecialization] = useState('الكل');
@@ -42,46 +369,6 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
   const [showPrintStaffModal, setShowPrintStaffModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
-
-  // New Staff Form State
-  const [newStaff, setNewStaff] = useState<Partial<StaffMember>>({
-    jobTitle: 'مدرس',
-    firstName: '',
-    secondName: '',
-    thirdName: '',
-    fourthName: '',
-    titleName: '',
-    motherName: '',
-    birthDay: '01',
-    birthMonth: '01',
-    birthYear: '1985',
-    nationalCardNumber: '',
-    rationCardNumber: '',
-    rationCenterNumber: '304',
-    spouseOccupation: 'ربة بيت',
-    phoneNumber: '',
-    specialization: 'اللغة العربية',
-    firstDirectDay: '01',
-    firstDirectMonth: '10',
-    firstDirectYear: '2010',
-    hasMasterDegree: false,
-    schoolDirectDay: '01',
-    schoolDirectMonth: '10',
-    schoolDirectYear: '2018',
-    academicDegree: 'بكالوريوس',
-    yearsOfService: 14,
-    status: 'مستمر',
-    appointmentOrderNo: '',
-    firstDirectOrderNo: '',
-    functionalTitle: 'مدرس أول',
-    residenceDistrict: 'بعقوبة - المركز',
-    nearestLandmark: '',
-    residenceCardNumber: '',
-    salaryAccountNumber: '',
-    classesTaught: ['الصف الأول'],
-    sectionsTaughtCount: 3,
-    teachingQuota: 18
-  });
 
   // Filter Logic
   const filteredStaff = staffList.filter(s => {
@@ -219,51 +506,171 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
     }, 500);
   };
 
-  // Add Staff Member
-  const handleAddStaffSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const staffToAdd: StaffMember = {
-      id: `stf-new-${Date.now()}`,
-      jobTitle: newStaff.jobTitle || 'مدرس',
-      firstName: newStaff.firstName || 'أستاذ',
-      secondName: newStaff.secondName || 'جديد',
-      thirdName: newStaff.thirdName || 'علي',
-      fourthName: newStaff.fourthName || 'حسن',
-      titleName: newStaff.titleName || 'الزبيدي',
-      motherName: newStaff.motherName || 'فاطمة كريم',
-      birthDay: newStaff.birthDay || '01',
-      birthMonth: newStaff.birthMonth || '01',
-      birthYear: newStaff.birthYear || '1985',
-      nationalCardNumber: newStaff.nationalCardNumber || '1985000000',
-      rationCardNumber: newStaff.rationCardNumber || '1234567',
-      rationCenterNumber: newStaff.rationCenterNumber || '304',
-      spouseOccupation: newStaff.spouseOccupation || 'ربة بيت',
-      phoneNumber: newStaff.phoneNumber || '07700000000',
-      specialization: newStaff.specialization || 'اللغة العربية',
-      firstDirectDay: newStaff.firstDirectDay || '01',
-      firstDirectMonth: newStaff.firstDirectMonth || '10',
-      firstDirectYear: newStaff.firstDirectYear || '2010',
-      hasMasterDegree: !!newStaff.hasMasterDegree,
-      schoolDirectDay: newStaff.schoolDirectDay || '01',
-      schoolDirectMonth: newStaff.schoolDirectMonth || '10',
-      schoolDirectYear: newStaff.schoolDirectYear || '2018',
-      academicDegree: newStaff.academicDegree || 'بكالوريوس',
-      yearsOfService: Number(newStaff.yearsOfService || 14),
-      status: (newStaff.status as StaffMember['status']) || 'مستمر',
-      appointmentOrderNo: newStaff.appointmentOrderNo || '1000/2010',
-      firstDirectOrderNo: newStaff.firstDirectOrderNo || '2000/2010',
-      functionalTitle: newStaff.functionalTitle || 'مدرس أول',
-      residenceDistrict: newStaff.residenceDistrict || 'بعقوبة - المركز',
-      nearestLandmark: newStaff.nearestLandmark || 'قرب المدرسة',
-      residenceCardNumber: newStaff.residenceCardNumber || '123456',
-      salaryAccountNumber: newStaff.salaryAccountNumber || 'IQ98RABB012345678900',
-      classesTaught: ['الصف الأول'],
-      sectionsTaughtCount: 3,
-      teachingQuota: 18
-    };
+  // Helper: Determine if staff is administrative / zero quota role
+  const isAdministrativeOrZero = (staff: StaffMember) => {
+    const title = staff.jobTitle || '';
+    return (
+      staff.teachingQuota === 0 ||
+      staff.actualSubjectTaught === 'مفرغ إدارياً' ||
+      staff.actualSubjectTaught === 'مفرغ إدارياً / إدارة' ||
+      ['مدير', 'معاون مدير', 'مرشد تربوي', 'أمين مكتبة', 'كاتب', 'موظف خدمة', 'مشرف'].includes(title)
+    );
+  };
 
-    setStaffList(prev => [...prev, staffToAdd]);
+  // Memoized calculation of schedule metrics per staff (prevents re-render lag)
+  const staffScheduleInfo = useMemo(() => {
+    const infoMap: Record<string, { lessons: number; classes: string }> = {};
+
+    staffList.forEach(staff => {
+      const isZero = isAdministrativeOrZero(staff);
+      let count = 0;
+      const classSet = new Set<string>();
+
+      if (scheduleMap && staff.teachingQuota !== 0) {
+        Object.values(scheduleMap).forEach((dayRows: any) => {
+          if (Array.isArray(dayRows)) {
+            dayRows.forEach(row => {
+              if (row && row.lessons) {
+                Object.values(row.lessons).forEach((cell: any) => {
+                  if (cell && typeof cell === 'object' && cell.teacherName && !cell.isOff) {
+                    if (matchStaffWithScheduleCell(staff, cell.teacherName, cell.subject)) {
+                      count++;
+                      if (row.grade) {
+                        classSet.add(`${row.grade} (${row.section || 'أ'})`.trim());
+                      }
+                    }
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+
+      const assignedStr = classSet.size > 0 
+        ? Array.from(classSet).join('، ') 
+        : ((Array.isArray(staff.classesTaught) && staff.classesTaught.length > 0)
+            ? staff.classesTaught.join('، ') 
+            : (isZero ? 'مفرغ إدارياً' : ''));
+
+      infoMap[staff.id] = {
+        lessons: staff.teachingQuota === 0 ? 0 : (count > 0 ? count : (staff.teachingQuota !== undefined ? staff.teachingQuota : (isZero ? 0 : 18))),
+        classes: assignedStr
+      };
+    });
+
+    return infoMap;
+  }, [staffList, scheduleMap]);
+
+  // Handlers for immediate inline update
+  const handleJobTitleChange = (staffId: string, newJobTitle: string) => {
+    const isZeroRole = ['مدير', 'معاون مدير', 'مرشد تربوي', 'أمين مكتبة', 'كاتب', 'موظف خدمة', 'مشرف'].includes(newJobTitle);
+    setStaffList(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== staffId) return s;
+        return {
+          ...s,
+          jobTitle: newJobTitle,
+          teachingQuota: isZeroRole ? 0 : (s.teachingQuota === 0 ? 18 : s.teachingQuota),
+          actualSubjectTaught: isZeroRole && (!s.actualSubjectTaught || s.actualSubjectTaught === 'اللغة العربية') ? 'مفرغ إدارياً / إدارة' : s.actualSubjectTaught
+        };
+      });
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleQuotaChange = (staffId: string, newQuota: number) => {
+    const q = Math.max(0, newQuota);
+    setStaffList(prev => {
+      const updated = prev.map(s => s.id === staffId ? { ...s, teachingQuota: q } : s);
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleActualSubjectChange = (staffId: string, newSubject: string) => {
+    setStaffList(prev => {
+      const updated = prev.map(s => s.id === staffId ? { ...s, actualSubjectTaught: newSubject } : s);
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleClassesTaughtChange = (staffId: string, newClassesText: string) => {
+    const parts = newClassesText.split(/[،,]/).map(c => c.trim()).filter(Boolean);
+    setStaffList(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== staffId) return s;
+        return {
+          ...s,
+          classesTaught: parts.length > 0 ? parts : (newClassesText.trim() ? [newClassesText.trim()] : [])
+        };
+      });
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleStatusChange = (staffId: string, newStatus: StaffMember['status']) => {
+    setStaffList(prev => {
+      const updated = prev.map(s => s.id === staffId ? { ...s, status: newStatus } : s);
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+      const client = getSupabase(schoolId);
+      client.from('teachers').update({ status: newStatus }).eq('id', staffId).then(() => {});
+    } catch (e) {}
+  };
+
+  const handleAddNewStaff = (newMember: StaffMember) => {
+    setStaffList(prev => {
+      const updated = [newMember, ...prev];
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+
+    try {
+      const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+      const client = getSupabase(schoolId);
+      client.from('teachers').insert({
+        id: newMember.id,
+        school_id: schoolId,
+        name: `${newMember.firstName} ${newMember.secondName} ${newMember.thirdName} ${newMember.fourthName} ${newMember.titleName}`.trim(),
+        specialization: newMember.specialization,
+        quota: newMember.teachingQuota,
+        status: newMember.status,
+        raw_data: newMember
+      }).then(() => {});
+    } catch (e) {}
+
     setShowAddStaffModal(false);
+  };
+
+  const handleDeleteStaff = (staffId: string, staffName: string) => {
+    if (confirm(`هل أنت متأكد من حذف المنتسب [${staffName}] نهائياً من سجل الكادر؟`)) {
+      setStaffList(prev => {
+        const updated = prev.filter(s => s.id !== staffId);
+        localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+        return updated;
+      });
+
+      try {
+        const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+        const client = getSupabase(schoolId);
+        client.from('teachers').delete().eq('id', staffId).then(() => {});
+      } catch (e) {}
+    }
+  };
+
+  const handlePurgeAllStaff = () => {
+    if (confirm('⚠️ تحذير: هل أنت متأكد من مسح وتصفير كافة كادر التدريس بالكامل؟')) {
+      setStaffList([]);
+      localStorage.setItem('diyala_school_staff', JSON.stringify([]));
+    }
   };
 
   return (
@@ -274,13 +681,13 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-bold mb-2">
             <Users className="w-3.5 h-3.5" />
-            <span>سجل الكادر التدريسي الموحد</span>
+            <span>سجل وتوزيع الكادر التدريسي</span>
           </div>
           <h2 className="text-xl md:text-2xl font-black text-[var(--theme-text-main)]">
-            سجل الملاكات والخدمة الوظيفية للمدرسين والمعلمين
+            سجل الكادر التعليمي وتوزيع الحصص الأسبوعية
           </h2>
           <p className="text-xs text-[var(--theme-text-muted)] mt-1">
-            إجمالي الكادر التدريسي: {staffList.length} منتسب | يغطي كافة البيانات الإدارية والمالية وفق نموذج الوزارة
+            إجمالي الكادر: {staffList.length} منتسب | الحصص مستخرجة ومحسوبة من الجدول الأسبوعي حصراً
           </p>
         </div>
 
@@ -360,233 +767,513 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
         </div>
       </div>
 
-      {/* Main Staff Table View */}
-      {/* Main Staff Table View */}
+      {/* Horizontal Scroll Quick Bar & Table View */}
       <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-lg overflow-hidden">
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-center border-collapse min-w-[1100px] text-xs">
-            <thead>
-              <tr className="bg-gradient-to-r from-sky-700 via-sky-600 to-pink-600 text-white font-black border-b-2 border-sky-400 text-xs">
-                <th className="py-3.5 px-3 border-r border-slate-700 w-12 text-center whitespace-nowrap">ت</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-right whitespace-nowrap">اسم الأستاذ الكامل واللقب</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الاختصاص الدقيق</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الصفوف والشعب المكلف بها</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">النصاب</th>
-                <th className="py-3.5 px-3 border-r border-slate-700 text-center whitespace-nowrap">الملف الكامل</th>
+        
+        {/* Quick Top Scroll Strip / Control Indicator */}
+        <div className="bg-slate-100 border-b border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-700 font-bold">
+          <div className="flex items-center gap-2">
+            <span className="bg-indigo-100 text-indigo-900 px-2.5 py-0.5 rounded-md text-[11px] font-black">
+              ↔️ شريط التمرير الجانبي المباشر:
+            </span>
+            <span className="text-slate-600 hidden sm:inline">
+              يمكنك التمرير يميناً ويساراً مباشرة من أي مكان أو استخدام الأزرار:
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('staff-table-scroll-container');
+                if (el) el.scrollBy({ left: -300, behavior: 'smooth' });
+              }}
+              className="px-3 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              ⬅️ تمرير لليسار
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('staff-table-scroll-container');
+                if (el) el.scrollBy({ left: 300, behavior: 'smooth' });
+              }}
+              className="px-3 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              ➡️ تمرير لليمين
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Container with sticky headers and pinned scrollbar */}
+        <div 
+          id="staff-table-scroll-container" 
+          className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] scrollbar-thin scrollbar-thumb-sky-500"
+        >
+          <table className="w-full text-center border-collapse min-w-[1250px] text-xs">
+            <thead className="sticky top-0 z-20 shadow-md">
+              <tr className="bg-gradient-to-r from-sky-800 via-indigo-800 to-purple-800 text-white font-black border-b-2 border-indigo-400 text-xs">
+                <th className="py-3.5 px-2.5 border-r border-indigo-600 w-10 text-center whitespace-nowrap">ت</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-right whitespace-nowrap">اسم الأستاذ الرباعي واللقب</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">الموقف / الحالة</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">الاختصاص الأكاديمي</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">المادة التي يدرّسها</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap min-w-[180px]">الصفوف والشعب المكلف بها ✍️</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">عدد الحصص (من الجدول الأسبوعي)</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">الوظيفة في المدرسة</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">السجل</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-200 text-xs">
               {filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-500 font-bold">
+                  <td colSpan={9} className="py-8 text-center text-slate-500 font-bold">
                     لا توجد منتسبون مطابقون لخيارات الفلترة أو البحث الحالية.
                   </td>
                 </tr>
               ) : (
-                filteredStaff.map((staff, idx) => (
-                  <tr key={staff.id} className="hover:bg-sky-50/80 transition-colors">
-                    
-                    {/* 1. Seq */}
-                    <td className="py-3.5 px-3 border-r border-slate-200 text-center font-mono font-bold text-slate-700">
-                      {idx + 1}
-                    </td>
+                filteredStaff.map((staff, idx) => {
+                  const scheduleInfo = staffScheduleInfo[staff.id] || { lessons: staff.teachingQuota ?? 18, classes: '' };
+                  const calculatedLessons = scheduleInfo.lessons;
+                  const assignedClasses = (Array.isArray(staff.classesTaught) && staff.classesTaught.length > 0)
+                    ? staff.classesTaught.join('، ')
+                    : scheduleInfo.classes;
+                  const actualSubject = staff.actualSubjectTaught || staff.specialization || 'اللغة العربية';
+                  const isSubjectMismatch = staff.specialization && !staff.specialization.includes(actualSubject) && !actualSubject.includes(staff.specialization);
 
-                    {/* 2. Full Name & Degree */}
-                    <td className="py-3.5 px-3 border-r border-slate-200 text-right whitespace-nowrap">
-                      <span className="font-black text-slate-900 text-sm">
-                        أ. {staff.firstName} {staff.secondName} {staff.thirdName} {staff.titleName}
-                      </span>
-                    </td>
+                  return (
+                    <tr key={staff.id} className="hover:bg-sky-50/80 transition-colors">
+                      
+                      {/* 1. Seq */}
+                      <td className="py-3 px-2 border-r border-slate-200 text-center font-mono font-bold text-slate-700">
+                        {idx + 1}
+                      </td>
 
-                    {/* 3. Specialization */}
-                    <td className="py-3.5 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                      <span className="inline-block px-3 py-1 rounded-full bg-sky-100 text-sky-950 border border-sky-300 font-black text-xs">
-                        {staff.specialization}
-                      </span>
-                    </td>
+                      {/* 2. Full 4-Part Name & Title */}
+                      <td className="py-3 px-3 border-r border-slate-200 text-right whitespace-nowrap">
+                        <div className="font-black text-slate-900 text-sm">
+                          أ. {[staff.firstName, staff.secondName, staff.thirdName, staff.fourthName, staff.titleName].filter(Boolean).join(' ')}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          {staff.phoneNumber || staff.nationalCardNumber || 'بدون هاتف'}
+                        </div>
+                      </td>
 
-                    {/* 4. Classes Taught */}
-                    <td className="py-3.5 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1 font-black text-sky-950 bg-sky-100 px-2.5 py-1 rounded-lg border border-sky-300">
-                        <GraduationCap className="w-3.5 h-3.5 text-sky-700" />
-                        <span>{Array.isArray(staff.classesTaught) ? staff.classesTaught.join('، ') : 'الصف الأول أ، الثاني ب'}</span>
-                      </div>
-                    </td>
+                      {/* 3. Status (الموقف / الحالة: مستمر، مجاز، منسب) */}
+                      <td className="py-2.5 px-2 border-r border-slate-200 text-center whitespace-nowrap">
+                        <select
+                          value={staff.status || 'مستمر في الملاك'}
+                          onChange={(e) => handleStatusChange(staff.id, e.target.value as StaffMember['status'])}
+                          className={`px-2.5 py-1.5 rounded-xl font-black text-[11px] border-2 shadow-xs cursor-pointer focus:outline-none transition-all ${
+                            staff.status === 'مجاز إجازة طويلة'
+                              ? 'bg-amber-100 text-amber-950 border-amber-400'
+                              : staff.status === 'منسب إلى المدرسة'
+                              ? 'bg-sky-100 text-sky-950 border-sky-400'
+                              : staff.status === 'منسب خارج المدرسة'
+                              ? 'bg-purple-100 text-purple-950 border-purple-400'
+                              : 'bg-emerald-100 text-emerald-950 border-emerald-400'
+                          }`}
+                          title="تعديل الموقف وحالة الملاك (مستمر، مجاز، منسب)"
+                        >
+                          <option value="مستمر في الملاك">مستمر في الملاك</option>
+                          <option value="مجاز إجازة طويلة">مجاز إجازة طويلة</option>
+                          <option value="منسب إلى المدرسة">منسب إلى المدرسة</option>
+                          <option value="منسب خارج المدرسة">منسب خارج المدرسة</option>
+                        </select>
+                      </td>
 
-                    {/* 5. Quota */}
-                    <td className="py-3.5 px-3 border-r border-slate-200 text-center whitespace-nowrap">
-                      <span className="px-2.5 py-1 rounded-full bg-pink-100 text-pink-950 border border-pink-300 font-black text-xs">
-                        {staff.teachingQuota} حصة
-                      </span>
-                    </td>
+                      {/* 4. Specialization */}
+                      <td className="py-3 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                        <span className="inline-block px-2.5 py-1 rounded-full bg-slate-100 text-slate-800 border border-slate-300 font-black text-xs">
+                          {staff.specialization || 'عام'}
+                        </span>
+                      </td>
 
-                    {/* 6. Action Button */}
-                    <td className="py-2 px-3 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => setSelectedStaffForDetail(staff)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
-                        title="فتح سجل التفاصيل الكاملة والأوامر الإدارية"
-                      >
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        <span>السجل</span>
-                      </button>
-                    </td>
+                      {/* 5. Actual Subject Taught (Dropdown) */}
+                      <td className="py-2.5 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1">
+                          <select
+                            value={actualSubject}
+                            onChange={(e) => handleActualSubjectChange(staff.id, e.target.value)}
+                            className={`px-2.5 py-1.5 rounded-lg font-bold text-xs border-2 shadow-xs cursor-pointer focus:outline-none transition-all ${
+                              isSubjectMismatch 
+                                ? 'bg-amber-50 text-amber-950 border-amber-400' 
+                                : 'bg-sky-50 text-sky-950 border-sky-300'
+                            }`}
+                            title={isSubjectMismatch ? 'تنبيه: المادة المدرّسة تختلف عن الاختصاص الأصلي' : 'المادة المسندة للمدرس'}
+                          >
+                            {ALL_SUBJECTS.map(subj => (
+                              <option key={subj} value={subj}>{subj}</option>
+                            ))}
+                          </select>
+                          {isSubjectMismatch && (
+                            <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1 py-0.5 rounded border border-amber-300" title="مخالف للاختصاص">
+                              مغاير
+                            </span>
+                          )}
+                        </div>
+                      </td>
 
-                  </tr>
-                ))
+                      {/* 6. Classes & Sections Taught (Directly Editable) */}
+                      <td className="py-2 px-2 border-r border-slate-200 text-center whitespace-nowrap min-w-[190px]">
+                        <div className="flex items-center gap-1 bg-indigo-50/60 p-1 rounded-xl border border-indigo-200">
+                          <GraduationCap className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                          <input
+                            type="text"
+                            value={assignedClasses}
+                            onChange={(e) => handleClassesTaughtChange(staff.id, e.target.value)}
+                            placeholder="مثال: الأول أ، الثاني ب"
+                            className="w-full p-1.5 rounded-lg border border-indigo-300 bg-white text-indigo-950 font-bold text-xs focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
+                            title="تعديل الصفوف والشعب المكلف بها المدرس مباشرة (افصل بفاصلة)"
+                          />
+                        </div>
+                      </td>
+
+                      {/* 7. Quota (From Weekly Schedule or Direct Override) */}
+                      <td className="py-2 px-2 border-r border-slate-200 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            max="40"
+                            value={staff.teachingQuota !== undefined ? staff.teachingQuota : calculatedLessons}
+                            onChange={(e) => handleQuotaChange(staff.id, parseInt(e.target.value, 10) || 0)}
+                            className={`w-14 text-center py-1 rounded-lg font-mono font-black text-xs border-2 shadow-xs transition-all ${
+                              (staff.teachingQuota === 0 || (staff.teachingQuota === undefined && calculatedLessons === 0))
+                                ? 'bg-purple-100 text-purple-950 border-purple-400 font-black'
+                                : 'bg-emerald-50 text-emerald-950 border-emerald-300'
+                            }`}
+                            title="تعديل عدد الحصص الأسبوعية (اكتب 0 للمدير أو المعاون المفرغ)"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleQuotaChange(staff.id, staff.teachingQuota === 0 ? 18 : 0)}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer border ${
+                              staff.teachingQuota === 0
+                                ? 'bg-purple-700 text-white border-purple-800'
+                                : 'bg-slate-100 hover:bg-purple-100 text-slate-700 border-slate-300'
+                            }`}
+                            title="تفريغ إداري (0 حصة) بنقرة واحدة"
+                          >
+                            {staff.teachingQuota === 0 ? 'مفرغ 0' : 'تفريغ 0'}
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* 8. Job Title (Dropdown) */}
+                      <td className="py-2.5 px-3 border-r border-slate-200 text-center whitespace-nowrap">
+                        <select
+                          value={staff.jobTitle || 'مدرس'}
+                          onChange={(e) => handleJobTitleChange(staff.id, e.target.value)}
+                          className="px-2.5 py-1.5 rounded-lg bg-purple-50 text-purple-950 border-2 border-purple-300 font-bold text-xs shadow-xs cursor-pointer focus:outline-none focus:border-purple-500"
+                        >
+                          {JOB_TITLE_OPTIONS.map(title => (
+                            <option key={title} value={title}>{title}</option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {/* 9. Action Buttons */}
+                      <td className="py-2 px-3 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedStaffForDetail(staff)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs shadow-xs transition-all cursor-pointer"
+                            title="تعديل وفتح سجل التفاصيل الكاملة للأستاذ"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>تعديل ✏️</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteStaff(staff.id, `${staff.firstName} ${staff.secondName}`)}
+                            className="p-1.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white border border-rose-300 font-bold text-xs shadow-xs transition-all cursor-pointer"
+                            title="حذف المنتسب نهائياً من السجل"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal 1: Full Expandable Staff Detail (All ~30 Iraqi fields) */}
+      {/* Modal 1: Full Expandable Staff Detail (Editable ~30 Iraqi fields) */}
       {selectedStaffForDetail && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-2xl p-6 max-w-3xl w-full shadow-2xl space-y-5 my-8">
-            <div className="flex items-center justify-between border-b pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border-2 border-purple-400 rounded-3xl p-6 md:p-8 max-w-3xl w-full shadow-2xl space-y-5 my-8 text-slate-900">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <Briefcase className="w-6 h-6 text-purple-600" />
+                <Briefcase className="w-6 h-6 text-purple-700" />
                 <div>
-                  <h3 className="text-lg font-black text-[var(--theme-text-main)]">
-                    سجل الخدمة والبيانات الرسمية الكاملة للمنتسب
+                  <h3 className="text-lg font-black text-purple-950">
+                    تعديل وسجل الخدمة والبيانات الرسمية للمنتسب
                   </h3>
-                  <p className="text-xs text-[var(--theme-text-muted)]">
+                  <p className="text-xs text-slate-600 font-bold">
                     {selectedStaffForDetail.firstName} {selectedStaffForDetail.secondName} {selectedStaffForDetail.thirdName} {selectedStaffForDetail.fourthName} {selectedStaffForDetail.titleName}
                   </p>
                 </div>
               </div>
-              <button onClick={() => setSelectedStaffForDetail(null)} className="p-1 rounded-lg hover:bg-slate-100">
+              <button onClick={() => setSelectedStaffForDetail(null)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-700 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Structured Iraqi Administrative Fields */}
-            <div className="space-y-4 text-xs">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                const updated = staffList.map(s => s.id === selectedStaffForDetail.id ? selectedStaffForDetail : s);
+                setStaffList(updated);
+                localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+                alert('✅ تم حفظ وتحديث بيانات المنتسب في السجل بنجاح!');
+                setSelectedStaffForDetail(null);
+              }}
+              className="space-y-4 text-xs"
+            >
               
               {/* Section 1: Names & Identity */}
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="font-bold text-sm text-purple-700 border-b pb-1">
-                  1. البيانات الشخصية والهوية الوطنية
+              <div className="p-4 rounded-2xl bg-purple-50/50 border-2 border-purple-200 space-y-3">
+                <h4 className="font-black text-sm text-purple-950 border-b border-purple-200 pb-1 flex items-center gap-1.5">
+                  <Edit3 className="w-4 h-4 text-purple-700" />
+                  <span>1. البيانات الشخصية والهوية الوطنية (قابلة للتعديل)</span>
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div><span className="text-slate-500 block">الاسم الأول:</span><strong className="text-sm">{selectedStaffForDetail.firstName}</strong></div>
-                  <div><span className="text-slate-500 block">الاسم الثاني:</span><strong className="text-sm">{selectedStaffForDetail.secondName}</strong></div>
-                  <div><span className="text-slate-500 block">الاسم الثالث:</span><strong className="text-sm">{selectedStaffForDetail.thirdName}</strong></div>
-                  <div><span className="text-slate-500 block">الاسم الرابع واللقب:</span><strong className="text-sm">{selectedStaffForDetail.fourthName} {selectedStaffForDetail.titleName}</strong></div>
-                  <div><span className="text-slate-500 block">اسم الأم الثلاثي:</span><strong className="text-purple-700">{selectedStaffForDetail.motherName}</strong></div>
-                  <div><span className="text-slate-500 block">المواليد الكاملة:</span><strong className="font-mono">{selectedStaffForDetail.birthYear}/{selectedStaffForDetail.birthMonth}/{selectedStaffForDetail.birthDay}</strong></div>
-                  <div><span className="text-slate-500 block">رقم البطاقة الوطنية:</span><strong className="font-mono text-blue-600">{selectedStaffForDetail.nationalCardNumber}</strong></div>
-                  <div><span className="text-slate-500 block">رقم هاتف المنتسب:</span><strong className="font-mono dir-ltr">{selectedStaffForDetail.phoneNumber}</strong></div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">الاسم الأول:</label>
+                    <input type="text" required value={selectedStaffForDetail.firstName || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, firstName: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black focus:border-purple-600 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">اسم الأب:</label>
+                    <input type="text" required value={selectedStaffForDetail.secondName || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, secondName: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black focus:border-purple-600 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">اسم الجد:</label>
+                    <input type="text" required value={selectedStaffForDetail.thirdName || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, thirdName: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black focus:border-purple-600 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">والد الجد / اللقب:</label>
+                    <input type="text" value={selectedStaffForDetail.titleName || selectedStaffForDetail.fourthName || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, titleName: e.target.value, fourthName: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black focus:border-purple-600 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">اسم الأم الثلاثي:</label>
+                    <input type="text" value={selectedStaffForDetail.motherName || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, motherName: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-purple-900 font-black focus:border-purple-600 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">المواليد (يوم/شهر/سنة):</label>
+                    <div className="grid grid-cols-3 gap-1">
+                      <input type="text" placeholder="يوم" value={selectedStaffForDetail.birthDay || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, birthDay: e.target.value })} className="p-1 text-center border-2 border-slate-300 rounded-lg bg-white text-slate-950 font-bold" />
+                      <input type="text" placeholder="شهر" value={selectedStaffForDetail.birthMonth || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, birthMonth: e.target.value })} className="p-1 text-center border-2 border-slate-300 rounded-lg bg-white text-slate-950 font-bold" />
+                      <input type="text" placeholder="سنة" value={selectedStaffForDetail.birthYear || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, birthYear: e.target.value })} className="p-1 text-center border-2 border-slate-300 rounded-lg bg-white text-slate-950 font-bold" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">رقم البطاقة الوطنية:</label>
+                    <input type="text" value={selectedStaffForDetail.nationalCardNumber || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, nationalCardNumber: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-blue-900 font-mono font-black focus:border-purple-600 outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">رقم الهاتف:</label>
+                    <input type="text" value={selectedStaffForDetail.phoneNumber || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, phoneNumber: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-mono font-black focus:border-purple-600 outline-none dir-ltr" />
+                  </div>
                 </div>
               </div>
 
               {/* Section 2: Ration & Family */}
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="font-bold text-sm text-blue-700 border-b pb-1">
+              <div className="p-4 rounded-2xl bg-blue-50/50 border-2 border-blue-200 space-y-3">
+                <h4 className="font-black text-sm text-blue-950 border-b border-blue-200 pb-1">
                   2. البطاقة التموينية والسكن وعنوان الراتب
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div><span className="text-slate-500 block">رقم البطاقة التموينية:</span><strong className="font-mono">{selectedStaffForDetail.rationCardNumber}</strong></div>
-                  <div><span className="text-slate-500 block">رقم مركز التموين:</span><strong className="font-mono">{selectedStaffForDetail.rationCenterNumber}</strong></div>
-                  <div><span className="text-slate-500 block">مهنة الزوج / الزوجة:</span><strong>{selectedStaffForDetail.spouseOccupation}</strong></div>
-                  <div><span className="text-slate-500 block">محل السكن (قضاء - ناحية):</span><strong>{selectedStaffForDetail.residenceDistrict}</strong></div>
-                  <div><span className="text-slate-500 block">أقرب نقطة دالة:</span><strong>{selectedStaffForDetail.nearestLandmark}</strong></div>
-                  <div><span className="text-slate-500 block">رقم بطاقة السكن:</span><strong className="font-mono">{selectedStaffForDetail.residenceCardNumber}</strong></div>
-                  <div className="col-span-2"><span className="text-slate-500 block">الرقم الحسابي من قائمة الراتب (IBAN):</span><strong className="font-mono text-emerald-600 dir-ltr">{selectedStaffForDetail.salaryAccountNumber}</strong></div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">رقم البطاقة التموينية:</label>
+                    <input type="text" value={selectedStaffForDetail.rationCardNumber || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, rationCardNumber: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">رقم مركز التموين:</label>
+                    <input type="text" value={selectedStaffForDetail.rationCenterNumber || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, rationCenterNumber: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">مهنة الزوج / الزوجة:</label>
+                    <input type="text" value={selectedStaffForDetail.spouseOccupation || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, spouseOccupation: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">محل السكن (قضاء/ناحية):</label>
+                    <input type="text" value={selectedStaffForDetail.residenceDistrict || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, residenceDistrict: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">أقرب نقطة دالة:</label>
+                    <input type="text" value={selectedStaffForDetail.nearestLandmark || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, nearestLandmark: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">رقم بطاقة السكن:</label>
+                    <input type="text" value={selectedStaffForDetail.residenceCardNumber || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, residenceCardNumber: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-slate-800 font-bold block mb-1">رقم الحساب المالي (IBAN / الراتب):</label>
+                    <input type="text" value={selectedStaffForDetail.salaryAccountNumber || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, salaryAccountNumber: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-emerald-800 font-mono font-black dir-ltr" />
+                  </div>
                 </div>
               </div>
 
               {/* Section 3: Official Orders & Service Dates */}
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="font-bold text-sm text-emerald-700 border-b pb-1">
-                  3. الخدمة والأوامر الإدارية للمباشرة والتعيين
+              <div className="p-4 rounded-2xl bg-emerald-50/50 border-2 border-emerald-200 space-y-3">
+                <h4 className="font-black text-sm text-emerald-950 border-b border-emerald-200 pb-1">
+                  3. الخدمة والأوامر الإدارية والشهادة
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div><span className="text-slate-500 block">تاريخ المباشرة لأول مرة:</span><strong className="font-mono">{selectedStaffForDetail.firstDirectYear}/{selectedStaffForDetail.firstDirectMonth}/{selectedStaffForDetail.firstDirectDay}</strong></div>
-                  <div><span className="text-slate-500 block">المباشرة بالمدرسة الحالية:</span><strong className="font-mono">{selectedStaffForDetail.schoolDirectYear}/{selectedStaffForDetail.schoolDirectMonth}/{selectedStaffForDetail.schoolDirectDay}</strong></div>
-                  <div><span className="text-slate-500 block">أمر التعيين الوزاري:</span><strong className="font-mono">{selectedStaffForDetail.appointmentOrderNo}</strong></div>
-                  <div><span className="text-slate-500 block">أمر المباشرة الأولى:</span><strong className="font-mono">{selectedStaffForDetail.firstDirectOrderNo}</strong></div>
-                  <div><span className="text-slate-500 block">العنوان الوظيفي الرسمي:</span><strong>{selectedStaffForDetail.functionalTitle}</strong></div>
-                  <div><span className="text-slate-500 block">الشهادة والأكاديمية:</span><strong>{selectedStaffForDetail.academicDegree}</strong></div>
-                  <div><span className="text-slate-500 block">الخدمة الوظيفية الكلية:</span><strong className="text-amber-600">{selectedStaffForDetail.yearsOfService} سنة</strong></div>
-                  <div><span className="text-slate-500 block">نصاب الحصص اليومي:</span><strong className="text-blue-600">{selectedStaffForDetail.teachingQuota} hصّة</strong></div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">تاريخ المباشرة الأولى:</label>
+                    <input type="text" value={`${selectedStaffForDetail.firstDirectYear || '2020'}/${selectedStaffForDetail.firstDirectMonth || '01'}/${selectedStaffForDetail.firstDirectDay || '01'}`} onChange={e => {
+                      const parts = e.target.value.split('/');
+                      setSelectedStaffForDetail({ ...selectedStaffForDetail, firstDirectYear: parts[0] || '', firstDirectMonth: parts[1] || '', firstDirectDay: parts[2] || '' });
+                    }} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-mono font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">المباشرة بالمدرسة الحالية:</label>
+                    <input type="text" value={`${selectedStaffForDetail.schoolDirectYear || '2024'}/${selectedStaffForDetail.schoolDirectMonth || '09'}/${selectedStaffForDetail.schoolDirectDay || '01'}`} onChange={e => {
+                      const parts = e.target.value.split('/');
+                      setSelectedStaffForDetail({ ...selectedStaffForDetail, schoolDirectYear: parts[0] || '', schoolDirectMonth: parts[1] || '', schoolDirectDay: parts[2] || '' });
+                    }} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-mono font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">أمر التعيين الوزاري:</label>
+                    <input type="text" value={selectedStaffForDetail.appointmentOrderNo || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, appointmentOrderNo: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">الشهادة الأكاديمية:</label>
+                    <input type="text" value={selectedStaffForDetail.academicDegree || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, academicDegree: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">الوظيفة بالمدرسة:</label>
+                    <input type="text" value={selectedStaffForDetail.jobTitle || 'مدرس'} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, jobTitle: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">الاختصاص الدقيق:</label>
+                    <input type="text" value={selectedStaffForDetail.specialization || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, specialization: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">الموقف / حالة الملاك:</label>
+                    <select 
+                      value={selectedStaffForDetail.status || 'مستمر في الملاك'} 
+                      onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, status: e.target.value as StaffMember['status'] })} 
+                      className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black cursor-pointer"
+                    >
+                      <option value="مستمر في الملاك">مستمر في الملاك</option>
+                      <option value="مجاز إجازة طويلة">مجاز إجازة طويلة</option>
+                      <option value="منسب إلى المدرسة">منسب إلى المدرسة</option>
+                      <option value="منسب خارج المدرسة">منسب خارج المدرسة</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">نصاب الحصص الأسبوعي:</label>
+                    <div className="flex items-center gap-1.5">
+                      <input 
+                        type="number" 
+                        min="0"
+                        max="40"
+                        value={selectedStaffForDetail.teachingQuota !== undefined ? selectedStaffForDetail.teachingQuota : 0} 
+                        onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, teachingQuota: Math.max(0, parseInt(e.target.value, 10) || 0) })} 
+                        className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-blue-900 font-black" 
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStaffForDetail({ ...selectedStaffForDetail, teachingQuota: 0, actualSubjectTaught: 'مفرغ إدارياً / إدارة' })}
+                        className="px-3 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-950 border border-purple-300 text-xs font-black whitespace-nowrap cursor-pointer"
+                        title="تفريغ إداري (0 حصة)"
+                      >
+                        تفريغ (0)
+                      </button>
+                    </div>
+                  </div>
+                  <div className="col-span-2 md:col-span-4">
+                    <label className="text-slate-800 font-bold block mb-1">الصفوف والشعب المكلف بتدريسها (افصل بينها بفارزة):</label>
+                    <input 
+                      type="text" 
+                      value={Array.isArray(selectedStaffForDetail.classesTaught) ? selectedStaffForDetail.classesTaught.join('، ') : (selectedStaffForDetail.classesTaught || '')} 
+                      onChange={e => {
+                        const parts = e.target.value.split(/[،,]/).map(c => c.trim()).filter(Boolean);
+                        setSelectedStaffForDetail({ 
+                          ...selectedStaffForDetail, 
+                          classesTaught: parts.length > 0 ? parts : (e.target.value.trim() ? [e.target.value.trim()] : []) 
+                        });
+                      }} 
+                      placeholder="مثال: الأول أ، الثاني ب، الثالث ج" 
+                      className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-bold" 
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Section 4: School Assignments & Role */}
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-3">
-                <h4 className="font-bold text-sm text-purple-700 border-b pb-1">
-                  4. التكليف المدرسي وحالة الملاك الحالية
-                </h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div><span className="text-slate-500 block">الوظيفة بالمدرسة:</span><strong>{selectedStaffForDetail.jobTitle}</strong></div>
-                  <div><span className="text-slate-500 block">الاختصاص الدقيق:</span><strong>{selectedStaffForDetail.specialization}</strong></div>
-                  <div><span className="text-slate-500 block">حالة الملاك الحالية:</span><strong>{selectedStaffForDetail.status}</strong></div>
-                  <div><span className="text-slate-500 block">نصاب الحصص:</span><strong className="text-blue-600">{selectedStaffForDetail.teachingQuota} حصة</strong></div>
-                  <div className="col-span-2"><span className="text-slate-500 block">الصفوف والشعب المكلف بها:</span><strong>{Array.isArray(selectedStaffForDetail.classesTaught) ? selectedStaffForDetail.classesTaught.join('، ') : 'الصف الأول أ'}</strong></div>
-                  <div className="col-span-2"><span className="text-slate-500 block">عدد الشعب التي يدرسها:</span><strong>{selectedStaffForDetail.sectionsTaughtCount} شعبة</strong></div>
-                </div>
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStaffForDetail(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black border-2 border-slate-300 cursor-pointer transition-all"
+                >
+                  إلغاء التراجع
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-black shadow-lg cursor-pointer transition-all flex items-center gap-1.5"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>حفظ تعديلات المنتسب بالسجل 💾</span>
+                </button>
               </div>
 
-            </div>
-
-            <div className="flex items-center justify-end pt-3 border-t">
-              <button
-                onClick={() => setSelectedStaffForDetail(null)}
-                className="px-5 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold"
-              >
-                إغلاق السجل
-              </button>
-            </div>
+            </form>
           </div>
         </div>
       )}
 
       {/* Modal 2: Import Staff from Excel / Image / Text */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-base font-bold text-[var(--theme-text-main)]">
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-purple-400 rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl space-y-4 text-slate-900">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+              <h3 className="text-base font-black text-purple-950">
                 استيراد بيانات الكادر التدريسي (أكسل / صورة / وورد)
               </h3>
-              <button onClick={() => setShowImportModal(false)} className="p-1 rounded-lg hover:bg-slate-100">
+              <button onClick={() => setShowImportModal(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-700 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Option 1: Excel */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
-              <span className="font-bold text-[var(--theme-text-main)] block">
+            <div className="p-4 rounded-2xl bg-purple-50/60 border-2 border-purple-200 space-y-2 text-xs">
+              <span className="font-black text-purple-950 block">
                 الخيار الأول: اختيار ملف أكسل (Excel):
               </span>
               <input
                 type="file"
                 accept=".xlsx, .xls, .csv, .doc, .docx, .pdf, .png, .jpg, .jpeg, .txt"
                 onChange={handleExcelUpload}
-                className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700"
+                className="w-full text-xs text-slate-800 font-bold file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-purple-700 file:text-white"
               />
             </div>
 
             {/* Option 2: Image Photo Reader */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2 text-xs">
-              <span className="font-bold text-[var(--theme-text-main)] block flex items-center gap-1">
-                <Upload className="w-4 h-4 text-amber-500" />
+            <div className="p-4 rounded-2xl bg-amber-50/60 border-2 border-amber-200 space-y-2 text-xs">
+              <span className="font-black text-amber-950 block flex items-center gap-1">
+                <Upload className="w-4 h-4 text-amber-600" />
                 الخيار الثاني: قراءة واستيراد من صورة مستند/سجل (Photo Scanner):
               </span>
               <input
                 type="file"
                 accept="image/*"
                 onChange={handleImageUpload}
-                className="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700"
+                className="w-full text-xs text-slate-800 font-bold file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-amber-600 file:text-white"
               />
             </div>
 
             {/* Option 3: Raw Text */}
             <div className="space-y-2 text-xs">
-              <span className="font-bold text-[var(--theme-text-main)] block">
+              <span className="font-black text-slate-800 block">
                 الخيار الثالث: لصق نص من ملف وورد أو نص مباشر:
               </span>
               <textarea
@@ -594,16 +1281,16 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                 onChange={e => setImportRawText(e.target.value)}
                 rows={3}
                 placeholder="لصق أسماء المدرسين واختصاصاتهم..."
-                className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-mono text-xs"
+                className="w-full p-2.5 rounded-xl border-2 border-slate-300 bg-white text-slate-900 font-bold text-xs focus:border-purple-600 outline-none"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
               <button
                 onClick={() => setShowImportModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-xs font-bold"
+                className="px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black border-2 border-slate-300 cursor-pointer"
               >
-                إلغاء
+                إلغاء التراجع
               </button>
             </div>
           </div>
@@ -613,12 +1300,12 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
       {/* Modal 2.1: Staff Pre-Import Audit Modal */}
       {auditPendingList && (
         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-2xl p-6 max-w-3xl w-full shadow-2xl space-y-4 my-8">
-            <div className="flex items-center justify-between border-b pb-3">
+          <div className="bg-white border-2 border-purple-400 rounded-3xl p-6 md:p-8 max-w-3xl w-full shadow-2xl space-y-4 my-8 text-slate-900">
+            <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-6 h-6 text-purple-600" />
+                <CheckCircle2 className="w-6 h-6 text-purple-700" />
                 <div>
-                  <h3 className="text-base font-black text-[var(--theme-text-main)]">
+                  <h3 className="text-base font-black text-purple-950">
                     تدقيق ومطابقة أسماء المدرسين المعاينة البصرية قبل الاستيراد
                   </h3>
                   <p className="text-xs text-slate-500">
@@ -697,58 +1384,12 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
         </div>
       )}
 
-      {/* Modal 3: Add Staff Member */}
+      {/* Modal 3: Add Staff Member (Isolated Component) */}
       {showAddStaffModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <form onSubmit={handleAddStaffSubmit} className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-2xl p-6 max-w-xl w-full shadow-2xl space-y-4 my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="text-base font-bold text-[var(--theme-text-main)]">إضافة منتسب جديد بالكادر التدريسي</h3>
-              <button type="button" onClick={() => setShowAddStaffModal(false)} className="p-1 rounded-lg hover:bg-slate-100">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="block font-bold mb-1">الوظيفة:</label>
-                <input type="text" required value={newStaff.jobTitle} onChange={e => setNewStaff(p => ({ ...p, jobTitle: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-              <div>
-                <label className="block font-bold mb-1">الاسم الأول:</label>
-                <input type="text" required value={newStaff.firstName} onChange={e => setNewStaff(p => ({ ...p, firstName: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-              <div>
-                <label className="block font-bold mb-1">اسم الأب والجد:</label>
-                <input type="text" required value={newStaff.secondName} onChange={e => setNewStaff(p => ({ ...p, secondName: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-              <div>
-                <label className="block font-bold mb-1">اللقب:</label>
-                <input type="text" value={newStaff.titleName} onChange={e => setNewStaff(p => ({ ...p, titleName: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-              <div>
-                <label className="block font-bold mb-1">الاختصاص الدقيق:</label>
-                <input type="text" value={newStaff.specialization} onChange={e => setNewStaff(p => ({ ...p, specialization: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-              <div>
-                <label className="block font-bold mb-1">رقم هاتف المنتسب:</label>
-                <input type="text" value={newStaff.phoneNumber} onChange={e => setNewStaff(p => ({ ...p, phoneNumber: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-              <div>
-                <label className="block font-bold mb-1">رقم البطاقة الوطنية:</label>
-                <input type="text" value={newStaff.nationalCardNumber} onChange={e => setNewStaff(p => ({ ...p, nationalCardNumber: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-              <div>
-                <label className="block font-bold mb-1">الشهادة:</label>
-                <input type="text" value={newStaff.academicDegree} onChange={e => setNewStaff(p => ({ ...p, academicDegree: e.target.value }))} className="w-full p-2 border rounded-lg bg-slate-50" />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t">
-              <button type="button" onClick={() => setShowAddStaffModal(false)} className="px-4 py-2 rounded-xl bg-slate-200 text-xs font-bold">إلغاء</button>
-              <button type="submit" className="px-5 py-2 rounded-xl bg-purple-700 text-white text-xs font-bold hover:bg-purple-800 shadow">إضافة المنتسب</button>
-            </div>
-          </form>
-        </div>
+        <AddStaffModal 
+          onClose={() => setShowAddStaffModal(false)} 
+          onAdd={handleAddNewStaff} 
+        />
       )}
 
       {/* Printable Staff Roster Modal */}

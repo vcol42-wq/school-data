@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>نظام الإدارة المدرسية المتكامل - مديرية تربية ديالى</title>
+    <script>
+      if (typeof module === 'object') {
+        window.nodeModule = module;
+        module = undefined;
+      }
+      window.addEventListener('error', function(e) {
+        console.error('GLOBAL WINDOW ERROR:', e.error || e.message, e.filename, e.lineno);
+        var errDiv = document.getElementById('root');
+        if (errDiv) {
+          errDiv.innerHTML = '<div style="direction:ltr;background:#fff1f2;color:#991b1b;padding:30px;font-family:monospace;white-space:pre-wrap;font-size:14px;border:3px solid #f43f5e;margin:20px;border-radius:12px;"><b>[FRONTEND STARTUP ERROR]</b>\n' + (e.error ? (e.error.stack || e.error.message) : e.message) + '\n\nFile: ' + e.filename + ':' + e.lineno + '</div>';
+        }
+      });
+    </script>
     <!-- Google Arabic Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,4 +27,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

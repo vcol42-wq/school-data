@@ -42,8 +42,15 @@ class GradeViewModel @Inject constructor(
 
     fun loadStudents(grade: String, section: String, subject: String) {
         viewModelScope.launch {
-            studentDao.getStudentsForClass(grade, section, subject).collectLatest {
-                _students.value = it
+            studentDao.getStudentsForClass(grade, section, subject).collectLatest { list ->
+                val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
+                    strength = java.text.Collator.PRIMARY
+                }
+                _students.value = list.sortedWith { s1, s2 ->
+                    val n1 = s1.fullName.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                    val n2 = s2.fullName.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                    collator.compare(n1, n2)
+                }
             }
         }
         viewModelScope.launch {
@@ -63,13 +70,11 @@ class GradeViewModel @Inject constructor(
     }
 
     fun updateStudentMarks(student: Student, marks: StudentMarks) {
-        viewModelScope.launch {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             val updatedMarks = calculateTotals(marks, student.subject)
             val updatedStudent = student.copy(marks = updatedMarks)
+            // Instant, rock-solid local database persistence
             studentDao.updateStudent(updatedStudent)
-            
-            // Real-time Cloud Sync
-            syncManager.syncGrades(updatedStudent.grade, updatedStudent.section, updatedStudent.subject)
         }
     }
 
@@ -79,31 +84,35 @@ class GradeViewModel @Inject constructor(
         val isSpecial = isSpecialSubject(subject)
 
         if (isSpecial) {
-            // Month 1 Total = Sum(daily) + written (No division per request)
+            // Month 1-4 Total = Sum(daily) + written (No division)
             u.m1MonthAvg = u.m1Daily.sum() + u.m1Written
-            
-            // Month 2 Total
             u.m2MonthAvg = u.m2Daily.sum() + u.m2Written
-            
-            // Month 3 Total
             u.m3MonthAvg = u.m3Daily.sum() + u.m3Written
-            
-            // Month 4 Total
             u.m4MonthAvg = u.m4Daily.sum() + u.m4Written
+            
+            // Midterm for Special: Sum(Oral) + Score
+            u.midtermTotal = u.midtermOral.sum() + u.midtermScore
+            u.midtermFinalGrade = u.midtermTotal
+
+            // Final Exam for Special: Sum(FinalOral) + FinalWrittenD1
+            u.finalExamTotal = u.finalOral.sum() + u.finalWrittenD1
         } else {
             // Other subjects: (Sum(daily) + written) / 2
             u.m1MonthAvg = round((u.m1Daily.sum() + u.m1Written) / 2f)
             u.m2MonthAvg = round((u.m2Daily.sum() + u.m2Written) / 2f)
             u.m3MonthAvg = round((u.m3Daily.sum() + u.m3Written) / 2f)
             u.m4MonthAvg = round((u.m4Daily.sum() + u.m4Written) / 2f)
+            
+            // Other subjects Midterm: Just Written Score (Requested: no sum/avg for non-special midterm)
+            u.midtermFinalGrade = u.midtermScore
+            u.midtermTotal = u.midtermScore
+
+            // Other subjects Final: Just Written D1 (Requested: no sum/avg for non-special final)
+            u.finalExamTotal = u.finalWrittenD1
         }
         
         // فص1 = (M1 + M2) / 2
         u.term1Avg = round((u.m1MonthAvg + u.m2MonthAvg) / 2)
-
-        // Midterm = Activity (5 cols) + Score
-        u.midtermTotal = u.midtermOral.sum() + u.midtermScore
-        u.midtermFinalGrade = u.midtermTotal // Final reported grade for midterm
 
         // فص2 = (M3 + M4) / 2
         u.term2Avg = round((u.m3MonthAvg + u.m4MonthAvg) / 2)
@@ -111,13 +120,11 @@ class GradeViewModel @Inject constructor(
         // Annual Effort (Sae'i) = (Term1 + MidtermFinal + Term2) / 3
         u.annualAverage = round((u.term1Avg + u.midtermFinalGrade + u.term2Avg) / 3)
 
-        // Final Exam Score (الدور الأول) = Sum(finalOral) + finalWrittenD1
-        u.finalExamTotal = u.finalOral.sum() + u.finalWrittenD1
-
-        // Final Grade = (Second Round + Sae'i) / 2, or (First Round + Sae'i) / 2 if no Second Round
+        // Final Grade Calculation
         val d2 = u.finalWrittenD2
         if (d2 != null && d2 > 0f) {
-            u.finalGrade = round((d2 + u.annualAverage) / 2)
+            val d2ExamTotal = if (isSpecial) (u.finalOral.sum() + d2) else d2
+            u.finalGrade = round((d2ExamTotal + u.annualAverage) / 2)
         } else {
             u.finalGrade = round((u.finalExamTotal + u.annualAverage) / 2)
         }
@@ -127,16 +134,23 @@ class GradeViewModel @Inject constructor(
         return u
     }
 
-    private fun isSpecialSubject(subject: String): Boolean {
-        val s = subject.trim()
+    fun isSpecialSubject(subject: String): Boolean {
+        val s = subject.trim().lowercase()
         return s.contains("عرب") ||
-               s.contains("انكل") ||
-               s.contains("إنكل") ||
-               s.contains("انجلي") ||
-               s.contains("إنجلي") ||
-               s.contains("english", ignoreCase = true) ||
-               s.contains("اسلام") ||
-               s.contains("إسلام")
+               s.contains("انكل") || s.contains("إنكل") ||
+               s.contains("انجلي") || s.contains("إنجلي") ||
+               s.contains("انكلش") || s.contains("انجلش") ||
+               s.contains("english") || s.contains("engl") || s == "e" || s == "eng" || s == "en" || s == "el" ||
+               s.contains("اسلام") || s.contains("إسلام") ||
+               s.contains("قرآن") || s.contains("قران") ||
+               s.contains("دين") ||
+               s.contains("فرنس") || s.contains("french") || s == "f" ||
+               s.contains("كرد") || s.contains("kurd") ||
+               s.contains("تركم") || s.contains("turk") ||
+               s.contains("سريان") || s.contains("syriac") ||
+               s.contains("المان") || s.contains("ألمان") || s.contains("german") ||
+               s.contains("اسبان") || s.contains("إسبان") || s.contains("spanish") ||
+               s.contains("لغة") || s.contains("لغات")
     }
 
     fun addMockStudent(grade: String, section: String, subject: String, name: String) {
@@ -154,9 +168,49 @@ class GradeViewModel @Inject constructor(
         }
     }
 
+    fun importMultipleStudents(
+        grade: String,
+        section: String,
+        subject: String,
+        rawNamesText: String,
+        onDone: (Int) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val lines = rawNamesText.split(Regex("[\r\n;,|]+"))
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.contains("الاسم") && !it.contains("تسلسل") && !it.contains("اسم الطالب") }
+
+            var count = 0
+            lines.forEach { name ->
+                val cleanName = name.replace(Regex("^[0-9]+[\\.\\-\\s]+"), "").trim()
+                if (cleanName.isNotEmpty()) {
+                    studentDao.insertStudent(
+                        Student(
+                            recordNumber = (1000..9999).random().toString(),
+                            fullName = cleanName,
+                            grade = grade,
+                            section = section,
+                            subject = subject
+                        )
+                    )
+                    count++
+                }
+            }
+            if (count > 0) {
+                syncManager.propagateStudents()
+                syncManager.syncGrades(grade, section, subject)
+            }
+            onDone(count)
+        }
+    }
+
     fun updateStudentName(student: Student, newName: String) {
         viewModelScope.launch {
-            studentDao.updateStudentNameForAllSubjects(student.grade, student.section, student.recordNumber, newName)
+            val trimmedName = newName.trim()
+            studentDao.updateStudent(student.copy(fullName = trimmedName))
+            if (student.recordNumber.isNotEmpty()) {
+                studentDao.updateStudentNameForAllSubjects(student.grade, student.section, student.recordNumber, trimmedName)
+            }
         }
     }
 
@@ -164,10 +218,49 @@ class GradeViewModel @Inject constructor(
         return syncManager.syncGrades(grade, section, subject)
     }
 
-    fun toggleAbsence(student: Student, dateString: String, isAbsent: Boolean) {
+    fun summonRosterForThisClass(grade: String, section: String, subject: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val result = syncManager.summonClassRosterDetailed(grade, section, subject)
+            onResult(result.success, result.message)
+        }
+    }
+
+    fun syncGradesOnly(grade: String, section: String, subject: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val success = syncManager.syncGrades(grade, section, subject)
+            if (success) {
+                onResult(true, "تم رفع ومزامنة درجات الشعبة للسحابة بنجاح ☁️✓")
+            } else {
+                onResult(false, "فشل رفع الدرجات. يرجى التأكد من الاتصال بالسحابة.")
+            }
+        }
+    }
+
+    fun saveAllMarksLocally(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val currentList = _students.value
+            currentList.forEach { student ->
+                val calculated = calculateTotals(student.marks, student.subject)
+                studentDao.updateStudent(student.copy(marks = calculated))
+            }
+            onResult("تم حفظ وتثبيت كافة درجات الطلاب محلياً بنجاح 💾✓")
+        }
+    }
+
+    fun toggleAbsence(student: Student, dateString: String, periodNumber: Int = 1, isAbsent: Boolean) {
         viewModelScope.launch {
             if (isAbsent) {
-                absenceDao.insertAbsence(AbsenceRecord(studentId = student.id, dateString = dateString))
+                absenceDao.insertAbsence(AbsenceRecord(studentId = student.id, dateString = dateString, periodNumber = periodNumber))
+            } else {
+                absenceDao.deleteAbsence(student.id, dateString, periodNumber)
+            }
+        }
+    }
+
+    fun toggleDailyAbsence(student: Student, dateString: String, isAbsent: Boolean) {
+        viewModelScope.launch {
+            if (isAbsent) {
+                absenceDao.insertAbsence(AbsenceRecord(studentId = student.id, dateString = dateString, periodNumber = 0))
             } else {
                 absenceDao.deleteAbsence(student.id, dateString)
             }

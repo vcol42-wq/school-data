@@ -1,648 +1,362 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Student, StaffMember, ActiveView, AppTheme, AppConfig } from '../types';
+import { supabase } from '../utils/supabaseClient';
 import { 
-  Mic, 
-  MicOff, 
-  Volume2, 
-  Sparkles, 
-  CheckCircle2, 
-  Search, 
-  UserPlus, 
-  Users, 
-  X, 
-  BookOpen, 
-  AlertCircle,
-  Award,
-  Radio,
-  Zap,
-  HelpCircle,
-  Palette,
-  ArrowRight,
-  Loader2,
-  Send,
-  Home,
-  Printer,
-  CalendarDays,
-  GraduationCap,
-  BarChart3,
-  Settings
+  Mic, MicOff, Sparkles, X, Loader2, Send, Home, User, Zap, Radio, MessageSquare, CheckCircle2,
+  Volume2, AlertCircle
 } from 'lucide-react';
 
 interface VoiceAssistantModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen: boolean; 
+  onClose: () => void; 
   students: Student[];
   setStudents: React.Dispatch<React.SetStateAction<Student[]>>;
-  staffList: StaffMember[];
+  staffList: StaffMember[]; 
   setStaffList: React.Dispatch<React.SetStateAction<StaffMember[]>>;
-  setActiveView: (view: ActiveView) => void;
+  setActiveView: (view: ActiveView) => void; 
   setTheme?: (theme: AppTheme) => void;
-  config?: AppConfig;
+  config?: AppConfig; 
   onSelectStudent?: (student: Student) => void;
 }
 
 export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
-  isOpen,
-  onClose,
-  students,
-  setStudents,
-  staffList,
-  setStaffList,
-  setActiveView,
-  setTheme,
-  config,
-  onSelectStudent
+  isOpen, onClose, students, staffList, setActiveView, setTheme, config
 }) => {
-  const [isListening, setIsListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [interimTranscript, setInterimTranscript] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
   const [textInputQuery, setTextInputQuery] = useState('');
-  const [statusMessage, setStatusMessage] = useState('اضغط على المايك للتحدث، أو اكتب سؤالك بالأسفل للبحث بالذكاء الاصطناعي...');
-  const [actionLog, setActionLog] = useState<Array<{ id: string; text: string; type: 'info' | 'success' | 'error' }>>([]);
+  const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; id: string }>>([
+    { role: 'assistant', text: 'أهلاً بك حضرة المدير. أنا مساعدك الإداري الذكي. يمكنك سؤالي عن إحصائيات الطلاب، الكادر، الغيابات، أو توجيه الأوامر بالصوت أو الكتابة.', id: '1' }
+  ]);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const [apiModelInfo, setApiModelInfo] = useState('Gemini 2.5 Flash Auto-Detected');
-  
-  const recognitionRef = useRef<any>(null);
 
-  // Auto detect API key status
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('diyala_school_gemini_key');
-    if (savedKey) {
-      setApiModelInfo(`مربوط بمفتاح المستخدم المخصص (Gemini 2.5 Flash)`);
-    } else {
-      setApiModelInfo(`مربوط بالمفتاح الآلي للنظام (Gemini 2.5 Flash)`);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
-  }, []);
+  }, [messages, isAiProcessing]);
 
-  // Helper: Speak Arabic feedback
-  const speakFeedback = (text: string) => {
-    try {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel(); // Stop prior speech
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'ar-IQ';
-        utterance.rate = 0.95;
-        window.speechSynthesis.speak(utterance);
+  // Fetch API key from Supabase if not in localStorage
+  const getEffectiveApiKey = async (): Promise<string> => {
+    let key = localStorage.getItem('gemini_api_key') || localStorage.getItem('diyala_school_gemini_key') || config?.geminiApiKey || '';
+    if (!key && config?.schoolId) {
+      try {
+        const { data } = await supabase.from('schools').select('config').eq('id', config.schoolId).single();
+        if (data?.config?.gemini_api_key) {
+          key = data.config.gemini_api_key;
+          localStorage.setItem('gemini_api_key', key);
+        }
+      } catch (e) {
+        console.warn('Could not fetch cloud gemini key', e);
       }
-    } catch (e) {
-      console.log('Text to Speech error:', e);
     }
+    return key;
   };
 
-  // Helper: Add Log Message
-  const addLog = (text: string, type: 'info' | 'success' | 'error' = 'info') => {
-    setActionLog(prev => [{ id: String(Date.now()), text, type }, ...prev.slice(0, 8)]);
-  };
+  // Local rule-based intelligent fallback engine
+  const executeLocalSmartAssistant = (promptText: string): string => {
+    const p = promptText.trim().toLowerCase();
+    const totalStudents = students.length;
+    const activeStudents = students.filter(s => s.status === 'مستمر').length;
+    const totalStaff = staffList.length;
+    const totalAbsences = students.reduce((acc, s) => acc + (s.absencesCount || 0), 0);
 
-  // Process Arabic Voice & Text AI Command Logic
-  const processVoiceCommand = async (cmdText: string) => {
-    const text = cmdText.trim();
-    if (!text) return;
-
-    const lowerText = text.toLowerCase();
-    addLog(`الأمر المسموع / المكتوب: "${text}"`, 'info');
-
-    // --- INSTANT ZERO-LATENCY LOCAL INTENT PATTERNS (0ms Execution) ---
-
-    // 1. Theme Change Commands ("غير الثيم إلى ديالي", "ثيم كلاسيكي", "غير الألوان")
-    if (setTheme && (lowerText.includes('ثيم') || lowerText.includes('اللون') || lowerText.includes('ألوان') || lowerText.includes('الوان'))) {
-      let targetTheme: AppTheme | null = null;
-      let themeNameArabic = '';
-
-      if (lowerText.includes('ديالي') || lowerText.includes('تربية')) {
-        targetTheme = 'diyala';
-        themeNameArabic = 'تربية ديالى (أزرق سماوي)';
-      } else if (lowerText.includes('كلاسيكي') || lowerText.includes('رسمي')) {
-        targetTheme = 'classic';
-        themeNameArabic = 'الكلاسيكي الملكي';
-      } else if (lowerText.includes('حيوية') || lowerText.includes('حيوي')) {
-        targetTheme = 'vibrant';
-        themeNameArabic = 'الحيوي الجذاب';
-      } else if (lowerText.includes('زمردي') || lowerText.includes('اخضر') || lowerText.includes('أخضر')) {
-        targetTheme = 'emerald';
-        themeNameArabic = 'الزمردي الأخضر';
-      } else if (lowerText.includes('داكن') || lowerText.includes('اسود') || lowerText.includes('أمسيات')) {
-        targetTheme = 'dark';
-        themeNameArabic = 'الداكن الليلي';
-      } else if (lowerText.includes('عنابي') || lowerText.includes('احمر') || lowerText.includes('أحمر')) {
-        targetTheme = 'burgundy';
-        themeNameArabic = 'العنابي المخملي';
+    if (p.includes('إحصائ') || p.includes('احصائ') || p.includes('كم طالب') || p.includes('عدد الطلاب')) {
+      return `📊 **تقرير إحصائي شامل:**\n• إجمالي الطلاب المسجلين: **${totalStudents}** طالب\n• الطلاب المستمرون بالدوام: **${activeStudents}**\n• إجمالي الكادر التعليمي: **${totalStaff}** معلم وموظف\n• مجموع الغيابات المسجلة: **${totalAbsences}** غياب.`;
+    }
+    if (p.includes('منخفض') || p.includes('راسب') || p.includes('ضعيف') || p.includes('مستوى')) {
+      const struggling = students.filter(s => (s.absencesCount || 0) > 5);
+      if (struggling.length > 0) {
+        return `⚠️ **تنبيه المتابعة:** يوجد **${struggling.length}** طلاب لديهم غيابات مرتفعة (أكثر من 5 غيابات). يرجى مراجعة سجل الغيابات لاتخاذ الإجراءات الإدارية.`;
       }
-
-      if (targetTheme) {
-        setTheme(targetTheme);
-        const msg = `تم تغيير ثيم النظام فوراً إلى ثيم (${themeNameArabic})`;
-        setStatusMessage(msg);
-        addLog(msg, 'success');
-        speakFeedback(`تم تغيير ثيم النظام إلى ${themeNameArabic}`);
-        return;
-      }
+      return `✅ **مؤشر مطمئن:** لا يوجد طلاب لديهم إنذارات غياب حرجة حالياً، المستوى العام منتظم.`;
     }
-
-    // 2. Navigation Commands (Instant Page Openers)
-    if (lowerText.includes('جدول') || lowerText.includes('الدروس')) {
-      setActiveView('schedule');
-      setStatusMessage('تم الانتقال فوراً إلى جدول الدروس الأسبوعي');
-      speakFeedback('تم فتح جدول الدروس');
-      return;
+    if (p.includes('نصيح') || p.includes('اقتراح') || p.includes('توجيه')) {
+      return `💡 **نصيحة إدارية لليوم:** يُنصح بمتابعة سجل حضور الحصة الأولى والثانية عبر تطبيق المعلم، والتأكد من مطابقة السجلات الورقية مع السحابة دورياً.`;
     }
-
-    if (lowerText.includes('كادر') || lowerText.includes('معلمين') || lowerText.includes('الموظفين') || lowerText.includes('إضافة كادر')) {
-      setActiveView('staff');
-      setStatusMessage('تم الانتقال فوراً إلى سجل الكادر والموظفين');
-      speakFeedback('تم فتح سجل الكادر الموحد');
-      return;
-    }
-
-    if (lowerText.includes('أرشيف') || lowerText.includes('ارشيف') || lowerText.includes('المغادرين') || lowerText.includes('سابقين')) {
-      setActiveView('former_students');
-      setStatusMessage('تم الانتقال فوراً إلى أرشيف الطلاب المغادرين');
-      speakFeedback('تم فتح أرشيف الطلاب المغادرين');
-      return;
-    }
-
-    if (lowerText.includes('طلاب') || lowerText.includes('الطلاب') || lowerText.includes('إضافة طالب')) {
-      setActiveView('students');
-      setStatusMessage('تم الانتقال فوراً إلى سجل الطلاب العام');
-      speakFeedback('تم فتح سجل الطلاب');
-      return;
-    }
-
-    if (lowerText.includes('إحصائيات') || lowerText.includes('احصائيات') || lowerText.includes('الملاك')) {
-      setActiveView('stats');
-      setStatusMessage('تم فتح قسم الإحصاءات والملاك الرسمي');
-      speakFeedback('تم فتح الإحصائيات');
-      return;
-    }
-
-    if (lowerText.includes('طباعة') || lowerText.includes('وثائق') || lowerText.includes('شهادات')) {
-      setActiveView('print');
-      setStatusMessage('تم فتح مركز طباعة الوثائق الرسمية');
-      speakFeedback('تم فتح مركز الطباعة');
-      return;
-    }
-
-    if (lowerText.includes('إعدادات') || lowerText.includes('اعدادات')) {
+    if (p.includes('اعدادات') || p.includes('إعدادات') || p.includes('ضبط')) {
       setActiveView('settings');
-      setStatusMessage('تم فتح إعدادات المدرسة والنظام');
-      speakFeedback('تم فتح الإعدادات');
-      return;
+      return `⚙️ تم فتح شاشة الإعدادات لك.`;
+    }
+    if (p.includes('طلاب') || p.includes('سجل')) {
+      setActiveView('students');
+      return `🎓 تم الانتقال إلى سجل أسماء ومعلومات الطلاب.`;
+    }
+    if (p.includes('كادر') || p.includes('معلم') || p.includes('مدرس')) {
+      setActiveView('staff');
+      return `👥 تم فتح سجل الكادر والمنتسبين.`;
+    }
+    if (p.includes('اتصال') || p.includes('مزامنة') || p.includes('سحاب')) {
+      setActiveView('sync_center');
+      return `☁️ تم الانتقال إلى مركز المزامنة السحابية.`;
     }
 
-    if (lowerText.includes('منبه') || lowerText.includes('جرس')) {
-      setActiveView('alarm');
-      setStatusMessage('تم فتح نظام المنبه والجرس التلقائي');
-      speakFeedback('تم فتح المنبه والجرس');
-      return;
-    }
+    return `تم استلام طلبك: "${promptText}". المدرسة تضم حالياً ${totalStudents} طالب و ${totalStaff} كادر. يمكنك استخدام الأزرار السريعة بالأسفل للتحليلات الإدارية.`;
+  };
 
-    if (lowerText.includes('خطوط') || lowerText.includes('الخط')) {
-      setActiveView('fonts');
-      setStatusMessage('تم فتح تخصيص الخطوط الرسمية');
-      speakFeedback('تم فتح تخصيص الخطوط');
-      return;
-    }
+  const processAI = async (query?: string, audioBase64?: string) => {
+    setIsAiProcessing(true);
+    const userPrompt = query || 'رسالة صوتية';
+    setMessages(prev => [...prev, { role: 'user', text: query ? query : '🎤 تم إرسال تسجيل صوتي...', id: Date.now().toString() }]);
 
-    if (lowerText.includes('ثيمات') || lowerText.includes('الألوان')) {
-      setActiveView('themes');
-      setStatusMessage('تم فتح تخصيص ثيمات النظام');
-      speakFeedback('تم فتح ثيمات النظام');
-      return;
-    }
+    try {
+      const apiKey = await getEffectiveApiKey();
 
-    if (lowerText.includes('رئيسية') || lowerText.includes('الرئيسية') || lowerText.includes('سطح المكتب') || lowerText.includes('هوم')) {
-      setActiveView('launcher');
-      setStatusMessage('تم العودة إلى الشاشة الرئيسية (سطح المكتب)');
-      speakFeedback('تم فتح الشاشة الرئيسية');
-      return;
-    }
-
-    // 3. Search Commands for Students & Staff
-    if (lowerText.includes('ابحث') || lowerText.includes('بحث') || lowerText.includes('جد') || lowerText.includes('من هو')) {
-      const nameQuery = lowerText
-        .replace(/ابحث عن/g, '')
-        .replace(/بحث عن/g, '')
-        .replace(/ابحث/g, '')
-        .replace(/بحث/g, '')
-        .replace(/عن/g, '')
-        .trim();
-
-      if (nameQuery) {
-        const foundStudent = students.find(s => 
-          s.firstName.toLowerCase().includes(nameQuery) ||
-          s.recordNumber.includes(nameQuery)
-        );
-
-        if (foundStudent) {
-          setActiveView('students');
-          if (onSelectStudent) onSelectStudent(foundStudent);
-          
-          const msg = `تم العثور على الطالب ${foundStudent.firstName}، الصف ${foundStudent.currentGrade}، الشعبة ${foundStudent.section}، الدرجة: ${foundStudent.finalYearScore || 'لم تحدد'}`;
-          setStatusMessage(msg);
-          addLog(msg, 'success');
-          speakFeedback(`تم العثور على الطالب ${foundStudent.firstName}`);
-          return;
+      // 1. If API key exists, try Gemini 2.0 / 1.5 Direct REST Call
+      if (apiKey && apiKey.length > 10) {
+        const sysInstruction = `أنت المساعد الإداري الذكي لنظام إدارة المدارس. اسم المدرسة: ${config?.schoolName || 'المدرسة'}. إجمالي الطلاب: ${students.length}. إجمالي الكادر: ${staffList.length}. أجب بلغة عربية فصيحة، واضحة وموجزة.`;
+        
+        let contents: any[] = [];
+        if (audioBase64) {
+          contents = [
+            {
+              role: 'user',
+              parts: [
+                { inline_data: { mime_type: 'audio/webm', data: audioBase64 } },
+                { text: 'أجب على هذا الطلب الصوتي الموجه من مدير المدرسة باحترافية.' }
+              ]
+            }
+          ];
+        } else {
+          contents = [
+            {
+              role: 'user',
+              parts: [{ text: `${sysInstruction}\n\nسؤال المدير: ${query}` }]
+            }
+          ];
         }
 
-        // Search in Staff
-        const foundStaff = staffList.find(s => s.fullName.toLowerCase().includes(nameQuery));
-        if (foundStaff) {
-          setActiveView('staff');
-          const msg = `تم العثور على الموظف ${foundStaff.fullName}، الاختصاص: ${foundStaff.specialization}، الصفة: ${foundStaff.role}`;
-          setStatusMessage(msg);
-          addLog(msg, 'success');
-          speakFeedback(`تم العثور على الموظف ${foundStaff.fullName}`);
-          return;
-        }
-      }
-    }
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents })
+        });
 
-    // 4. Grade Edit Commands
-    if (lowerText.includes('درجة') || lowerText.includes('الدرجة') || lowerText.includes('درجه')) {
-      const numbers = lowerText.match(/\d+/g);
-      const score = numbers ? parseInt(numbers[0], 10) : null;
-
-      if (score !== null && score >= 0 && score <= 100) {
-        const cleanWords = lowerText
-          .replace(/أضف|اضف|تعديل|غير|درجة|الدرجة|درجه|في|إلى|الي|للطالب|طالب/g, ' ')
-          .replace(/\d+/g, ' ')
-          .trim()
-          .split(/\s+/)
-          .filter(w => w.length > 2);
-
-        let targetStudent = students.find(s => cleanWords.some(w => s.firstName.toLowerCase().includes(w)));
-
-        if (targetStudent) {
-          if (targetStudent.isLockedAndSynced) {
-            const lockMsg = `عذراً، درجات الطالب ${targetStudent.firstName} مقفولة سحابياً رسمياً ولا يمكن التعديل عليها.`;
-            setStatusMessage(lockMsg);
-            addLog(lockMsg, 'error');
-            speakFeedback(`درجات الطالب ${targetStudent.firstName} مقفولة سحابياً`);
+        if (res.ok) {
+          const json = await res.json();
+          const candidate = json.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (candidate) {
+            setMessages(prev => [...prev, { role: 'assistant', text: candidate, id: Date.now().toString() }]);
+            setIsAiProcessing(false);
             return;
           }
-
-          setStudents(prev => prev.map(s => s.id === targetStudent!.id ? {
-            ...s,
-            finalYearScore: score,
-            previousYearResult: score >= 50 ? `ناجح (${score})` : `راسب (${score})`
-          } : s));
-
-          setActiveView('students');
-          const successMsg = `تم بنجاح إضافة وتعديل درجة الطالب ${targetStudent.firstName} إلى (${score})`;
-          setStatusMessage(successMsg);
-          addLog(successMsg, 'success');
-          speakFeedback(`تم تسجيل درجة الطالب ${targetStudent.firstName} بنجاح`);
-          return;
         }
       }
-    }
 
-    // --- STEP 2: GEMINI 2.5 FLASH DEEP AI RESPONSE FOR COMPLEX QUESTIONS ---
-    try {
-      setIsAiProcessing(true);
-      setStatusMessage('✨ جاري الاستجابة والبحث بالذكاء الاصطناعي (Gemini 2.5 Flash)...');
-
-      const userSavedApiKey = localStorage.getItem('gemini_api_key') || localStorage.getItem('diyala_school_gemini_key') || '';
-
-      const res = await fetch('/api/ai-assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: text,
-          studentsCount: students.length,
-          staffCount: staffList.length,
-          schoolName: config?.schoolName || 'م. كعب بن مالك المسائية للبنين',
-          userApiKey: userSavedApiKey
-        })
-      });
-
-      const data = await res.json();
-      setIsAiProcessing(false);
-
-      if (data.success) {
-        const aiResponse = data.responseText || 'تم تنفيذ الطلب بالذكاء الاصطناعي.';
-        setStatusMessage(`✨ الذكاء الاصطناعي: ${aiResponse}`);
-        addLog(`إجابة الذكاء الاصطناعي: ${aiResponse}`, 'success');
-        speakFeedback(aiResponse);
-
-        if (data.action === 'NAVIGATE' && data.targetView) {
-          setActiveView(data.targetView);
-        } else if (data.action === 'CHANGE_THEME' && data.targetTheme && setTheme) {
-          setTheme(data.targetTheme);
-        }
-      } else {
-        const fallbackMsg = `إجابة سريعة: تم استلام الاستفسار عن "${text}". يمكن التنقل بالسجلات أو البحث عن الأسماء مباشرة.`;
-        setStatusMessage(fallbackMsg);
-        addLog(fallbackMsg, 'info');
-      }
-    } catch (err: any) {
-      setIsAiProcessing(false);
-      console.log('AI Endpoint Error:', err);
-      const fallbackMsg = `تم المعالجة: "${text}". ينصح بتجربة أوامر سريعة مثل "افتح مركز الطباعة" أو "غير الثيم لـ ديالي".`;
-      setStatusMessage(fallbackMsg);
-      addLog(fallbackMsg, 'info');
-    }
-  };
-
-  // Auto-start listening on modal open
-  useEffect(() => {
-    if (isOpen) {
-      startListening();
-    } else {
-      stopListening();
-    }
-  }, [isOpen]);
-
-  // Initialize Web Speech Recognition with Fallback
-  const startListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setStatusMessage('ملاحظة: يمكنك استخدام خانة البحث الكتابي بالأسفل للبحث الفوري بالذكاء الاصطناعي!');
-      setIsListening(false);
-      return;
-    }
-
-    try {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch(e){}
-      }
-
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'ar-IQ'; // Iraqi Arabic dialect
-      recognition.continuous = true;
-      recognition.interimResults = true;
-
-      recognition.onstart = () => {
-        setIsListening(true);
-        setStatusMessage('جاري الاستماع الآن بذكاء فائق... تحدث بصوت واضح باللغة العربية');
-      };
-
-      recognition.onresult = (event: any) => {
-        let currentInterim = '';
-        let finalTranscriptStr = '';
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscriptStr += event.results[i][0].transcript;
-          } else {
-            currentInterim += event.results[i][0].transcript;
+      // 2. Fallback to Local Server on port 3000 if available
+      try {
+        const localRes = await fetch('http://127.0.0.1:3000/api/ai-assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query, audioBase64,
+            students, staff: staffList,
+            schoolName: config?.schoolName,
+            userApiKey: apiKey,
+            config
+          })
+        });
+        if (localRes.ok) {
+          const localData = await localRes.json();
+          if (localData.responseText) {
+            setMessages(prev => [...prev, { role: 'assistant', text: localData.responseText, id: Date.now().toString() }]);
+            if (localData.action === 'NAVIGATE' && localData.targetView) setActiveView(localData.targetView);
+            setIsAiProcessing(false);
+            return;
           }
         }
+      } catch (err) {
+        // Local server not running, continue to smart local engine
+      }
 
-        setInterimTranscript(currentInterim);
-
-        if (finalTranscriptStr) {
-          setTranscript(finalTranscriptStr);
-          processVoiceCommand(finalTranscriptStr);
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.log('Speech recognition error:', event.error);
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
+      // 3. Fallback to Local Smart Assistant Engine (100% Reliable & Works Offline)
+      const localReply = executeLocalSmartAssistant(userPrompt);
+      setMessages(prev => [...prev, { role: 'assistant', text: localReply, id: Date.now().toString() }]);
 
     } catch (e: any) {
-      console.log('Failed to start speech recognition:', e);
-      setIsListening(false);
+      const fallbackReply = executeLocalSmartAssistant(userPrompt);
+      setMessages(prev => [...prev, { role: 'assistant', text: fallbackReply, id: Date.now().toString() }]);
+    } finally {
+      setIsAiProcessing(false);
     }
   };
 
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e){}
-      setIsListening(false);
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          processAI(undefined, base64);
+        };
+        stream.getTracks().forEach(track => track.stop());
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch (e) {
+      alert('يرجى السماح بالوصول للمايكروفون لبدء التسجيل الصوتي.');
     }
   };
 
-  const handleManualQuerySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!textInputQuery.trim()) return;
-    processVoiceCommand(textInputQuery);
-    setTextInputQuery('');
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 transition-all">
-      <div className="bg-white text-slate-950 border-4 border-amber-400 rounded-3xl p-6 max-w-xl w-full shadow-2xl space-y-5 relative overflow-hidden font-sans">
+    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xl flex items-center justify-center p-4 dir-rtl">
+      <div className="bg-white border-4 border-indigo-600 rounded-[3rem] shadow-2xl w-full max-w-2xl h-[85vh] flex flex-col overflow-hidden relative text-right">
         
-        {/* Glow Header */}
-        <div className="flex items-center justify-between border-b border-amber-300 pb-3">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 text-amber-900 font-black">
-              <Sparkles className="w-6 h-6 animate-pulse text-amber-600 shrink-0" />
-              <span className="text-base md:text-lg font-black text-amber-900">المساعد الصوتي والبحث بالذكاء الاصطناعي</span>
+        {/* Top Bar */}
+        <div className="p-5 border-b-2 border-slate-100 bg-indigo-50 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-indigo-600 rounded-2xl shadow-lg">
+              <Sparkles className="w-6 h-6 text-white animate-pulse" />
             </div>
-            <span className="text-[11px] text-slate-800 font-extrabold mt-0.5 flex items-center gap-1">
-              <Zap className="w-3.5 h-3.5 text-amber-600" />
-              <span className="text-amber-900 font-black">{apiModelInfo}</span>
-            </span>
+            <div>
+              <h2 className="text-xl font-black text-indigo-950">مساعد المدير الصوتي والذكي</h2>
+              <p className="text-[10px] font-bold text-indigo-600 uppercase">Gemini 2.0 Pro / Ultra Hybrid v5.1</p>
+            </div>
           </div>
-          <button 
-            type="button"
-            onClick={onClose} 
-            className="p-2 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 transition-colors border border-slate-300 cursor-pointer"
-          >
-            <X className="w-5 h-5 stroke-[3]" />
-          </button>
-        </div>
-
-        {/* AI SMART TEXT SEARCH INPUT BOX */}
-        <form onSubmit={handleManualQuerySubmit} className="relative">
-          <div className="flex items-center gap-2 bg-slate-900 text-white p-2 rounded-2xl border-2 border-amber-400 shadow-md">
-            <Search className="w-5 h-5 text-amber-400 shrink-0 ml-2" />
-            <input
-              type="text"
-              value={textInputQuery}
-              onChange={(e) => setTextInputQuery(e.target.value)}
-              placeholder="اكتب سؤالك، ابحث عن اسم، غير ثيم، أو اطلب فتح صفحة..."
-              className="bg-transparent text-sm font-black text-white placeholder-slate-400 focus:outline-none flex-1 font-sans"
-            />
-            <button
-              type="submit"
-              disabled={isAiProcessing}
-              className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2 rounded-xl flex items-center gap-1 text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+          <div className="flex gap-2">
+            <button 
+              onClick={() => { setActiveView('launcher'); onClose(); }} 
+              className="p-2 rounded-xl bg-white border border-slate-200 text-indigo-600 cursor-pointer hover:bg-indigo-50"
             >
-              {isAiProcessing ? (
-                <Loader2 className="w-4 h-4 animate-spin text-slate-950" />
-              ) : (
-                <>
-                  <span className="font-black">بحث ذكي</span>
-                  <Send className="w-3.5 h-3.5" />
-                </>
-              )}
+              <Home className="w-5 h-5" />
+            </button>
+            <button 
+              onClick={onClose} 
+              className="p-2 rounded-xl bg-rose-50 text-rose-600 cursor-pointer hover:bg-rose-100"
+            >
+              <X className="w-5 h-5" />
             </button>
           </div>
-        </form>
-
-        {/* MICROPHONE ACTIVE VISUALIZER BUTTON */}
-        <div className="flex flex-col items-center justify-center space-y-3 py-2">
-          
-          <button
-            type="button"
-            onClick={isListening ? stopListening : startListening}
-            className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl cursor-pointer relative ${
-              isListening 
-                ? 'bg-rose-600 text-white shadow-rose-600/50 scale-110 ring-8 ring-rose-500/30 animate-pulse' 
-                : 'bg-gradient-to-tr from-amber-500 via-amber-400 to-amber-500 text-slate-950 hover:scale-105 shadow-amber-500/40 ring-4 ring-amber-400/20'
-            }`}
-          >
-            {isListening ? (
-              <Mic className="w-10 h-10 animate-bounce text-white" />
-            ) : (
-              <MicOff className="w-10 h-10 text-slate-950" />
-            )}
-            
-            {isListening && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-4 w-4 bg-rose-500"></span>
-              </span>
-            )}
-          </button>
-
-          <span className="text-xs font-black text-slate-950">
-            {isListening ? 'جاري الاستماع الفوري... (اضغط للإيقاف)' : 'اضغط على المايك ثم تحدث بأي أمر أو سؤال باللغة العربية'}
-          </span>
-
         </div>
 
-        {/* TRANSCRIPT & STATUS BOX - HIGH CONTRAST PITCH BLACK TEXT ON AMBER PASTEL */}
-        <div className="p-4 rounded-2xl bg-amber-50 text-slate-950 space-y-2 border-2 border-amber-300 shadow-sm">
-          <div className="flex items-center justify-between text-xs font-black border-b border-amber-200 pb-2 text-amber-950">
-            <span className="flex items-center gap-1.5 text-amber-950 font-black">
-              <Radio className={`w-4 h-4 ${isListening ? 'text-rose-600 animate-ping' : 'text-amber-700'}`} />
-              <span>حالة الاستجابة المباشرة:</span>
-            </span>
-            <span className="text-emerald-800 font-black font-mono text-xs">استجابة فائقة السرعة Low-Latency</span>
-          </div>
-
-          <p className="text-sm md:text-base font-black text-slate-950 min-h-[40px] flex items-center leading-relaxed">
-            {interimTranscript || transcript || statusMessage}
-          </p>
-        </div>
-
-        {/* SUGGESTED VOICE COMMAND CARDS - HIGH CONTRAST PASTEL CARDS */}
-        <div className="space-y-2">
-          <h4 className="text-xs font-black text-slate-900 flex items-center gap-1">
-            <HelpCircle className="w-4 h-4 text-amber-600" />
-            <span>أمثلة للأوامر الصوتية والبحث الذكي:</span>
-          </h4>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-bold">
-            <div className="p-3 rounded-2xl bg-amber-100/90 border-2 border-amber-300 text-slate-950 shadow-xs">
-              <strong className="text-amber-950 font-black block mb-1 text-xs">🔍 البحث عن طالب أو كادر:</strong>
-              <span className="text-slate-950 font-extrabold text-[11px] block">"ابحث عن عباس حسن محمد"</span>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-emerald-100/90 border-2 border-emerald-300 text-slate-950 shadow-xs">
-              <strong className="text-emerald-950 font-black block mb-1 text-xs">✏️ رصد وإضافة الدرجات:</strong>
-              <span className="text-slate-950 font-extrabold text-[11px] block">"أضف درجة العربي 85 لعباس"</span>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-sky-100/90 border-2 border-sky-300 text-slate-950 shadow-xs">
-              <strong className="text-sky-950 font-black block mb-1 text-xs">📂 التنقل المباشر بالسجلات:</strong>
-              <span className="text-slate-950 font-extrabold text-[11px] block">"افتح جدول الدروس" أو "سجل الكادر"</span>
-            </div>
-
-            <div className="p-3 rounded-2xl bg-purple-100/90 border-2 border-purple-300 text-slate-950 shadow-xs">
-              <strong className="text-purple-950 font-black block mb-1 text-xs">📊 الإحصائيات والمركز:</strong>
-              <span className="text-slate-950 font-extrabold text-[11px] block">"افتح الإحصائيات المدرسية"</span>
-            </div>
-          </div>
-        </div>
-
-        {/* QUICK ACTION CHIPS */}
-        <div className="flex flex-wrap gap-1.5 text-xs font-bold pt-1 border-t border-slate-200">
-          <button 
-            type="button"
-            onClick={() => processVoiceCommand('غير الثيم إلى ديالي')}
-            className="p-1.5 px-3 rounded-xl bg-slate-900 text-amber-300 hover:bg-amber-400 hover:text-slate-950 transition-all cursor-pointer flex items-center gap-1 font-black shadow-xs border border-slate-800"
-          >
-            <Palette className="w-3.5 h-3.5 text-amber-400" />
-            <span>ثيم ديالي</span>
-          </button>
-
-          <button 
-            type="button"
-            onClick={() => processVoiceCommand('غير الثيم إلى كلاسيكي')}
-            className="p-1.5 px-3 rounded-xl bg-slate-900 text-amber-300 hover:bg-amber-400 hover:text-slate-950 transition-all cursor-pointer flex items-center gap-1 font-black shadow-xs border border-slate-800"
-          >
-            <Palette className="w-3.5 h-3.5 text-amber-400" />
-            <span>ثيم كلاسيكي</span>
-          </button>
-
-          <button 
-            type="button"
-            onClick={() => processVoiceCommand('افتح مركز الطباعة')}
-            className="p-1.5 px-3 rounded-xl bg-slate-900 text-amber-300 hover:bg-amber-400 hover:text-slate-950 transition-all cursor-pointer flex items-center gap-1 font-black shadow-xs border border-slate-800"
-          >
-            <Printer className="w-3.5 h-3.5 text-amber-400" />
-            <span>مركز الطباعة</span>
-          </button>
-
-          <button 
-            type="button"
-            onClick={() => processVoiceCommand('افتح سجل الكادر')}
-            className="p-1.5 px-3 rounded-xl bg-slate-900 text-amber-300 hover:bg-amber-400 hover:text-slate-950 transition-all cursor-pointer flex items-center gap-1 font-black shadow-xs border border-slate-800"
-          >
-            <Users className="w-3.5 h-3.5 text-amber-400" />
-            <span>سجل الكادر</span>
-          </button>
-
-          <button 
-            type="button"
-            onClick={() => processVoiceCommand('افتح جدول الدروس')}
-            className="p-1.5 px-3 rounded-xl bg-slate-900 text-amber-300 hover:bg-amber-400 hover:text-slate-950 transition-all cursor-pointer flex items-center gap-1 font-black shadow-xs border border-slate-800"
-          >
-            <CalendarDays className="w-3.5 h-3.5 text-amber-400" />
-            <span>جدول الدروس</span>
-          </button>
-
-          <button 
-            type="button"
-            onClick={() => processVoiceCommand('افتح الإحصائيات')}
-            className="p-1.5 px-3 rounded-xl bg-slate-900 text-amber-300 hover:bg-amber-400 hover:text-slate-950 transition-all cursor-pointer flex items-center gap-1 font-black shadow-xs border border-slate-800"
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-amber-400" />
-            <span>الإحصائيات</span>
-          </button>
-        </div>
-
-        {/* LOG OF ACTIONS */}
-        {actionLog.length > 0 && (
-          <div className="space-y-1 pt-2 border-t border-slate-200">
-            <span className="text-[10px] font-black text-slate-800">سجل الأوامر المنفذة مؤخراً:</span>
-            <div className="max-h-20 overflow-y-auto text-[11px] space-y-1 dir-rtl font-bold">
-              {actionLog.map(log => (
-                <div 
-                  key={log.id} 
-                  className={`p-1.5 rounded-lg flex items-center justify-between font-extrabold ${
-                    log.type === 'success' 
-                      ? 'bg-emerald-100 text-emerald-950 border border-emerald-300' 
-                      : log.type === 'error'
-                      ? 'bg-rose-100 text-rose-950 border border-rose-300'
-                      : 'bg-slate-100 text-slate-950 border border-slate-300'
-                  }`}
-                >
-                  <span>{log.text}</span>
-                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-700" />
+        {/* Chat Area */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+          {messages.map((m) => (
+            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-start' : 'justify-end'} animate-in fade-in slide-in-from-bottom-2`}>
+              <div className={`max-w-[85%] p-5 rounded-[2rem] shadow-md border ${
+                m.role === 'user' 
+                  ? 'bg-white border-slate-200 text-slate-900 rounded-br-none' 
+                  : 'bg-gradient-to-br from-indigo-600 to-blue-700 border-indigo-500 text-white rounded-bl-none'
+              }`}>
+                <div className="flex items-center gap-2 mb-1.5 opacity-70">
+                  {m.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  <span className="text-[10px] font-black uppercase tracking-widest">{m.role === 'user' ? 'المدير' : 'المساعد الذكي'}</span>
                 </div>
-              ))}
+                <p className="text-sm md:text-base font-bold leading-relaxed whitespace-pre-wrap">{m.text}</p>
+              </div>
             </div>
-          </div>
-        )}
+          ))}
 
+          {isAiProcessing && (
+            <div className="flex justify-end">
+              <div className="bg-indigo-100 p-4 rounded-3xl flex items-center gap-3 animate-pulse border border-indigo-200">
+                <Loader2 className="w-5 h-5 text-indigo-600 animate-spin" />
+                <span className="text-xs font-black text-indigo-700">جاري التحليل والمعالجة الذكية...</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Action Chips */}
+        <div className="px-6 py-3 bg-slate-50 border-t border-slate-100 flex gap-2 overflow-x-auto no-scrollbar shrink-0">
+          <button
+            onClick={() => processAI("أعطني إحصائية سريعة وشاملة عن المدرسة")}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-full text-[11px] font-black text-slate-700 hover:border-indigo-500 hover:text-indigo-600 transition-all shrink-0 cursor-pointer shadow-sm"
+          >
+            📊 إحصائيات عامة
+          </button>
+          <button
+            onClick={() => processAI("هل هناك طلاب لديهم إنذارات غياب أو مستوى منخفض؟")}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-full text-[11px] font-black text-slate-700 hover:border-indigo-500 hover:text-indigo-600 transition-all shrink-0 cursor-pointer shadow-sm"
+          >
+            ⚠️ متابعة الغيابات
+          </button>
+          <button
+            onClick={() => processAI("اقترح عليّ نصيحة إدارية لليوم")}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-full text-[11px] font-black text-slate-700 hover:border-indigo-500 hover:text-indigo-600 transition-all shrink-0 cursor-pointer shadow-sm"
+          >
+            💡 نصيحة إدارية
+          </button>
+          <button
+            onClick={() => { setActiveView('approval_dashboard'); onClose(); }}
+            className="px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full text-[11px] font-black text-emerald-800 hover:bg-emerald-100 transition-all shrink-0 cursor-pointer shadow-sm"
+          >
+            📱 الطلاب المتصلون
+          </button>
+        </div>
+
+        {/* Bottom Input Area with Hold-to-Talk and Direct Send */}
+        <div className="p-6 bg-white border-t-2 border-slate-100 shrink-0">
+          <div className="flex items-center gap-3 mb-4">
+            <button 
+              onMouseDown={startRecording} 
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              title="اضغط مطولاً للتحدث بالصوت"
+              className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all shadow-xl cursor-pointer shrink-0 ${
+                isRecording 
+                  ? 'bg-rose-600 text-white animate-pulse scale-105 ring-4 ring-rose-200' 
+                  : 'bg-amber-400 text-slate-950 hover:bg-amber-500 hover:scale-105'
+              }`}
+            >
+              {isRecording ? <Mic className="w-8 h-8" /> : <MicOff className="w-8 h-8" />}
+            </button>
+
+            <form 
+              onSubmit={(e) => { 
+                e.preventDefault(); 
+                if (textInputQuery.trim()) { 
+                  processAI(textInputQuery); 
+                  setTextInputQuery(''); 
+                } 
+              }} 
+              className="flex-1 relative"
+            >
+              <input 
+                type="text" 
+                value={textInputQuery} 
+                onChange={(e) => setTextInputQuery(e.target.value)} 
+                placeholder="اكتب سؤالك أو اضغط مطولاً على المايك الصوتي..." 
+                className="w-full bg-slate-100 border-2 border-slate-200 rounded-[1.5rem] py-4 pr-5 pl-20 text-sm font-bold text-slate-900 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-inner"
+              />
+              <button 
+                type="submit" 
+                disabled={isAiProcessing || !textInputQuery.trim()} 
+                className="absolute left-2 top-2 bottom-2 px-5 bg-indigo-600 disabled:bg-slate-300 text-white rounded-xl font-black text-xs hover:bg-indigo-700 transition-all cursor-pointer shadow-md"
+              >
+                إرسال
+              </button>
+            </form>
+          </div>
+
+          <div className="flex justify-center gap-6 text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+            <span className="flex items-center gap-1.5"><Radio className={`w-3.5 h-3.5 ${isRecording ? 'text-rose-500' : ''}`} /> {isRecording ? 'جاري التسجيل الصوتي...' : 'صوتي (اضغط للتحدث)'}</span>
+            <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> كتابي</span>
+            <span className="flex items-center gap-1.5 text-indigo-600"><CheckCircle2 className="w-3.5 h-3.5" /> استجابة هجينة فورية</span>
+          </div>
+        </div>
       </div>
     </div>
   );

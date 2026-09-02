@@ -1,7 +1,10 @@
 export type ActiveView = 
   | 'launcher'
   | 'schedule'
+  | 'smart_schedule'
   | 'students'
+  | 'student_grades'
+  | 'attendance'
   | 'former_students'
   | 'staff'
   | 'stats'
@@ -11,9 +14,14 @@ export type ActiveView =
   | 'alarm'
   | 'settings'
   | 'desktop_guide'
-  | 'teacher_portal';
+  | 'teacher_portal'
+  | 'approval_dashboard'
+  | 'sync_center'
+  | 'management_tips'
+  | 'cloud_schedule'
+  | 'mobile_dashboard';
 
-export type AppTheme = 'vibrant' | 'classic' | 'diyala' | 'emerald' | 'dark' | 'burgundy';
+export type AppTheme = 'dark' | 'lunar' | 'cream' | 'burgundy';
 
 export type AppFont = 'tajawal' | 'cairo' | 'amiri' | 'alexandria' | 'noto';
 
@@ -36,8 +44,10 @@ export interface AppConfig {
   screensaverImageUrl?: string;
   adminEmail?: string;
   geminiApiKey?: string;
-  schoolId?: string;
-  pairingCode?: string;
+  schoolId?: string; // Permanent School Code
+  pairingCode?: string; // Teacher/Student Link Code
+  lastBackupDate?: string;
+  backupCloudProvider?: 'google_drive' | 'local' | 'none';
 }
 
 // 1. Schedule Types
@@ -71,6 +81,20 @@ export type DayOfWeek = 'الأحد' | 'الإثنين' | 'الثلاثاء' | '
 
 export interface DayScheduleMap {
   [day: string]: ClassScheduleRow[];
+}
+
+export interface SectionSubjectAssignment {
+  id: string;
+  subjectName: string;
+  teacherName: string;
+  weeklyLessons: number;
+}
+
+export interface SmartScheduleSection {
+  id: string;
+  grade: string;
+  section: string;
+  subjects: SectionSubjectAssignment[];
 }
 
 // 2. Student Record Types
@@ -151,7 +175,8 @@ export interface Student {
   syncSealToken?: string;
   promotionDestination?: string;
   attestationStage?: 'غير مصادق' | 'الفصل الأول' | 'نصف السنة' | 'الفصل الثاني' | 'أخر السنة' | 'الدور الثاني';
-  status: 'مستمر' | 'غادر المدرسة' | 'متخرج' | 'مفصول';
+  status: 'مستمر' | 'غادر المدرسة' | 'متخرج' | 'مفصول' | 'active' | 'muted' | 'graduated' | 'transferred';
+  cloudSyncStatus?: 'synced' | 'pending' | 'disconnected';
   healthStatus: string;
   firstName: string;
   secondName: string;
@@ -163,6 +188,12 @@ export interface Student {
   conductScore: string;
   marksHistory: StudentMark[];
   notesLog: StudentNote[];
+  guardianPhone?: string;
+  address?: string;
+  previousSchool?: string;
+  consecutiveFailureYears?: number;
+  currentResult?: string;
+  academicStatus?: string;
 }
 
 // 3. Staff Member Types
@@ -200,7 +231,8 @@ export interface StaffMember {
   residenceDistrict: string;
   nearestLandmark: string;
   residenceCardNumber: string;
-  salaryAccountNumber: string;
+  fullName?: string;
+  actualSubjectTaught?: string; // المادة التي يدرسها فعلياً (قد تختلف عن الاختصاص)
   classesTaught: string[];
   sectionsTaughtCount: number;
   teachingQuota: number;

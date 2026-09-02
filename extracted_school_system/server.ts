@@ -2,882 +2,182 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import dotenv from 'dotenv';
+import cors from 'cors';
 
+dotenv.config();
 
-function normalizeArabic(str: string): string {
-  if (!str) return '';
-  return str
-    .trim()
-    .replace(/[أإآ]/g, 'ا')
-    .replace(/ة/g, 'ه')
-    .replace(/ى/g, 'ي')
-    .replace(/^الصف\s+/g, '')
-    .replace(/(^|\s)ال/g, '$1')
-    .replace(/\s+/g, '');
+let activeDirname: string;
+try {
+  activeDirname = path.dirname(fileURLToPath(import.meta.url));
+} catch (e) {
+  activeDirname = __dirname;
 }
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // JSON Body Parser for base64 image scanning & sync requests
-  app.use(express.json({ limit: '15mb' }));
+  app.use(cors());
+  app.use(express.json({ limit: '100mb' })); // Higher limit for complete school data
 
-  // API Routes
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', serverTime: new Date().toISOString() });
-  });
+  const DEFAULT_KEY = process.env.GEMINI_API_KEY || '';
 
-  // OCR Paper Register Image Scanner API using Gemini AI
-  app.post('/api/ocr-score-sheet', async (req, res) => {
+  app.post('/api/ai-assistant', async (req, res) => {
     try {
-      const { imageBase64, mimeType = 'image/jpeg' } = req.body;
+      const { query, audioBase64, schoolName, students = [], staff = [], config, userApiKey } = req.body;
 
-      if (!imageBase64) {
-        return res.status(400).json({ error: 'لم يتم إرسال صورة السجل الورقي' });
-      }
+      const apiKey = userApiKey || DEFAULT_KEY;
+      const genAI = new GoogleGenerativeAI(apiKey);
 
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: 'مفتاح GEMINI_API_KEY غير معرف بالنظام' });
-      }
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        systemInstruction: `أنت مساعد المدير الذكي والمحترف لنظام الإدارة المدرسية الموحد (The Principal).
+        مهمتك هي مساعدة المدير في إدارة المدرسة بكفاءة من خلال تحليل البيانات وتقديم الرؤى الإدارية.
+        اسم المدرسة الحالية: ${schoolName || 'غير محدد'}
 
-      const ai = new GoogleGenAI({ apiKey });
+        لديك القدرة على:
+        1. تقديم إحصائيات دقيقة حول الطلاب والمعلمين.
+        2. تحديد الطلاب المتراجعين دراسياً أو الذين لديهم غيابات كثيرة.
+        3. التنقل بين أقسام التطبيق.
+        4. اقتراح نصائح إدارية وتربوية.
 
-      // Clean base64 string
-      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-
-      const prompt = `أنت خبير فحص وقراءة سجلات درجات الطلاب المدرسية الورقية باللغة العربية.
-قم بفرز وقراءة صورة سجل درجات الطلاب المرفقة واستخراج الجدول وتنسيقه في صيغة JSON حصرية دون أي نصوص إضافية.
-يجب أن يحتوي الـ JSON على مصفوفة باسم "students" حيث تحتوي كل مفردة على:
-- recordNumber: رقم القيد أو تسلسل الطالب إن وجد (نص)
-- studentName: الاسم الكامل للطالب (نص)
-- midtermMark: درجة منتصف السنة/الفصل الأول (رقم)
-- finalMark: درجة نهاية السنة/الدرجة النهائية (رقم)
-- status: "ناجح" إذا كانت الدرجة النهائية 50 فأعلى، أو "راسب" إذا كانت أقل من 50.
-
-الصيغة المطلوبة بالضبط:
-{
-  "students": [
-    { "recordNumber": "101", "studentName": "علي أحمد حسين", "midtermMark": 42, "finalMark": 85, "status": "ناجح" }
-  ]
-}`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [
+        تحدث دائماً بلغة عربية فصيحة، رسمية، ومهذبة.`,
+        tools: [
           {
-            role: 'user',
-            parts: [
-              { inlineData: { mimeType, data: cleanBase64 } },
-              { text: prompt }
+            functionDeclarations: [
+              {
+                name: "get_school_statistics",
+                description: "استخراج إحصائيات عامة عن المدرسة (عدد الطلاب، الشعب، الملاك).",
+              },
+              {
+                name: "get_low_grade_students",
+                description: "تحديد الطلاب الذين تقل درجاتهم عن حد معين في مادة ما أو في المعدل.",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    threshold: { type: "NUMBER", description: "الدرجة الدنيا (مثلاً 50)" },
+                    subject: { type: "STRING", description: "اسم المادة (اختياري)" }
+                  },
+                  required: ["threshold"]
+                }
+              },
+              {
+                name: "navigate_to_page",
+                description: "الانتقال إلى صفحة معينة في التطبيق.",
+                parameters: {
+                  type: "OBJECT",
+                  properties: {
+                    view: {
+                      type: "STRING",
+                      enum: ["launcher", "schedule", "students", "student_grades", "staff", "stats", "settings", "sync_center", "management_tips"],
+                      description: "اسم الصفحة الهدف"
+                    }
+                  },
+                  required: ["view"]
+                }
+              }
             ]
           }
         ]
       });
 
-      const responseText = response.text || '';
-      
-      // Clean JSON block from response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsedData = JSON.parse(jsonMatch[0]);
-        return res.json({ success: true, data: parsedData });
+      const chat = model.startChat();
+      let result;
+
+      if (audioBase64) {
+        result = await chat.sendMessage([
+          { inlineData: { data: audioBase64, mimeType: "audio/webm" } },
+          { text: "أجب على طلب المدير الصوتي بناءً على صلاحياتك والبيانات المتاحة." }
+        ]);
       } else {
-        return res.status(500).json({ error: 'تعذر استخراج بيانات الجدول بشكل دقيق من الصورة', raw: responseText });
+        result = await chat.sendMessage(query);
       }
 
-    } catch (error: any) {
-      console.error('OCR Processing Error:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء فحص صورة السجل الورقي' });
-    }
-  });
+      let response = result.response;
+      let functionCalls = response.functionCalls();
 
-  // AI Smart Assistant Endpoint with Gemini 2.5 Flash
-  app.post('/api/ai-assistant', async (req, res) => {
-    try {
-      const { query, studentsCount = 0, staffCount = 0, schoolName = '', userApiKey } = req.body;
+      // Handle function calls
+      if (functionCalls && functionCalls.length > 0) {
+        const call = functionCalls[0];
+        let functionResponse;
 
-      if (!query) {
-        return res.status(400).json({ error: 'يرجى إرسال سؤال أو أمر للبحث الصوتي الذكي' });
-      }
+        if (call.name === "get_school_statistics") {
+          const stats = {
+            totalStudents: students.length,
+            activeStudents: students.filter((s: any) => s.status === 'مستمر').length,
+            totalStaff: staff.length,
+            sectionsCount: new Set(students.map((s: any) => s.section)).size
+          };
+          functionResponse = stats;
+        } else if (call.name === "get_low_grade_students") {
+          const threshold = call.args.threshold as number || 50;
+          const subject = call.args.subject as string;
 
-      const apiKey = userApiKey || process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ error: 'لم يتم العثور على مفتاح GEMINI_API_KEY. يرجى التأكد من ربط المفتاح بالنظام.' });
-      }
+          const lowStudents = students.filter((s: any) => {
+            const marks = s.marksHistory || [];
+            if (subject) {
+              return marks.some((m: any) => m.subject === subject && (m.finalGrade || m.midterm || 0) < threshold);
+            }
+            // Check overall average if no subject specified
+            const avg = marks.length > 0
+              ? marks.reduce((acc: number, m: any) => acc + (m.finalGrade || m.midterm || 0), 0) / marks.length
+              : 100;
+            return avg < threshold;
+          }).map((s: any) => ({ name: `${s.firstName} ${s.secondName} ${s.thirdName}`, grade: s.currentGrade, section: s.section }));
 
-      const modelName = 'gemini-2.5-flash';
-      const ai = new GoogleGenAI({ apiKey });
-
-      const prompt = `أنت المساعد الصوتي والذكاء الاصطناعي الذكي والمحترف لنظام الإدارة المدرسية الموحد (The Principal).
-اسم المدرسة: ${schoolName || 'المدرسة المسائية'}
-عدد الطلاب الإجمالي: ${studentsCount}
-عدد الكادر والموظفين: ${staffCount}
-
-سؤال/أمر المستخدم: "${query}"
-
-قم بتحليل الأمر بدقة وإرجاع الإجابة والـ intent بتنسيق JSON حصري بالشكل التالي دون أي نصوص إضافية:
-{
-  "responseText": "إجابة ملخصة ومباشرة باللغة العربية بأسلوب راقي ومحترف",
-  "action": "NAVIGATE" | "CHANGE_THEME" | "SEARCH_STUDENT" | "SEARCH_STAFF" | "ANSWER",
-  "targetView": "launcher" | "schedule" | "students" | "former_students" | "staff" | "stats" | "print" | "themes" | "fonts" | "alarm" | "settings",
-  "targetTheme": "vibrant" | "classic" | "diyala" | "emerald" | "dark" | "burgundy",
-  "searchQuery": "اسم الطالب أو المعلم عند البحث",
-  "detectedModel": "${modelName}"
-}`;
-
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: prompt }]
-          }
-        ]
-      });
-
-      const responseText = response.text || '';
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsedData = JSON.parse(jsonMatch[0]);
-        return res.json({ success: true, ...parsedData });
-      } else {
-        return res.json({
-          success: true,
-          responseText: responseText || 'تم تنفيذ الأمر بنجاح.',
-          action: 'ANSWER',
-          detectedModel: modelName
-        });
-      }
-
-    } catch (error: any) {
-      console.error('AI Assistant Endpoint Error:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء معالجة الطلب بالذكاء الاصطناعي' });
-    }
-  });
-
-  // Cloud Sync Simulation Endpoint with Manager Passcode Verification ("نقطة اللا عودة")
-  app.post('/api/cloud-sync', (req, res) => {
-    const { passcode, syncAction, studentRecordsCount } = req.body;
-
-    if (!passcode) {
-      return res.status(401).json({ error: 'رمز الدخول الخاص بالمدير مطلوب لإجراء المزامنة والقفل' });
-    }
-
-    // Return success response with cryptographic sync seal hash
-    const syncSealToken = `SEAL-${Date.now()}-${Math.floor(Math.random() * 899999 + 100000)}`;
-
-    return res.json({
-      success: true,
-      syncSealToken,
-      syncedCount: studentRecordsCount || 0,
-      timestamp: new Date().toISOString(),
-      message: 'تمت المزامنة وحفظ الدرجات سحابياً مع تطبيق الأندرويد وإقفال تعديل الأستاذ (وصلنا لنقطة اللا عودة)'
-    });
-  });
-
-  // ==========================================
-  // REAL CLOUD SYNC & PAIRING APIS FOR TEACHER & MANAGER (QR VERSION)
-  // ==========================================
-
-  const activeDirname = typeof __dirname !== 'undefined' 
-    ? __dirname 
-    : path.dirname(fileURLToPath(import.meta.url));
-
-  let DB_FILE = path.join(process.cwd(), 'sync_database.json');
-  let isPackaged = false;
-
-  if (process.versions.electron) {
-    try {
-      // Dynamically import electron so it doesn't fail outside of Electron environment
-      const electron = await import('electron');
-      const electronApp = electron.app || electron.default?.app;
-      if (electronApp) {
-        DB_FILE = path.join(electronApp.getPath('userData'), 'sync_database.json');
-        isPackaged = electronApp.isPackaged;
-      }
-    } catch (e) {
-      console.error('Failed to get Electron info, using fallback:', e);
-    }
-  }
-
-  function readSyncDb() {
-    try {
-      if (fs.existsSync(DB_FILE)) {
-        const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-        db.schools = db.schools || {};
-        db.pairings = db.pairings || {};
-        db.syncedGrades = db.syncedGrades || {};
-        db.sessions = db.sessions || {};
-        return db;
-      }
-    } catch (e) {
-      console.error('Error reading sync database:', e);
-    }
-    return { schools: {}, pairings: {}, syncedGrades: {}, sessions: {} };
-  }
-
-  function writeSyncDb(db: any) {
-    try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
-    } catch (e) {
-      console.error('Error writing sync database:', e);
-    }
-  }
-
-  // 1. Upload School Data (Called by Manager App to sync roster database to cloud)
-  app.post('/api/sync/upload-manager-data', (req, res) => {
-    try {
-      const { schoolId, schoolName, students, staff, config } = req.body;
-      if (!schoolId) {
-        return res.status(400).json({ error: 'معرف المدرسة schoolId مطلوب' });
-      }
-      const db = readSyncDb();
-      db.schools = db.schools || {};
-      db.schools[schoolId] = {
-        schoolName,
-        students: students || [],
-        staff: staff || [],
-        config: config || {},
-        lastUpdated: new Date().toISOString()
-      };
-      writeSyncDb(db);
-      console.log(`[Sync] Uploaded manager data for school: ${schoolName} (${schoolId})`);
-      return res.json({ success: true, message: 'تم رفع قاعدة البيانات المدرسية السحابية بنجاح.' });
-    } catch (error: any) {
-      console.error('Error uploading manager data:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء رفع البيانات' });
-    }
-  });
-
-  // 1.5. Create Session (Called by Manager Web/Electron App)
-  app.post('/api/sync/create-session', (req, res) => {
-    try {
-      const { otpCode, teacherName, subjects, grades, sections, students } = req.body;
-      if (!otpCode) {
-        return res.status(400).json({ error: 'رمز الدخول المؤقت otpCode مطلوب' });
-      }
-
-      const db = readSyncDb();
-      db.sessions = db.sessions || {};
-      db.sessions[otpCode] = {
-        teacherName,
-        subjects: subjects || [],
-        grades: grades || [],
-        sections: sections || [],
-        students: students || [],
-        schoolId: 'school_01', // Default schoolId
-        createdAt: new Date().toISOString()
-      };
-      writeSyncDb(db);
-
-      console.log(`[Sync] Created session for OTP: ${otpCode} (Teacher: ${teacherName})`);
-      return res.json({ success: true, message: 'تم تسجيل الجلسة بنجاح.' });
-    } catch (error: any) {
-      console.error('Error creating session:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء إنشاء الجلسة' });
-    }
-  });
-
-  // 1.6. Get Synced Grades for Session OTP (Called by Manager Web/Electron App)
-  app.get('/api/sync/get-synced-grades', (req, res) => {
-    try {
-      const { otpCode } = req.query;
-      if (!otpCode) {
-        return res.status(400).json({ error: 'رمز الدخول المؤقت otpCode مطلوب' });
-      }
-
-      const db = readSyncDb();
-      db.sessions = db.sessions || {};
-      const session = db.sessions[otpCode as string];
-
-      if (!session) {
-        return res.status(404).json({ error: 'لم يتم العثور على الجلسة المطلوبة' });
-      }
-
-      const schoolId = session.schoolId || 'school_01';
-      db.syncedGrades = db.syncedGrades || {};
-      const allSyncedGrades = db.syncedGrades[schoolId] || [];
-
-      // Filter grades uploaded by teachers that match the grades, sections, and subjects in the session
-      const sessionNormalizedGrades = session.grades.map((grd: string) => normalizeArabic(grd));
-      const sessionNormalizedSections = session.sections.map((sec: string) => normalizeArabic(sec));
-      const sessionNormalizedSubjects = session.subjects.map((sub: string) => normalizeArabic(sub));
-
-      const filteredGrades = allSyncedGrades.filter((g: any) => {
-        const gradeMatches = sessionNormalizedGrades.includes(normalizeArabic(g.grade));
-        const sectionMatches = sessionNormalizedSections.includes(normalizeArabic(g.section));
-        const subjectMatches = sessionNormalizedSubjects.includes(normalizeArabic(g.subject));
-        return gradeMatches && sectionMatches && subjectMatches;
-      });
-
-      console.log(`[Sync] Pulled synced grades for OTP: ${otpCode}, found ${filteredGrades.length} classes`);
-      return res.json({
-        success: true,
-        syncedGrades: filteredGrades
-      });
-    } catch (error: any) {
-      console.error('Error getting synced grades:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء جلب الدرجات المزامنة' });
-    }
-  });
-
-  const UNIFIED_SCHOOL_CODE = '999888';
-
-  // 2. Request Pairing (Called by Teacher Android App to link subject and section)
-  app.post('/api/sync/request-pairing', (req, res) => {
-    try {
-      const { schoolId, teacherName, grade, section, subject, pairingCode } = req.body;
-      if (!schoolId || !teacherName || !pairingCode) {
-        return res.status(400).json({ error: 'بيانات الاقتران غير مكتملة' });
-      }
-
-      const db = readSyncDb();
-      db.schools = db.schools || {};
-      const school = db.schools[schoolId];
-      if (!school) {
-        return res.status(404).json({ error: 'عفواً، لم نجد مدرسة مسجلة بهذا المعرف في السحاب.' });
-      }
-
-      // Validate school pairing code
-      const expectedPairingCode = school.config?.pairingCode || UNIFIED_SCHOOL_CODE;
-      if (pairingCode !== expectedPairingCode) {
-        return res.status(400).json({ error: 'رمز الاقتران الموحد غير صحيح! يرجى إدخال الرمز الصحيح المعروض في بوابة المدير.' });
-      }
-
-      // Try to find the teacher in the school staff database
-      const normalizedInput = normalizeArabic(teacherName);
-      const matchedStaff = (school.staff || []).find((s: any) => {
-        const staffFullName = `${s.firstName || ''} ${s.secondName || ''} ${s.thirdName || ''} ${s.fourthName || ''} ${s.titleName || ''}`.replace(/\s+/g, ' ').trim();
-        return normalizeArabic(staffFullName).includes(normalizedInput) || 
-               normalizedInput.includes(normalizeArabic(staffFullName)) ||
-               (s.firstName && normalizeArabic(s.firstName).includes(normalizedInput));
-      });
-
-      let parsedClasses: Array<{ grade: string; section: string; subject: string }> = [];
-      if (matchedStaff && Array.isArray(matchedStaff.classesTaught)) {
-        // Parse assigned classes
-        matchedStaff.classesTaught.forEach((classStr: string) => {
-          const cleaned = classStr.replace(/^الصف\s+/g, '').trim();
-          const parts = cleaned.split(/[-–—\s]+/);
-          if (parts.length >= 3) {
-            const subjectPart = parts[parts.length - 1];
-            const sectionPart = parts[parts.length - 2];
-            const gradePart = parts.slice(0, parts.length - 2).join(' ');
-            parsedClasses.push({ grade: gradePart, section: sectionPart, subject: subjectPart });
-          } else if (parts.length === 2) {
-            parsedClasses.push({ grade: parts[0], section: parts[1], subject: matchedStaff.specialization || 'الرياضيات' });
-          } else if (parts.length === 1 && parts[0].length > 0) {
-            parsedClasses.push({ grade: parts[0], section: 'أ', subject: matchedStaff.specialization || 'الرياضيات' });
-          }
-        });
-      }
-
-      db.pairings = db.pairings || {};
-      const pairings = db.pairings[schoolId] || [];
-      
-      const teacherPairings = pairings.filter((p: any) => p.teacherName === teacherName);
-      const token = teacherPairings.length > 0 ? teacherPairings[0].token : `TEACHER-${Math.floor(100000 + Math.random() * 900000)}`;
-
-      const newPairings = pairings.filter((p: any) => p.teacherName !== teacherName);
-
-      if (parsedClasses.length > 0) {
-        parsedClasses.forEach((cls) => {
-          const id = `${teacherName}-${cls.grade}-${cls.section}-${cls.subject}`.replace(/\s+/g, '-');
-          newPairings.push({
-            id,
-            teacherName,
-            grade: cls.grade,
-            section: cls.section,
-            subject: cls.subject,
-            status: 'approved',
-            token,
-            lastActiveTime: new Date().toISOString(),
-            isNewNotification: true
+          functionResponse = { students: lowStudents.slice(0, 10), count: lowStudents.length };
+        } else if (call.name === "navigate_to_page") {
+          res.json({
+            success: true,
+            responseText: `حاضر حضرة المدير، سأقوم بنقلك إلى صفحة ${call.args.view} الآن.`,
+            action: "NAVIGATE",
+            targetView: call.args.view
           });
-        });
-      } else {
-        // Fallback: If not found in staff or classesTaught is empty, pair with requested class
-        const useGrade = grade || 'الأول الابتدائي';
-        const useSection = section || 'أ';
-        const useSubject = subject || 'الرياضيات';
-        const id = `${teacherName}-${useGrade}-${useSection}-${useSubject}`.replace(/\s+/g, '-');
-        
-        newPairings.push({
-          id,
-          teacherName,
-          grade: useGrade,
-          section: useSection,
-          subject: useSubject,
-          status: 'approved',
-          token,
-          lastActiveTime: new Date().toISOString(),
-          isNewNotification: true
-        });
-      }
-
-      db.pairings[schoolId] = newPairings;
-      writeSyncDb(db);
-
-      console.log(`[Sync] Multi-tenant pairing for ${teacherName} in school ${schoolId} approved for ${parsedClasses.length || 1} classes.`);
-      return res.json({
-        success: true,
-        warning: false,
-        token: token,
-        status: 'approved',
-        message: parsedClasses.length > 0 
-          ? `تم ربط جهازك بنجاح! تم العثور على ${parsedClasses.length} شعب مكلف بها في سجل الكادر وسيتم تنزيل الأسماء والبدء بالعمل.`
-          : 'تم ربط جهازك بسحابة المدرسة للشعبة المطلوبة بنجاح! سيتم تنزيل الأسماء والبدء بالعمل.'
-      });
-    } catch (error: any) {
-      console.error('Error requesting pairing:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء تسجيل طلب الاقتران' });
-    }
-  });
-
-  // 3. Get Pairing Requests (Called by Manager App to list requests)
-  app.get('/api/sync/pairing-requests', (req, res) => {
-    try {
-      const { schoolId } = req.query;
-      if (!schoolId) {
-        return res.status(400).json({ error: 'معرف المدرسة مطلوب' });
-      }
-      const db = readSyncDb();
-      db.pairings = db.pairings || {};
-      const pairings = db.pairings[schoolId as string] || [];
-      return res.json({ success: true, pairings });
-    } catch (error: any) {
-      console.error('Error fetching pairing requests:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء جلب طلبات الاقتران' });
-    }
-  });
-
-  // 4. Approve/Reject/Revoke Pairing (Called by Manager App to update pairing status)
-  app.post('/api/sync/approve-pairing', (req, res) => {
-    try {
-      const { schoolId, pairingId, action } = req.body;
-      if (!schoolId || !pairingId) {
-        return res.status(400).json({ error: 'معرف المدرسة أو معرف الاقتران مفقود' });
-      }
-
-      const db = readSyncDb();
-      db.pairings = db.pairings || {};
-      const pairings = db.pairings[schoolId] || [];
-      const pairingIdx = pairings.findIndex((p: any) => p.id === pairingId);
-
-      if (pairingIdx === -1) {
-        return res.status(404).json({ error: 'طلب الاقتران غير موجود' });
-      }
-
-      if (action === 'reject') {
-        pairings.splice(pairingIdx, 1);
-        db.pairings[schoolId] = pairings;
-        writeSyncDb(db);
-        return res.json({ success: true, message: 'تم رفض وحذف طلب الاقتران.' });
-      } else if (action === 'reread') {
-        // Revoke pairing and request re-reading
-        pairings[pairingIdx].status = 'reread';
-        pairings[pairingIdx].isNewNotification = false;
-        pairings[pairingIdx].lastActiveTime = new Date().toISOString();
-        db.pairings[schoolId] = pairings;
-        writeSyncDb(db);
-        return res.json({ success: true, message: 'تم إيقاف الربط وإلغاء تفعيل المعلم بنجاح. سيُطلب منه إعادة إدخال الرمز وتصحيح الشعبة.' });
-      } else if (action === 'dismiss_notification') {
-        // Acknowledge the notification (Manager approved it mentally - no action)
-        pairings[pairingIdx].isNewNotification = false;
-        db.pairings[schoolId] = pairings;
-        writeSyncDb(db);
-        return res.json({ success: true, message: 'تم تأكيد واعتماد الاقتران كصحيح.' });
-      } else {
-        // Approve / Activate
-        pairings[pairingIdx].status = 'approved';
-        pairings[pairingIdx].isNewNotification = false;
-        pairings[pairingIdx].lastActiveTime = new Date().toISOString();
-        db.pairings[schoolId] = pairings;
-        writeSyncDb(db);
-        return res.json({ success: true, message: 'تمت الموافقة وتفعيل الاقتران بنجاح.' });
-      }
-    } catch (error: any) {
-      console.error('Error approving pairing:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء المصادقة على الاقتران' });
-    }
-  });
-
-  // 5. Download Class Roster (Called by Teacher Android App to download student names)
-  app.get('/api/sync/download-roster', (req, res) => {
-    try {
-      const { schoolId, token } = req.query;
-      if (!schoolId || !token) {
-        return res.status(400).json({ error: 'معرف المدرسة والتوكن مطلوبان' });
-      }
-
-      const db = readSyncDb();
-      db.pairings = db.pairings || {};
-      const pairings = db.pairings[schoolId as string] || [];
-      const teacherPairings = pairings.filter((p: any) => p.token === token);
-
-      if (teacherPairings.length === 0) {
-        return res.status(404).json({ error: 'عفواً، لم نجد طلب اقتران مطابق.' });
-      }
-
-      const activePairings = teacherPairings.filter((p: any) => p.status === 'approved');
-      const revokedPairings = teacherPairings.filter((p: any) => p.status === 'reread');
-
-      if (revokedPairings.length > 0 && activePairings.length === 0) {
-        return res.status(400).json({ error: 'REVOKED', message: 'عفواً، تم إيقاف هذا الربط من قبل المدير لوجود خطأ! يرجى إعادة إدخال الرمز وتعديل الصف والشعبة.' });
-      }
-
-      if (activePairings.length === 0) {
-        return res.status(403).json({ error: 'عفواً، طلب الاقتران الخاص بك ما زال بانتظار مصادقة وتدقيق المدير.' });
-      }
-
-      db.schools = db.schools || {};
-      const school = db.schools[schoolId as string];
-      if (!school) {
-        return res.status(404).json({ error: 'عفواً، قاعدة بيانات المدرسة غير متوفرة في السحاب.' });
-      }
-
-      // Collect all active classes
-      const classesList = activePairings.map((p: any) => ({
-        grade: p.grade,
-        section: p.section,
-        subject: p.subject
-      }));
-
-      // Filter students who are in any of the active grade/sections
-      const matchedStudents = school.students.filter((s: any) => {
-        return activePairings.some((p: any) => 
-          normalizeArabic(s.currentGrade) === normalizeArabic(p.grade) && 
-          normalizeArabic(s.section) === normalizeArabic(p.section)
-        );
-      });
-
-      const studentsList = matchedStudents.map((std: any) => ({
-        recordNumber: std.recordNumber,
-        fullName: `${std.firstName} ${std.secondName} ${std.thirdName} ${std.fourthName} ${std.titleName}`.replace(/\s+/g, ' ').trim(),
-        grade: std.currentGrade,
-        section: std.section,
-        historicalAbsences: std.absencesCount || 0
-      }));
-
-      console.log(`[Sync] Teacher ${activePairings[0].teacherName} downloaded roster for ${classesList.length} classes`);
-      return res.json({
-        success: true,
-        token: token,
-        teacherName: activePairings[0].teacherName,
-        classes: classesList,
-        students: studentsList
-      });
-    } catch (error: any) {
-      console.error('Error downloading roster:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء تنزيل قائمة الأسماء' });
-    }
-  });
-
-  // 6. Upload Grades & Absences (Called by Teacher Android App)
-  app.post('/api/sync/upload-grades', (req, res) => {
-    try {
-      const { schoolId, token, grade, section, subject, gradesList } = req.body;
-
-      if (!schoolId || !token) {
-        return res.status(400).json({ error: 'بيانات المزامنة غير مكتملة' });
-      }
-
-      const db = readSyncDb();
-      db.pairings = db.pairings || {};
-      const pairings = db.pairings[schoolId] || [];
-      const pairing = pairings.find((p: any) => p.token === token && p.status === 'approved');
-
-      if (!pairing) {
-        return res.status(401).json({ error: 'عفواً، الاقتران غير مصادق عليه أو التوكن غير صالح.' });
-      }
-
-      db.syncedGrades = db.syncedGrades || {};
-      db.syncedGrades[schoolId] = db.syncedGrades[schoolId] || [];
-
-      const syncPayload = {
-        teacherName: pairing.teacherName,
-        grade,
-        section,
-        subject,
-        gradesList,
-        timestamp: new Date().toISOString()
-      };
-
-      const existingSyncIdx = db.syncedGrades[schoolId].findIndex(
-        (g: any) => g.grade === grade && g.section === section && g.subject === subject
-      );
-
-      if (existingSyncIdx > -1) {
-        db.syncedGrades[schoolId][existingSyncIdx] = syncPayload;
-      } else {
-        db.syncedGrades[schoolId].push(syncPayload);
-      }
-
-      writeSyncDb(db);
-      console.log(`[Sync] Teacher ${pairing.teacherName} uploaded grades for ${grade}-${section} [${subject}]`);
-      return res.json({ success: true, message: 'تم رفع وحفظ الدرجات والغيابات في مستودع السحابة بنجاح.' });
-    } catch (error: any) {
-      console.error('Error uploading grades:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء مزامنة الدرجات' });
-    }
-  });
-
-  // 7. Pull All Synced Grades (Called by Manager App to fetch all teacher inputs)
-  app.get('/api/sync/pull-all-grades', (req, res) => {
-    try {
-      const { schoolId } = req.query;
-      if (!schoolId) {
-        return res.status(400).json({ error: 'معرف المدرسة مطلوب' });
-      }
-
-      const db = readSyncDb();
-      db.syncedGrades = db.syncedGrades || {};
-      const syncedGrades = db.syncedGrades[schoolId as string] || [];
-
-      return res.json({
-        success: true,
-        syncedGrades
-      });
-    } catch (error: any) {
-      console.error('Error pulling synced grades:', error);
-      return res.status(500).json({ error: error.message || 'حدث خطأ أثناء استيراد الدرجات' });
-    }
-  });
-
-  // 8. Get QR Pairing Data (Called by Desktop App to show QR)
-  app.get('/api/sync/qr-data', (req, res) => {
-    const { schoolId: reqSchoolId } = req.query;
-    const os = require('os');
-    const networkInterfaces = os.networkInterfaces();
-    let localIp = 'localhost';
-
-    for (const interfaceName in networkInterfaces) {
-      const interfaces = networkInterfaces[interfaceName];
-      for (const iface of interfaces!) {
-        if (iface.family === 'IPv4' && !iface.internal) {
-          localIp = iface.address;
-          break;
+          return;
         }
-      }
-      if (localIp !== 'localhost') break;
-    }
 
-    const schoolId = (reqSchoolId as string) || 'DIYALA-8492';
-    const db = readSyncDb();
-    const school = db.schools[schoolId];
+        // Send function result back to model for final text response
+        const finalResult = await chat.sendMessage([{
+          functionResponse: {
+            name: call.name,
+            response: functionResponse
+          }
+        }]);
 
-    res.json({
-      success: true,
-      url: `http://${localIp}:${PORT}`,
-      schoolId,
-      schoolName: school?.schoolName || 'مدرسة التميز',
-      pairingCode: school?.config?.pairingCode || UNIFIED_SCHOOL_CODE
-    });
-  });
-
-  // UNIFY OLD CLOUD APIs WITH NEW SYNC DB
-  app.get('/api/cloud/teachers', (req, res) => {
-    const { schoolId: reqSchoolId } = req.query;
-    const db = readSyncDb();
-    const schoolId = (reqSchoolId as string) || 'DIYALA-8492';
-    const pairings = db.pairings[schoolId] || [];
-    const teachers = pairings.map((p: any) => ({
-      id: p.id,
-      name: p.teacherName,
-      grade: p.grade,
-      section: p.section,
-      subject: p.subject,
-      status: p.status === 'approved' ? 'active' : p.status,
-      lastSeen: p.lastActiveTime
-    }));
-    res.json({ success: true, teachers });
-  });
-
-  app.post('/api/cloud/sync-all', (req, res) => {
-    const { students, staff, config } = req.body;
-    const schoolId = config?.schoolId || 'DIYALA-8492';
-    const db = readSyncDb();
-    db.schools = db.schools || {};
-    db.schools[schoolId] = {
-      schoolName: config?.schoolName || 'مدرسة التميز',
-      students: students || [],
-      staff: staff || [],
-      config: config || {},
-      lastUpdated: new Date().toISOString()
-    };
-    writeSyncDb(db);
-    res.json({ success: true, timestamp: new Date().toISOString() });
-  });
-
-  // ==========================================
-  // SIMPLE SYNC APIS FOR BARCODE-FREE CONNECTION
-  // ==========================================
-
-  app.get('/api/sync/simple-classes', (req, res) => {
-    try {
-      const db = readSyncDb();
-      const schoolId = 'DIYALA-8492';
-      const school = db.schools[schoolId];
-      if (!school || !school.students) {
-        return res.json({ success: true, classes: [] });
-      }
-
-      const classMap = new Map<string, { grade: string, section: string }>();
-      school.students.forEach((s: any) => {
-        const key = `${s.currentGrade}-${s.section}`;
-        if (!classMap.has(key)) {
-          classMap.set(key, {
-            grade: s.currentGrade,
-            section: s.section
-          });
-        }
-      });
-
-      const classes = Array.from(classMap.values());
-      return res.json({ success: true, classes });
-    } catch (error: any) {
-      return res.status(500).json({ error: error.message || 'Error listing classes' });
-    }
-  });
-
-  app.get('/api/sync/simple-download-roster', (req, res) => {
-    try {
-      const { grade, section } = req.query;
-      if (!grade || !section) {
-        return res.status(400).json({ error: 'grade and section parameters are required' });
-      }
-
-      const db = readSyncDb();
-      const schoolId = 'DIYALA-8492';
-      const school = db.schools[schoolId];
-      if (!school || !school.students) {
-        return res.status(404).json({ error: 'School roster database not uploaded yet' });
-      }
-
-      const targetGrade = grade.toString();
-      const targetSection = section.toString();
-
-      const students = school.students.filter((s: any) => {
-        const normSGrade = normalizeArabic(s.currentGrade);
-        const normTGrade = normalizeArabic(targetGrade);
-        const gradeMatch = normSGrade.includes(normTGrade) || normTGrade.includes(normSGrade);
-
-        const normSSection = normalizeArabic(s.section);
-        const normTSection = normalizeArabic(targetSection);
-        const sectionMatch = normSSection === normTSection;
-
-        return gradeMatch && sectionMatch;
-      });
-
-      const studentsList = students.map((s: any) => ({
-        recordNumber: s.recordNumber,
-        fullName: `${s.firstName} ${s.secondName} ${s.thirdName} ${s.fourthName} ${s.titleName}`.replace(/\s+/g, ' ').trim(),
-        grade: s.currentGrade,
-        section: s.section,
-        historicalAbsences: s.absencesCount || 0
-      }));
-
-      return res.json({
-        success: true,
-        students: studentsList
-      });
-    } catch (error: any) {
-      return res.status(500).json({ error: error.message || 'Error downloading roster' });
-    }
-  });
-
-  // Onboard API
-  app.post('/api/cloud/onboard', (req, res) => {
-    const { schoolName, managerName, email } = req.body;
-    console.log(`Onboarding school: ${schoolName} (Admin: ${email})`);
-    res.json({ success: true, schoolId: 'DIYALA-8492' });
-  });
-
-  // Pair Request API
-  app.post('/api/cloud/pair-request', (req, res) => {
-    const { teacherName, grade, section, subject, pairingCode, email } = req.body;
-    if (pairingCode === "999888") {
-      const db = readSyncDb();
-      db.pairings = db.pairings || {};
-      const pairings = db.pairings['DIYALA-8492'] || [];
-      const id = `${teacherName}-${grade}-${section}-${subject}`.replace(/\s+/g, '-');
-      const token = `TEACHER-${Math.floor(100000 + Math.random() * 900000)}`;
-
-      const pairing = {
-        id,
-        teacherName,
-        grade,
-        section,
-        subject,
-        status: 'approved',
-        token,
-        lastActiveTime: new Date().toISOString(),
-        isNewNotification: true
-      };
-
-      const existingIdx = pairings.findIndex((p: any) => p.id === id);
-      if (existingIdx > -1) {
-        pairings[existingIdx] = pairing;
+        res.json({ success: true, responseText: finalResult.response.text() });
       } else {
-        pairings.push(pairing);
+        res.json({ success: true, responseText: response.text() });
       }
-      db.pairings['DIYALA-8492'] = pairings;
-      writeSyncDb(db);
 
-      res.json({ success: true, status: "approved", token });
+    } catch (error: any) {
+      console.error('AI Error:', error);
+      res.status(500).json({ success: false, responseText: "عذراً، حدث خطأ في تحليل البيانات الذكي." });
+    }
+  });
+
+  app.use(express.static(activeDirname));
+  app.get('*', (req, res) => {
+    const indexPath = path.join(activeDirname, 'index.html');
+    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+    else res.status(404).send('System Error');
+  });
+
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Principal AI Engine v6.5 Active on port ${PORT}`);
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`Port ${PORT} is already in use by another instance or dev server. Reusing existing server.`);
     } else {
-      res.status(400).json({ success: false, message: "رمز الاقتران غير صحيح" });
+      console.error('Server startup error:', err);
     }
-  });
-
-  // Vite middleware for development vs static serve for production
-  // We strictly check for the existence of index.html in the same directory
-  // which is only true in production builds.
-  const distPath = activeDirname;
-  const isProductionBuild = fs.existsSync(path.join(distPath, 'index.html'));
-
-  let useVite = false;
-  if (!isProductionBuild && process.env.NODE_ENV !== 'production') {
-      useVite = true;
-  }
-
-  if (useVite) {
-    try {
-      // Use eval to hide the import from static analysis and bundlers
-      // This ensures the production app never even tries to resolve 'vite'
-      const { createServer } = await eval('import("vite")');
-      const vite = await createServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-      console.log('Vite development middleware active');
-    } catch (e: any) {
-      console.warn('Vite not found or failed to start, falling back to static');
-      useVite = false;
-    }
-  }
-
-  if (!useVite) {
-    const distPath = activeDirname;
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      const indexPath = path.join(distPath, 'index.html');
-      if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-      } else {
-        res.status(404).send('فشل تحميل ملفات النظام (index.html غير موجود)');
-      }
-    });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`School Management Server running on http://localhost:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.warn('Server init warning:', err);
+});
 

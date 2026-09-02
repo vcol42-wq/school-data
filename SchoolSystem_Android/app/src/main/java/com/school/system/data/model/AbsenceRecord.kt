@@ -7,5 +7,7 @@ import androidx.room.PrimaryKey
 data class AbsenceRecord(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val studentId: Long,
-    val dateString: String // Format: "yyyy-MM-dd"
+    val dateString: String, // Format: "yyyy-MM-dd"
+    val periodNumber: Int = 1 // Lesson Period (1 to 7)
 )
+
