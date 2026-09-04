@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.SharingStarted
+import com.school.system.data.local.SecureKeyStorage
+import com.school.system.data.repository.GradesRepository
+import com.school.system.data.repository.SecureUploadResult
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,7 +32,9 @@ class GradeViewModel @Inject constructor(
     private val dailyColumnDao: DailyColumnDao,
     private val absenceDao: AbsenceDao,
     val configDao: ConfigDao,
-    private val syncManager: SyncManager
+    private val syncManager: SyncManager,
+    private val secureKeyStorage: SecureKeyStorage,
+    private val gradesRepository: GradesRepository
 ) : ViewModel() {
 
     val config = configDao.getConfig().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -233,6 +238,34 @@ class GradeViewModel @Inject constructor(
             } else {
                 onResult(false, "فشل رفع الدرجات. يرجى التأكد من الاتصال بالسحابة.")
             }
+        }
+    }
+
+    fun getStoredPin(grade: String, section: String, subject: String): String? {
+        val key = secureKeyStorage.buildSubjectKey(grade, section, subject)
+        return secureKeyStorage.getSubjectPin(key)
+    }
+
+    fun savePin(grade: String, section: String, subject: String, pin: String) {
+        val key = secureKeyStorage.buildSubjectKey(grade, section, subject)
+        secureKeyStorage.saveSubjectPin(key, pin)
+    }
+
+    fun clearPin(grade: String, section: String, subject: String) {
+        val key = secureKeyStorage.buildSubjectKey(grade, section, subject)
+        secureKeyStorage.clearSubjectPin(key)
+    }
+
+    fun uploadGradesSecurely(
+        grade: String,
+        section: String,
+        subject: String,
+        secretPin: String,
+        onResult: (SecureUploadResult) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = gradesRepository.uploadGradesSecurely(grade, section, subject, secretPin)
+            onResult(result)
         }
     }
 

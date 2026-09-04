@@ -49,6 +49,7 @@ import { SyncCenterView } from './components/SyncCenterView';
 import { ManagementTipsView } from './components/ManagementTipsView';
 import { CloudScheduleView } from './components/CloudScheduleView';
 import { MobilePrincipalDashboard } from './components/MobilePrincipalDashboard';
+import { TeacherAuthorityHub } from './components/TeacherAuthorityHub';
 import { Sparkles } from 'lucide-react';
 import { exportSchoolData } from './utils/syncService';
 
@@ -387,6 +388,16 @@ export default function App() {
                 setStaffList={setStaffList}
                 config={config}
                 scheduleMap={scheduleMap}
+              />
+            )}
+
+            {activeView === 'teacher_authority' && (
+              <TeacherAuthorityHub
+                staffList={staffList}
+                setStaffList={setStaffList}
+                config={config}
+                scheduleMap={scheduleMap}
+                onBackToMain={() => setActiveView('launcher')}
               />
             )}
 

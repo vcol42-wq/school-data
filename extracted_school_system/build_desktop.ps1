@@ -1,5 +1,8 @@
 Set-Location "c:\boss\extracted_school_system"
 
+Stop-Process -Name "electron", "The Principal v6.0" -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 500
+
 Write-Host "[1/5] Running Vite Build (Synchronous)..."
 $env:ELECTRON_RUN_AS_NODE = "1"
 Start-Process -FilePath ".\node_modules\electron\dist\electron.exe" -ArgumentList ".\node_modules\vite\bin\vite.js build" -Wait -NoNewWindow

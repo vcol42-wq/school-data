@@ -55,6 +55,9 @@ import com.school.system.data.model.Student
 import com.school.system.data.model.StudentMarks
 import com.school.system.data.model.DailyColumnSetting
 import com.school.system.data.model.AbsenceRecord
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import com.school.system.data.repository.SecureUploadResult
+import com.school.system.utils.BiometricHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +89,56 @@ fun GradeRegisterScreen(
     var selectedPeriod by remember { mutableIntStateOf(1) }
 
     val isSpecial = remember(subject) { isSpecialSubject(subject) }
+
+    var showPinDialog by remember { mutableStateOf(false) }
+    var inputPin by remember { mutableStateOf("") }
+    var showInvalidPinDialog by remember { mutableStateOf(false) }
+    var invalidPinDialogMessage by remember { mutableStateOf("") }
+
+    val fragmentActivity = remember(context) {
+        var ctx = context
+        while (ctx is android.content.ContextWrapper) {
+            if (ctx is androidx.fragment.app.FragmentActivity) break
+            ctx = ctx.baseContext
+        }
+        ctx as? androidx.fragment.app.FragmentActivity
+    }
+
+    val startSecureUploadWithBiometric: (String) -> Unit = { pinToUse ->
+        if (fragmentActivity == null) {
+            Toast.makeText(context, "تعذر تشغيل المصادقة البيومترية في النشاط الحالي", Toast.LENGTH_LONG).show()
+        } else {
+            BiometricHelper.authenticate(
+                activity = fragmentActivity,
+                title = "تأكيد رفع درجات: $subject ($section)",
+                subtitle = "المصادقة البيومترية مطلوبة لاعتماد درجات الشعبة ورفعها للسحابة",
+                onSuccess = {
+                    isUploadingGrades = true
+                    viewModel.uploadGradesSecurely(grade, section, subject, pinToUse) { result ->
+                        isUploadingGrades = false
+                        when (result) {
+                            is SecureUploadResult.Success -> {
+                                Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                            }
+                            is SecureUploadResult.InvalidPin -> {
+                                invalidPinDialogMessage = result.reason
+                                showInvalidPinDialog = true
+                            }
+                            is SecureUploadResult.ClassLocked -> {
+                                Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                            }
+                            is SecureUploadResult.Failure -> {
+                                Toast.makeText(context, result.errorMessage, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                },
+                onError = { err ->
+                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+    }
 
     // Instant lock checking - only locked if official cloud seal token is present
     val isEditingLocked = remember(config) {
@@ -235,12 +288,12 @@ fun GradeRegisterScreen(
                                 IconButton(
                                     onClick = {
                                         if (isUploadingGrades) return@IconButton
-                                        coroutineScope.launch {
-                                            isUploadingGrades = true
-                                            viewModel.syncGradesOnly(grade, section, subject) { success, msg ->
-                                                isUploadingGrades = false
-                                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                                            }
+                                        val storedPin = viewModel.getStoredPin(grade, section, subject)
+                                        if (storedPin != null) {
+                                            startSecureUploadWithBiometric(storedPin)
+                                        } else {
+                                            inputPin = ""
+                                            showPinDialog = true
                                         }
                                     },
                                     modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
@@ -254,7 +307,7 @@ fun GradeRegisterScreen(
                                     } else {
                                         Icon(
                                             Icons.Default.CloudUpload,
-                                            contentDescription = "مزامنة سحابية",
+                                            contentDescription = "رفع الدرجات المشفر بالبصمة",
                                             tint = currentTheme.primaryColor,
                                             modifier = Modifier.size(19.dp)
                                         )
@@ -659,6 +712,124 @@ fun GradeRegisterScreen(
                 dismissButton = {
                     TextButton(onClick = { showAddStudentDialog = false }) {
                         Text("إلغاء")
+                    }
+                }
+            )
+        }
+
+        if (showPinDialog) {
+            AlertDialog(
+                onDismissRequest = { showPinDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Security,
+                            contentDescription = null,
+                            tint = Color(0xFF2563EB),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "اعتماد مادة: $subject ($section)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "أدخل الرمز السري المحدد لهذه المادة والشعبة من قبل إدارة المدرسة.\nسيتم ربطه بالبصمة وحفظه مشفراً في عتاد الجهاز لنظام Zero-Trust.",
+                            fontSize = 12.5.sp,
+                            color = currentTheme.textSecondaryColor,
+                            lineHeight = 18.sp
+                        )
+                        OutlinedTextField(
+                            value = inputPin,
+                            onValueChange = { inputPin = it },
+                            label = { Text("الرمز السري للمادة") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            visualTransformation = PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (inputPin.isNotBlank()) {
+                                val pin = inputPin.trim()
+                                showPinDialog = false
+                                startSecureUploadWithBiometric(pin)
+                            } else {
+                                Toast.makeText(context, "يرجى كتابة الرمز السري أولاً", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("تأكيد وبصمة 🔒", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPinDialog = false }) {
+                        Text("إلغاء")
+                    }
+                }
+            )
+        }
+
+        if (showInvalidPinDialog) {
+            AlertDialog(
+                onDismissRequest = { showInvalidPinDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "تنبيه أمني من الإدارة",
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFDC2626),
+                            fontSize = 16.sp
+                        )
+                    }
+                },
+                text = {
+                    Text(
+                        text = invalidPinDialogMessage.ifEmpty {
+                            "تم تحديث أو تغيير رمز اعتماد هذه المادة من الإدارة، يرجى إدخال الرمز الجديد"
+                        },
+                        fontSize = 13.sp,
+                        color = currentTheme.textPrimaryColor,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showInvalidPinDialog = false
+                            inputPin = ""
+                            showPinDialog = true
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("إدخال الرمز الجديد 🔑", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showInvalidPinDialog = false }) {
+                        Text("إغلاق")
                     }
                 }
             )

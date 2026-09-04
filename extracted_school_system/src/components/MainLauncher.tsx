@@ -18,7 +18,8 @@ import {
   Cloud,
   ClipboardList,
   UserCheck,
-  Trash2
+  Trash2,
+  KeyRound
 } from 'lucide-react';
 
 interface MainLauncherProps {
@@ -104,6 +105,16 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
       gradient: 'from-purple-600 via-violet-700 to-indigo-800',
       badge: `${staffCount} كادر`,
       badgeBg: 'bg-purple-100 text-purple-950 font-black'
+    },
+    // 5.1. أكواد المعلمين وتفويض الشعب والدرجات
+    {
+      id: 'teacher_authority' as ActiveView,
+      title: 'أكواد المعلمين وتفويض الشعب',
+      subtitle: 'رموز رفع الدرجات السرية وقفل الشعب والمواد',
+      icon: KeyRound,
+      gradient: 'from-amber-600 via-orange-600 to-amber-900',
+      badge: 'أمان ورفع الدرجات 🔑',
+      badgeBg: 'bg-amber-100 text-amber-950 font-black'
     },
     // 6. الإحصاء والملاك الرسمي
     {

@@ -19,7 +19,8 @@ export type ActiveView =
   | 'sync_center'
   | 'management_tips'
   | 'cloud_schedule'
-  | 'mobile_dashboard';
+  | 'mobile_dashboard'
+  | 'teacher_authority';
 
 export type AppTheme = 'dark' | 'lunar' | 'cream' | 'burgundy';
 
