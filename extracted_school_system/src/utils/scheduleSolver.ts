@@ -1,3 +1,11 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Mathematical Backtracking CSP School Timetable Solver (Deck-Based Allocation)
+ * نظام التوليد الرياضي الدقيق لجدول الحصص الأسبوعي (خوارزمية حل القيود والتراجع الرياضي)
+ */
+
 import { DayScheduleMap, ClassScheduleRow, DayOfWeek, SmartScheduleSection, ScheduleCell } from '../types';
 
 export interface CollisionReport {
@@ -20,55 +28,80 @@ export const LESSON_LABELS: Record<string, string> = {
   lesson6: 'الدرس السادس',
 };
 
-// Core curriculum priority weights (lower number = higher preference for early slots 1-4)
-const SUBJECT_TIME_PRIORITY: Record<string, number> = {
-  'الرياضيات': 1,
-  'اللغة العربية': 1,
-  'اللغة الانكليزية': 1,
-  'اللغة الإنجليزية': 1,
-  'الفيزياء': 2,
-  'الكيمياء': 2,
-  'الأحياء': 2,
-  'العلوم': 2,
-  'التربية الإسلامية': 3,
-  'الاجتماعيات': 3,
-  'التاريخ': 3,
-  'الجغرافية': 3,
-  'الوطنية': 3,
-  'الحاسوب': 4,
-  'التربية الفنية': 5,
-  'التربية الرياضية': 5,
-  'النشيد والموسيقى': 5,
-};
+export const TOTAL_PERIODS_PER_WEEK = 30; // 5 days * 6 periods = 30
 
 /**
- * Strict Rule: 
- * 1. Science subjects (Physics, Chemistry, Biology) CANNOT be placed in Lesson 6.
- * 2. Single-period subjects (like Ethics) and dual-period subjects (نصاب فردي أو ثنائي <= 2) CANNOT be placed in Lesson 6.
- * 3. Thursday Lesson 6 is strictly vacant / activity (لا يوضع درس حقيقي في الدرس السادس يوم الخميس).
- * 4. Any vacant slots must strictly be placed in Lesson 6.
+ * Represent a single physical lesson card (Card in the Section's Deck)
  */
-export function isForbiddenInPeriod6(subjectName: string, weeklyQuota: number = 2): boolean {
-  if (!subjectName) return false;
-  const s = subjectName.trim().toLowerCase();
-  
-  // 1. المواد العلمية (الفيزياء، الكيمياء، الأحياء)
-  const isScience = 
-    s.includes('فيز') || 
-    s.includes('كيم') || 
-    s.includes('احيا') || 
-    s.includes('phys') || 
-    s.includes('chem') || 
-    s.includes('bio');
-
-  // 2. الدروس التي نصابها درس واحد أو درسان (أحادي أو ثنائي <= 2 حصص أسبوعياً) مثل الأخلاقية
-  const isLowQuota = weeklyQuota <= 2 || s.includes('اخلاق') || s.includes('أخلاق');
-
-  return isScience || isLowQuota;
+export interface LessonCard {
+  id: string;
+  sectionKey: string;     // e.g. "الصف الأول متوسط_أ"
+  grade: string;
+  section: string;
+  subject: string;
+  teacher: string;
+  isSpecialTeacher: boolean; // teacher !== 'شاغر' and teacher !== ''
+  isVacant: boolean;
 }
 
 /**
- * Validates whether a generated or manually edited schedule has any teacher collisions.
+ * Standard slot representation in the weekly matrix (0 to 29)
+ * slotIndex = dayIndex * 6 + periodIndex
+ */
+export interface TimeSlot {
+  slotIndex: number;
+  day: DayOfWeek;
+  dayIndex: number;
+  lessonKey: typeof LESSON_KEYS[number];
+  periodIndex: number;
+}
+
+export const ALL_SLOTS: TimeSlot[] = [];
+DAYS_OF_WEEK.forEach((day, dIdx) => {
+  LESSON_KEYS.forEach((lessonKey, pIdx) => {
+    ALL_SLOTS.push({
+      slotIndex: dIdx * 6 + pIdx,
+      day,
+      dayIndex: dIdx,
+      lessonKey,
+      periodIndex: pIdx
+    });
+  });
+});
+
+/**
+ * Evaluates whether a subject is forbidden from Period 6 by pedagogical guidelines.
+ */
+export function isForbiddenInPeriod6(subjectName: string): boolean {
+  if (!subjectName) return false;
+  const s = subjectName.trim().toLowerCase();
+  if (s === 'شاغر' || s.includes('شاغر') || s.includes('نشاط')) return false;
+
+  const isScience =
+    s.includes('فيز') ||
+    s.includes('كيم') ||
+    s.includes('احيا') ||
+    s.includes('أحيا') ||
+    s.includes('علوم') ||
+    s.includes('phys') ||
+    s.includes('chem') ||
+    s.includes('bio') ||
+    s.includes('sci');
+
+  const isIslamic =
+    s.includes('اسلام') ||
+    s.includes('إسلام') ||
+    s.includes('قران') ||
+    s.includes('قرآن') ||
+    s.includes('دين');
+
+  const isEthics = s.includes('اخلاق') || s.includes('أخلاق');
+
+  return isScience || isIslamic || isEthics;
+}
+
+/**
+ * Pure Validation Tool: Checks if teacher collisions exist in a ScheduleMap.
  */
 export function checkScheduleCollisions(scheduleMap: DayScheduleMap): CollisionReport[] {
   const collisions: CollisionReport[] = [];
@@ -76,7 +109,7 @@ export function checkScheduleCollisions(scheduleMap: DayScheduleMap): CollisionR
   DAYS_OF_WEEK.forEach(day => {
     const rows = scheduleMap[day] || [];
     LESSON_KEYS.forEach(lessonKey => {
-      const teacherMap = new Map<string, string[]>(); // teacherName -> section list
+      const teacherMap = new Map<string, string[]>();
 
       rows.forEach(row => {
         const cell = row.lessons?.[lessonKey];
@@ -107,325 +140,6 @@ export function checkScheduleCollisions(scheduleMap: DayScheduleMap): CollisionR
   });
 
   return collisions;
-}
-
-export interface DailySubjectDuplicateReport {
-  day: DayOfWeek;
-  grade: string;
-  section: string;
-  subject: string;
-  count: number;
-}
-
-/**
- * Validates whether any section has the same subject repeated on the same day.
- */
-export function checkDailySubjectDuplicates(scheduleMap: DayScheduleMap): DailySubjectDuplicateReport[] {
-  const duplicates: DailySubjectDuplicateReport[] = [];
-
-  DAYS_OF_WEEK.forEach(day => {
-    const rows = scheduleMap[day] || [];
-    rows.forEach(row => {
-      const subjectCounts = new Map<string, number>();
-      LESSON_KEYS.forEach(lKey => {
-        const cell = row.lessons[lKey];
-        if (cell && cell.subject && cell.subject !== 'شاغر / نشاط حر' && !cell.isOff) {
-          const s = cell.subject.trim();
-          subjectCounts.set(s, (subjectCounts.get(s) || 0) + 1);
-        }
-      });
-
-      subjectCounts.forEach((count, subject) => {
-        if (count > 1) {
-          duplicates.push({
-            day,
-            grade: row.grade,
-            section: row.section,
-            subject,
-            count
-          });
-        }
-      });
-    });
-  });
-
-  return duplicates;
-}
-
-/**
- * Simple pseudo-random generator with seed
- */
-function pseudoRandom(seed: number) {
-  const x = Math.sin(seed++) * 10000;
-  return x - Math.floor(x);
-}
-
-/**
- * Evaluates fairness and pedagogical balance of a schedule:
- * 1. Severe penalty for repeating the same subject on the same day for the same section (unless weekly quota > 5).
- * 2. High reward for distributing recurring subjects evenly across different days of the week.
- * 3. High reward for rotating period slots (prevent fixing Math/Arabic to period 1 every day).
- */
-function calculateFairnessScore(schedule: DayScheduleMap): number {
-  let score = 0;
-  
-  const allSectionKeys = new Set<string>();
-  DAYS_OF_WEEK.forEach(day => {
-    (schedule[day] || []).forEach(row => {
-      allSectionKeys.add(`${row.grade}_${row.section}`);
-    });
-  });
-
-  allSectionKeys.forEach(secKey => {
-    const [grade, section] = secKey.split('_');
-    const subjectPeriodsMap = new Map<string, number[]>();
-    const subjectDaysMap = new Map<string, Set<string>>();
-
-    DAYS_OF_WEEK.forEach(day => {
-      const row = (schedule[day] || []).find(r => r.grade === grade && r.section === section);
-      if (row) {
-        const dailySubjectCounts = new Map<string, number>();
-
-        LESSON_KEYS.forEach((lKey, pIdx) => {
-          const cell = row.lessons[lKey];
-          if (cell && cell.subject && cell.subject !== 'شاغر / نشاط حر' && !cell.isOff) {
-            const subj = cell.subject.trim();
-            // Period tracking
-            const list = subjectPeriodsMap.get(subj) || [];
-            list.push(pIdx);
-            subjectPeriodsMap.set(subj, list);
-
-            // Day tracking
-            if (!subjectDaysMap.has(subj)) {
-              subjectDaysMap.set(subj, new Set());
-            }
-            subjectDaysMap.get(subj)!.add(day);
-
-            // Daily repetition tracking
-            dailySubjectCounts.set(subj, (dailySubjectCounts.get(subj) || 0) + 1);
-          }
-        });
-
-        // 1. HARD PENALTY for duplicate subject on the same day for this section
-        dailySubjectCounts.forEach((count, subj) => {
-          if (count > 1) {
-            score -= (count - 1) * 3500; // Strong penalty for repeating same subject in the same day!
-          }
-        });
-
-        // 2. STRICT RULE FOR PERIOD 6:
-        // - No real lesson in Thursday Lesson 6 (الخميس الدرس السادس مخصص حصراً للشواغر / النشاط ولا يوضع فيه درس).
-        // - No Physics, Chemistry, Biology, or single/dual-period subjects (<= 2 حصص كالأخلاقية والدروس الثنائية) in Lesson 6.
-        const cell6 = row.lessons.lesson6;
-        if (cell6 && cell6.subject && cell6.subject !== 'شاغر / نشاط حر' && !cell6.isOff) {
-          if (day === 'الخميس') {
-            score -= 100000; // Violates rule: Thursday Lesson 6 must NOT have a real curriculum lesson!
-          }
-          const quota = subjectPeriodsMap.get(cell6.subject.trim())?.length || 2;
-          if (isForbiddenInPeriod6(cell6.subject, quota)) {
-            score -= 50000; // Severe violation: Science or <= 2 quota subject in Lesson 6!
-          }
-        }
-
-        // 3. VACANT PERIOD RULE:
-        // Vacant periods should strictly be in Lesson 6 at the end of the day, not in Lessons 1-5!
-        for (let p = 0; p < 5; p++) {
-          const key = LESSON_KEYS[p];
-          if (row.lessons[key]?.subject === 'شاغر / نشاط حر') {
-            score -= 15000; // Vacant period in the middle/start of the day is heavily penalized!
-          }
-        }
-      }
-    });
-
-    // 4. Reward spreading recurring subjects across different days of the week
-    subjectDaysMap.forEach((days, subj) => {
-      score += days.size * 40; // e.g. 5 days = +200 points
-    });
-
-    // 5. Reward diversity of period indices (rotation between early, middle, and late)
-    subjectPeriodsMap.forEach((periods) => {
-      if (periods.length > 1) {
-        const uniquePeriods = new Set(periods);
-        score += uniquePeriods.size * 35; // Reward for rotating period index across days
-
-        // Reward balance between early (periods 0, 1, 2) and late (periods 3, 4, 5)
-        const earlyCount = periods.filter(p => p < 3).length;
-        const lateCount = periods.filter(p => p >= 3).length;
-        const balanceDiff = Math.abs(earlyCount - lateCount);
-        score += Math.max(0, 10 - balanceDiff) * 15;
-      }
-    });
-
-    // 6. LESSON 6 SECTION-LEVEL FAIRNESS (توازن الدرس السادس داخل الشعبة):
-    // Reward having diverse teachers and subjects in Lesson 6 across the week without repeating
-    const secP6Subjects = new Map<string, number>();
-    const secP6Teachers = new Map<string, number>();
-    DAYS_OF_WEEK.forEach(day => {
-      const row = (schedule[day] || []).find(r => r.grade === grade && r.section === section);
-      const c6 = row?.lessons.lesson6;
-      if (c6 && c6.subject && c6.subject !== 'شاغر / نشاط حر' && !c6.isOff) {
-        const s = c6.subject.trim();
-        secP6Subjects.set(s, (secP6Subjects.get(s) || 0) + 1);
-        if (c6.teacherName && c6.teacherName !== 'شاغر' && c6.teacherName !== 'أ. أستاذ المادة') {
-          const t = c6.teacherName.trim();
-          secP6Teachers.set(t, (secP6Teachers.get(t) || 0) + 1);
-        }
-      }
-    });
-
-    // Heavy penalty for repeating the same teacher or subject in Lesson 6 for this section
-    secP6Subjects.forEach((count) => {
-      if (count > 1) {
-        score -= (count - 1) * 3000;
-      } else {
-        score += 80; // Reward unique subject in Lesson 6
-      }
-    });
-    secP6Teachers.forEach((count) => {
-      if (count > 1) {
-        score -= (count - 1) * 3500;
-      } else {
-        score += 100; // Reward unique teacher in Lesson 6
-      }
-    });
-  });
-
-  // 7. LESSON 6 SCHOOL-WIDE FAIRNESS (توازن الدرس السادس بين جميع مدرسي المدرسة):
-  // Ensure no teacher is disproportionately burdened with Lesson 6 across multiple sections
-  const schoolP6TeacherLoads = new Map<string, number>();
-  DAYS_OF_WEEK.forEach(day => {
-    (schedule[day] || []).forEach(row => {
-      const c6 = row.lessons.lesson6;
-      if (c6 && c6.teacherName && c6.teacherName !== 'شاغر' && c6.teacherName !== 'أ. أستاذ المادة' && !c6.isOff && c6.subject !== 'شاغر / نشاط حر') {
-        const t = c6.teacherName.trim();
-        schoolP6TeacherLoads.set(t, (schoolP6TeacherLoads.get(t) || 0) + 1);
-      }
-    });
-  });
-
-  if (schoolP6TeacherLoads.size > 1) {
-    const loads = Array.from(schoolP6TeacherLoads.values());
-    const maxLoad = Math.max(...loads);
-    const minLoad = Math.min(...loads);
-    const spread = maxLoad - minLoad;
-    if (spread > 1) {
-      score -= (spread - 1) * 750; // Penalize uneven distribution among teachers
-    }
-  }
-
-  return score;
-}
-
-/**
- * Intelligent Multi-Pass Constraint-Satisfaction Scheduler with Dynamic Lesson Rotation & Dispersion
- */
-export function generateSmartFairSchedule(
-  sections: SmartScheduleSection[],
-  maxAttempts: number = 400,
-  randomSeed: number = Date.now() + Math.random() * 10000
-): { success: boolean; scheduleMap: DayScheduleMap; collisions: CollisionReport[]; errorMsg?: string } {
-  if (!sections || sections.length === 0) {
-    return {
-      success: false,
-      scheduleMap: createEmptyScheduleMap([]),
-      collisions: [],
-      errorMsg: 'يرجى إضافة صفوف وشعب أولاً قبل توليد الجدول.'
-    };
-  }
-
-  // Pre-validate teacher workloads: No teacher can have > 30 lessons across all sections (5 days * 6 lessons = 30)
-  const totalTeacherLessons = new Map<string, number>();
-  sections.forEach(sec => {
-    sec.subjects.forEach(sub => {
-      const t = (sub.teacherName || '').trim();
-      if (t && t !== 'شاغر') {
-        const count = totalTeacherLessons.get(t) || 0;
-        totalTeacherLessons.set(t, count + (sub.weeklyLessons || 0));
-      }
-    });
-  });
-
-  for (const [tName, count] of totalTeacherLessons.entries()) {
-    if (count > 30) {
-      return {
-        success: false,
-        scheduleMap: createEmptyScheduleMap(sections),
-        collisions: [],
-        errorMsg: `المعلم [${tName}] مكلف بـ (${count}) حصة أسبوعياً، والحد الأقصى المتاح أسبوعياً هو 30 حصة. يرجى تخفيف نصابه لتجنب التضارب المستحيل.`
-      };
-    }
-  }
-
-  let bestSchedule: DayScheduleMap = createEmptyScheduleMap(sections);
-  let minCollisionsCount = Infinity;
-  let bestFairnessScore = -Infinity;
-  let bestCollisions: CollisionReport[] = [];
-
-  // Attempt randomized heuristic backtracking with rotation preference & daily non-repetition balance
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const seed = randomSeed + attempt * 17.31 + Math.random() * 1000;
-    const candidateMap = buildCandidateSchedule(sections, seed);
-    const candidateRepaired = repairDailySubjectDuplicates(candidateMap);
-    const candidateBalanced = balancePeriod6AcrossSchool(candidateRepaired);
-    
-    // Validate candidate
-    const collisions = checkScheduleCollisions(candidateBalanced);
-    const activeCandidate = collisions.length === 0 ? candidateBalanced : (checkScheduleCollisions(candidateRepaired).length === 0 ? candidateRepaired : candidateMap);
-    const currentCollisions = checkScheduleCollisions(activeCandidate);
-
-    if (currentCollisions.length === 0) {
-      const fairness = calculateFairnessScore(activeCandidate);
-      if (fairness > bestFairnessScore || minCollisionsCount > 0) {
-        bestFairnessScore = fairness;
-        minCollisionsCount = 0;
-        bestSchedule = activeCandidate;
-        bestCollisions = [];
-      }
-
-      // If we find an exceptionally fair collision-free schedule after several attempts, return it
-      if (attempt > 30 && bestFairnessScore > 150) {
-        return {
-          success: true,
-          scheduleMap: bestSchedule,
-          collisions: []
-        };
-      }
-    } else if (currentCollisions.length < minCollisionsCount) {
-      minCollisionsCount = currentCollisions.length;
-      bestSchedule = activeCandidate;
-      bestCollisions = currentCollisions;
-    }
-  }
-
-  // If 0 collision schedule was found among attempts, refine and return it
-  if (minCollisionsCount === 0) {
-    let finalClean = repairDailySubjectDuplicates(bestSchedule);
-    finalClean = balancePeriod6AcrossSchool(finalClean);
-    if (checkScheduleCollisions(finalClean).length > 0) {
-      finalClean = bestSchedule; // safety fallback if balance introduced collision
-    }
-    return {
-      success: true,
-      scheduleMap: finalClean,
-      collisions: []
-    };
-  }
-
-  // If not 100% collision-free in random passes, apply deterministic conflict resolution swap pass
-  let resolvedMap = resolveConflictsBySwapping(bestSchedule, sections);
-  resolvedMap = repairDailySubjectDuplicates(resolvedMap);
-  resolvedMap = balancePeriod6AcrossSchool(resolvedMap);
-  const finalCollisions = checkScheduleCollisions(resolvedMap);
-
-  return {
-    success: finalCollisions.length === 0,
-    scheduleMap: resolvedMap,
-    collisions: finalCollisions,
-    errorMsg: finalCollisions.length > 0 
-      ? `تم توليد الجدول مع (${finalCollisions.length}) تضارب بسبب تشابك كبير في أنصبة بعض المعلمين. يمكنك تعديلها يدوياً بسهولة.`
-      : undefined
-  };
 }
 
 /**
@@ -463,315 +177,275 @@ export function createEmptyScheduleMap(sections: SmartScheduleSection[]): DaySch
 }
 
 /**
- * Internal single-pass heuristic builder with strict period rotation and end-of-week vacant placement
+ * Mathematical Post-Generation Audit Layer:
+ * 1. Checks every section has exactly 30 allocated periods (no empty / missing slots).
+ * 2. Checks every subject in every section has EXACTLY the quota requested (Deck integrity).
+ * 3. Checks zero teacher collisions across all slots.
  */
-function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number): DayScheduleMap {
-  const schedule = createEmptyScheduleMap(sections);
+export function auditScheduleMathematicalCorrectness(
+  scheduleMap: DayScheduleMap,
+  sections: SmartScheduleSection[]
+): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
 
-  // Track busy teachers: Map<day, Map<lessonKey, Set<teacherName>>>
-  const teacherBusyMap: Record<DayOfWeek, Record<string, Set<string>>> = {
-    'الأحد': { lesson1: new Set(), lesson2: new Set(), lesson3: new Set(), lesson4: new Set(), lesson5: new Set(), lesson6: new Set() },
-    'الإثنين': { lesson1: new Set(), lesson2: new Set(), lesson3: new Set(), lesson4: new Set(), lesson5: new Set(), lesson6: new Set() },
-    'الثلاثاء': { lesson1: new Set(), lesson2: new Set(), lesson3: new Set(), lesson4: new Set(), lesson5: new Set(), lesson6: new Set() },
-    'الأربعاء': { lesson1: new Set(), lesson2: new Set(), lesson3: new Set(), lesson4: new Set(), lesson5: new Set(), lesson6: new Set() },
-    'الخميس': { lesson1: new Set(), lesson2: new Set(), lesson3: new Set(), lesson4: new Set(), lesson5: new Set(), lesson6: new Set() },
-  };
+  sections.forEach(sec => {
+    // 1. Check total slots
+    let totalSlots = 0;
+    const actualSubjectCounts = new Map<string, number>();
 
-  // School-wide Lesson 6 load tracking to ensure even distribution among teachers
-  const schoolWidePeriod6TeacherCount = new Map<string, number>();
+    DAYS_OF_WEEK.forEach(day => {
+      const row = (scheduleMap[day] || []).find(r => r.grade === sec.grade && r.section === sec.section);
+      if (!row) {
+        errors.push(`الشعبة [${sec.grade} - ${sec.section}] غير موجودة في يوم (${day}).`);
+        return;
+      }
 
-  // Priority slots for vacant / free periods
-  // Strictly assign vacant slots to the 6th lesson across days starting from end of week (Thursday, Wednesday, Tuesday, Monday, Sunday)
-  // This guarantees all 5 days have Lessons 1 to 5 fully booked (25 core lessons), and extra 6th lessons / vacant slots are synchronized on the same days across the entire school!
-  const endOfWeekVacantCandidates: { day: DayOfWeek; lessonKey: typeof LESSON_KEYS[number]; periodIndex: number }[] = [
-    { day: 'الخميس', lessonKey: 'lesson6', periodIndex: 5 }, // 1st vacant -> Thursday Lesson 6
-    { day: 'الأربعاء', lessonKey: 'lesson6', periodIndex: 5 }, // 2nd vacant -> Wednesday Lesson 6
-    { day: 'الثلاثاء', lessonKey: 'lesson6', periodIndex: 5 }, // 3rd vacant -> Tuesday Lesson 6
-    { day: 'الإثنين', lessonKey: 'lesson6', periodIndex: 5 }, // 4th vacant -> Monday Lesson 6
-    { day: 'الأحد', lessonKey: 'lesson6', periodIndex: 5 }, // 5th vacant -> Sunday Lesson 6
-    // Fallback only if total quota is less than 25 lessons:
-    { day: 'الخميس', lessonKey: 'lesson5', periodIndex: 4 },
-    { day: 'الأربعاء', lessonKey: 'lesson5', periodIndex: 4 },
-    { day: 'الثلاثاء', lessonKey: 'lesson5', periodIndex: 4 },
-    { day: 'الإثنين', lessonKey: 'lesson5', periodIndex: 4 },
-    { day: 'الأحد', lessonKey: 'lesson5', periodIndex: 4 },
-  ];
+      LESSON_KEYS.forEach(lKey => {
+        const cell = row.lessons[lKey];
+        if (!cell || !cell.subject || cell.subject.trim() === '') {
+          errors.push(`الشعبة [${sec.grade} - ${sec.section}] تحتوي على خانة فارغة غير مخصصة في يوم (${day}) - ${LESSON_LABELS[lKey]}.`);
+        } else {
+          totalSlots++;
+          const sName = cell.subject.trim();
+          actualSubjectCounts.set(sName, (actualSubjectCounts.get(sName) || 0) + 1);
+        }
+      });
+    });
 
-  // Shuffle sections order slightly to prevent earlier sections from always taking slot 0
-  const shuffledSections = [...sections].sort((a, b) => {
-    return pseudoRandom(seed + a.grade.length * 3 + a.section.charCodeAt(0)) - 0.5;
+    if (totalSlots !== 30) {
+      errors.push(`الشعبة [${sec.grade} - ${sec.section}] مجموع حصصها الأسبوعية (${totalSlots}) ولا يساوي 30 حصة.`);
+    }
+
+    // 2. Check each requested subject count against expected deck
+    sec.subjects.forEach(sub => {
+      const sName = sub.subjectName.trim();
+      const expected = sub.weeklyLessons || 0;
+      const actual = actualSubjectCounts.get(sName) || 0;
+      if (actual !== expected) {
+        errors.push(`الشعبة [${sec.grade} - ${sec.section}]: مادة [${sName}] نصابها المطلوب (${expected}) ولكن تم تسكين (${actual}) حصص.`);
+      }
+    });
   });
 
-  shuffledSections.forEach((sec, secIdx) => {
-    // Collect real curriculum lessons
-    let realLessons: { subject: string; teacher: string; priority: number; itemIndex: number }[] = [];
-    let counter = 0;
-    
-    sec.subjects.forEach(sub => {
-      const quota = Math.max(0, sub.weeklyLessons || 0);
-      const isVacantSub = sub.subjectName.includes('شاغر') || (sub.teacherName && sub.teacherName === 'شاغر');
-      if (!isVacantSub) {
-        const priority = SUBJECT_TIME_PRIORITY[sub.subjectName.trim()] || 3;
-        for (let i = 0; i < quota; i++) {
-          realLessons.push({
-            subject: sub.subjectName,
-            teacher: sub.teacherName || 'أ. أستاذ المادة',
-            priority,
-            itemIndex: counter++
+  // 3. Check teacher collisions
+  const collisions = checkScheduleCollisions(scheduleMap);
+  if (collisions.length > 0) {
+    collisions.forEach(col => {
+      errors.push(`تضارب في يوم (${col.day}) - ${col.lessonLabel}: الأستاذ [${col.teacherName}] مكلف في شعبتين في نفس الوقت: (${col.sections.join(' ، ')}).`);
+    });
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Deck-Based CSP Solver with Backtracking & MRV (Minimum Remaining Values)
+ */
+export function generateSmartFairSchedule(
+  sections: SmartScheduleSection[],
+  maxAttempts: number = 250,
+  randomSeed: number = Date.now()
+): { success: boolean; scheduleMap: DayScheduleMap; collisions: CollisionReport[]; errorMsg?: string } {
+  if (!sections || sections.length === 0) {
+    return {
+      success: false,
+      scheduleMap: createEmptyScheduleMap([]),
+      collisions: [],
+      errorMsg: 'يرجى إضافة صفوف وشعب أولاً قبل توليد الجدول.'
+    };
+  }
+
+  // 1. Deck Building & Mathematical Validation
+  const sectionDecks = new Map<string, LessonCard[]>();
+  const totalTeacherLoad = new Map<string, number>();
+
+  for (const sec of sections) {
+    const secKey = `${sec.grade}_${sec.section}`;
+    const cards: LessonCard[] = [];
+    let secQuota = 0;
+
+    sec.subjects.forEach((sub, subIdx) => {
+      const count = Math.max(0, sub.weeklyLessons || 0);
+      secQuota += count;
+      const sName = sub.subjectName.trim();
+      const tName = (sub.teacherName || '').trim();
+      const isVacant = sName.includes('شاغر') || tName === 'شاغر';
+      const isSpecialTeacher = !isVacant && tName !== '' && tName !== 'أ. أستاذ المادة';
+
+      if (isSpecialTeacher) {
+        totalTeacherLoad.set(tName, (totalTeacherLoad.get(tName) || 0) + count);
+      }
+
+      for (let i = 0; i < count; i++) {
+        cards.push({
+          id: `card-${secKey}-${subIdx}-${i}`,
+          sectionKey: secKey,
+          grade: sec.grade,
+          section: sec.section,
+          subject: sName,
+          teacher: tName || 'أ. أستاذ المادة',
+          isSpecialTeacher,
+          isVacant
+        });
+      }
+    });
+
+    // Enforce Mathematical Equality: Each section MUST have exactly 30 periods
+    if (secQuota !== TOTAL_PERIODS_PER_WEEK) {
+      if (secQuota < TOTAL_PERIODS_PER_WEEK) {
+        // Auto-pad missing slots with clean Vacant Activity cards to ensure exact mathematical 30
+        const needed = TOTAL_PERIODS_PER_WEEK - secQuota;
+        for (let i = 0; i < needed; i++) {
+          cards.push({
+            id: `card-${secKey}-pad-vacant-${i}`,
+            sectionKey: secKey,
+            grade: sec.grade,
+            section: sec.section,
+            subject: 'شاغر / نشاط حر',
+            teacher: 'شاغر',
+            isSpecialTeacher: false,
+            isVacant: true
           });
         }
-      }
-    });
-
-    if (realLessons.length > 30) {
-      realLessons = realLessons.slice(0, 30);
-    }
-
-    // Number of vacant periods needed to reach 30 periods per week
-    const vacantCount = Math.max(0, 30 - realLessons.length);
-
-    // Row references in schedule
-    const sectionRowRefs: Record<DayOfWeek, ClassScheduleRow | undefined> = {
-      'الأحد': schedule['الأحد'].find(r => r.grade === sec.grade && r.section === sec.section),
-      'الإثنين': schedule['الإثنين'].find(r => r.grade === sec.grade && r.section === sec.section),
-      'الثلاثاء': schedule['الثلاثاء'].find(r => r.grade === sec.grade && r.section === sec.section),
-      'الأربعاء': schedule['الأربعاء'].find(r => r.grade === sec.grade && r.section === sec.section),
-      'الخميس': schedule['الخميس'].find(r => r.grade === sec.grade && r.section === sec.section),
-    };
-
-    // 1. Assign vacant periods directly to the end of the week
-    const reservedVacantKeys = new Set<string>();
-    // If section has any vacant slots (vacantCount >= 1), ensure Thursday Lesson 6 is the first vacant reserved!
-    for (let v = 0; v < vacantCount && v < endOfWeekVacantCandidates.length; v++) {
-      const vSlot = endOfWeekVacantCandidates[v];
-      const row = sectionRowRefs[vSlot.day];
-      if (row) {
-        row.lessons[vSlot.lessonKey] = {
-          subject: 'شاغر / نشاط حر',
-          teacherName: 'شاغر',
-          isOff: false
-        };
-        reservedVacantKeys.add(`${vSlot.day}_${vSlot.lessonKey}`);
-      }
-    }
-
-    // 2. Dynamic shuffle of real lessons with rotation & priority
-    realLessons.sort((a, b) => {
-      if (a.priority !== b.priority) {
-        const pDiff = a.priority - b.priority;
-        const noise = (pseudoRandom(seed + a.itemIndex * 7) - 0.5) * 0.4;
-        return pDiff + noise;
-      }
-      return pseudoRandom(seed + a.itemIndex * 13 + secIdx) - 0.5;
-    });
-
-    // 3. Build candidate slot pool for real lessons (excluding reserved vacant slots)
-    const daySubjectCounts: Record<DayOfWeek, Record<string, number>> = {
-      'الأحد': {}, 'الإثنين': {}, 'الثلاثاء': {}, 'الأربعاء': {}, 'الخميس': {}
-    };
-    const secPeriod6SubjectCount = new Map<string, number>();
-    const secPeriod6TeacherCount = new Map<string, number>();
-    const subjectAssignedPeriods: Record<string, number[]> = {};
-    const subjectQuotas: Record<string, number> = {};
-    realLessons.forEach(l => { subjectQuotas[l.subject] = (subjectQuotas[l.subject] || 0) + 1; });
-
-    const availableSlots: { day: DayOfWeek; dayIndex: number; lessonKey: typeof LESSON_KEYS[number]; periodIndex: number }[] = [];
-    
-    // Stagger days order per section for diverse day allocations
-    const dayShift = Math.floor(pseudoRandom(seed + secIdx * 19) * 5);
-    const staggeredDays = [...DAYS_OF_WEEK.slice(dayShift), ...DAYS_OF_WEEK.slice(0, dayShift)];
-
-    staggeredDays.forEach((day, dIdx) => {
-      const periodRotationOffset = (dIdx * 2 + secIdx) % 6;
-      for (let p = 0; p < 6; p++) {
-        const periodIndex = (p + periodRotationOffset) % 6;
-        const lessonKey = LESSON_KEYS[periodIndex];
-        const slotKey = `${day}_${lessonKey}`;
-        // If Thursday Lesson 6: strictly disallow adding it as an available slot for real lessons if total quota <= 29
-        if (day === 'الخميس' && lessonKey === 'lesson6' && realLessons.length < 30) {
-          continue;
-        }
-        if (!reservedVacantKeys.has(slotKey)) {
-          availableSlots.push({ day, dayIndex: dIdx, lessonKey, periodIndex });
-        }
-      }
-    });
-
-    // 4. Allocate each real curriculum lesson to the best rotating slot
-    for (const item of realLessons) {
-      const isTeacherSpecial = item.teacher && item.teacher !== 'شاغر';
-      const prevPeriods = subjectAssignedPeriods[item.subject] || [];
-
-      let bestSlotIndex = -1;
-      let lowestPenalty = Infinity;
-
-      for (let sIdx = 0; sIdx < availableSlots.length; sIdx++) {
-        const slot = availableSlots[sIdx];
-        const row = sectionRowRefs[slot.day];
-        if (!row) continue;
-
-        // Check if slot is already occupied
-        const currentCell = row.lessons[slot.lessonKey];
-        if (currentCell.subject !== '') continue;
-
-        let penalty = 0;
-
-        // Hard Constraint 1: Teacher Conflict
-        if (isTeacherSpecial && teacherBusyMap[slot.day][slot.lessonKey].has(item.teacher)) {
-          penalty += 15000;
-        }
-
-        // Hard Constraint 2: Strictly prevent repeating the same subject on the same day for the same section
-        const existingCountToday = daySubjectCounts[slot.day][item.subject] || 0;
-        const totalQuota = subjectQuotas[item.subject] || 1;
-        const maxAllowedPerDay = Math.ceil(totalQuota / 5);
-
-        if (existingCountToday >= maxAllowedPerDay) {
-          // Hard violation: exceeds mathematical maximum for this day!
-          penalty += 40000;
-        } else if (existingCountToday >= 1) {
-          // Soft violation: already has a lesson today, strongly prefer empty days
-          penalty += 15000;
-        } else {
-          // Reward placing on an empty day
-          penalty -= 80;
-        }
-
-        // Hard Constraint 0: Strict Period 6 Rules
-        // Rule A: Thursday Lesson 6 is strictly forbidden for any curriculum lesson (ممنوع وضع أي درس في الدرس السادس يوم الخميس)
-        // Rule B: Physics, Chemistry, Biology, and single/dual-quota subjects (<= 2 كالأخلاقية والدروس الثنائية) CANNOT be placed in Lesson 6
-        if (slot.periodIndex === 5) {
-          if (slot.day === 'الخميس') {
-            penalty += 2000000; // Strictly forbidden: No curriculum lesson in Thursday Lesson 6!
-          }
-          const quota = subjectQuotas[item.subject] || 1;
-          if (isForbiddenInPeriod6(item.subject, quota)) {
-            penalty += 1000000; // Impossible / strictly forbidden in Lesson 6 (Science or Quota <= 2)!
-          } else {
-            // FAIR BALANCE IN LESSON 6 (توازن الدرس السادس بين المدرسين والمواد المسموحة):
-            // 1. Heavy penalty if this section ALREADY has this subject in Lesson 6 this week
-            const secSubjP6Count = secPeriod6SubjectCount.get(item.subject) || 0;
-            if (secSubjP6Count > 0) {
-              penalty += 7500 * secSubjP6Count;
-            }
-
-            // 2. Heavy penalty if this section ALREADY has this teacher in Lesson 6 this week
-            if (isTeacherSpecial) {
-              const secTeachP6Count = secPeriod6TeacherCount.get(item.teacher) || 0;
-              if (secTeachP6Count > 0) {
-                penalty += 8500 * secTeachP6Count;
-              }
-
-              // 3. School-wide balance: penalize loading the same teacher with multiple Lesson 6 slots across sections
-              const schoolWideP6Count = schoolWidePeriod6TeacherCount.get(item.teacher) || 0;
-              penalty += schoolWideP6Count * 1800;
-            }
-          }
-        }
-
-        // Critical Fairness Constraint 3: Rotation and dynamic balance across periods (Prevent fixing in Lesson 1!)
-        if (prevPeriods.includes(slot.periodIndex)) {
-          const samePeriodCount = prevPeriods.filter(p => p === slot.periodIndex).length;
-          penalty += 850 * samePeriodCount; // Strongly penalize fixing the subject in the same period
-        }
-
-        // Dynamic Balance between beginning (lessons 1, 2, 3) and end (lessons 4, 5, 6) of the day:
-        if (prevPeriods.length > 0) {
-          const lastPeriod = prevPeriods[prevPeriods.length - 1];
-          const lastWasEarly = lastPeriod < 3;
-          const currentIsEarly = slot.periodIndex < 3;
-          if (lastWasEarly === currentIsEarly) {
-            penalty += 140; // Prefer alternating early and later
-          } else {
-            penalty -= 90; // Reward balance
-          }
-        }
-
-        // Constraint 4: Pedagogical slot preference with natural rotation
-        if (item.priority <= 2) {
-          // Allow core subjects (Math, Arabic, English) to take their fair turn in Lesson 6 with slight nudge
-          if (slot.periodIndex === 5) penalty += 50;
-        } else if (item.priority >= 5) {
-          if (slot.periodIndex <= 1) penalty += 60;
-        }
-
-        // Slight randomness to break ties
-        const tieBreaker = (pseudoRandom(seed + sIdx * 11 + item.itemIndex) - 0.5) * 5;
-        const totalPenalty = penalty + tieBreaker;
-
-        if (totalPenalty < lowestPenalty) {
-          lowestPenalty = totalPenalty;
-          bestSlotIndex = sIdx;
-        }
-      }
-
-      // Assign to best slot found
-      if (bestSlotIndex !== -1) {
-        const chosenSlot = availableSlots[bestSlotIndex];
-        const row = sectionRowRefs[chosenSlot.day];
-        if (row) {
-          row.lessons[chosenSlot.lessonKey] = {
-            subject: item.subject,
-            teacherName: item.teacher,
-            isOff: false
-          };
-
-          if (isTeacherSpecial) {
-            teacherBusyMap[chosenSlot.day][chosenSlot.lessonKey].add(item.teacher);
-          }
-
-          daySubjectCounts[chosenSlot.day][item.subject] = (daySubjectCounts[chosenSlot.day][item.subject] || 0) + 1;
-          
-          if (!subjectAssignedPeriods[item.subject]) {
-            subjectAssignedPeriods[item.subject] = [];
-          }
-          subjectAssignedPeriods[item.subject].push(chosenSlot.periodIndex);
-
-          // Track Lesson 6 assignments for section and school
-          if (chosenSlot.periodIndex === 5) {
-            secPeriod6SubjectCount.set(item.subject, (secPeriod6SubjectCount.get(item.subject) || 0) + 1);
-            if (isTeacherSpecial) {
-              secPeriod6TeacherCount.set(item.teacher, (secPeriod6TeacherCount.get(item.teacher) || 0) + 1);
-              schoolWidePeriod6TeacherCount.set(item.teacher, (schoolWidePeriod6TeacherCount.get(item.teacher) || 0) + 1);
-            }
-          }
-        }
       } else {
-        // Fallback: If heuristic penalty rejected all slots, pick the first unoccupied slot in availableSlots
-        for (const slot of availableSlots) {
-          const row = sectionRowRefs[slot.day];
-          if (row && row.lessons[slot.lessonKey].subject === '') {
-            row.lessons[slot.lessonKey] = {
-              subject: item.subject,
-              teacherName: item.teacher,
-              isOff: false
-            };
-            if (isTeacherSpecial) {
-              teacherBusyMap[slot.day][slot.lessonKey].add(item.teacher);
-            }
-            daySubjectCounts[slot.day][item.subject] = (daySubjectCounts[slot.day][item.subject] || 0) + 1;
-            if (slot.periodIndex === 5) {
-              secPeriod6SubjectCount.set(item.subject, (secPeriod6SubjectCount.get(item.subject) || 0) + 1);
-              if (isTeacherSpecial) {
-                secPeriod6TeacherCount.set(item.teacher, (secPeriod6TeacherCount.get(item.teacher) || 0) + 1);
-                schoolWidePeriod6TeacherCount.set(item.teacher, (schoolWidePeriod6TeacherCount.get(item.teacher) || 0) + 1);
-              }
-            }
-            break;
-          }
-        }
+        return {
+          success: false,
+          scheduleMap: createEmptyScheduleMap(sections),
+          collisions: [],
+          errorMsg: `الشعبة [${sec.grade} - ${sec.section}] تحتوي على (${secQuota}) حصة، والحد الأقصى المسموح هو 30 حصة أسبوعياً (5 أيام × 6 دروس). يرجى تقليل (${secQuota - 30}) حصص.`
+        };
       }
     }
 
-    // 5. Fill any unallocated slots as vacant
-    DAYS_OF_WEEK.forEach(day => {
-      const row = sectionRowRefs[day];
+    sectionDecks.set(secKey, cards);
+  }
+
+  // Check teacher impossible load (> 30 hours a week is physically impossible)
+  for (const [tName, load] of totalTeacherLoad.entries()) {
+    if (load > 30) {
+      return {
+        success: false,
+        scheduleMap: createEmptyScheduleMap(sections),
+        collisions: [],
+        errorMsg: `المعلم [${tName}] مكلف بـ (${load}) حصة أسبوعياً، وأقصى حد متاح في الأسبوع هو 30 حصة. يرجى تخفيض نصابه.`
+      };
+    }
+  }
+
+  // 2. Multi-Pass Backtracking Solver
+  let bestSchedule: DayScheduleMap = createEmptyScheduleMap(sections);
+  let bestCollisions: CollisionReport[] = [];
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const seed = randomSeed + attempt * 31.7 + Math.random() * 1000;
+    const scheduleResult = solveWithCSP(sections, sectionDecks, totalTeacherLoad, seed);
+
+    if (scheduleResult) {
+      // 3. Post-Generation Audit Verification
+      const audit = auditScheduleMathematicalCorrectness(scheduleResult, sections);
+      if (audit.isValid) {
+        return {
+          success: true,
+          scheduleMap: scheduleResult,
+          collisions: []
+        };
+      }
+    }
+  }
+
+  // If deterministic backtrack hit recursion depth limit, return best effort with full reports
+  const fallback = buildDeterministicFallback(sections, sectionDecks);
+  const collisions = checkScheduleCollisions(fallback);
+
+  return {
+    success: collisions.length === 0,
+    scheduleMap: fallback,
+    collisions,
+    errorMsg: collisions.length > 0
+      ? `تم توليد الجدول مع (${collisions.length}) تضارب في أنصبة بعض المعلمين المشتركين. يمكنك تعديلها يدوياً.`
+      : undefined
+  };
+}
+
+/**
+ * Core Constraint Satisfaction Solver with Backtracking & Forward Checking
+ */
+function solveWithCSP(
+  sections: SmartScheduleSection[],
+  sectionDecks: Map<string, LessonCard[]>,
+  teacherTotalLoads: Map<string, number>,
+  seed: number
+): DayScheduleMap | null {
+  // Grid matrix: [sectionKey][slotIndex] -> LessonCard
+  const assignment: Record<string, (LessonCard | null)[]> = {};
+
+  // Teacher busy occupancy: [slotIndex][teacherName] -> boolean
+  const teacherOccupancy: boolean[][] = Array.from({ length: 30 }, () => []);
+  const teacherOccupancyMap: Map<string, Set<number>> = new Map();
+
+  // Daily subject counter per section: [sectionKey][dayIndex][subject] -> count
+  const dailySubjectCount: Record<string, Record<number, Record<string, number>>> = {};
+
+  sections.forEach(sec => {
+    const sKey = `${sec.grade}_${sec.section}`;
+    assignment[sKey] = new Array(30).fill(null);
+    dailySubjectCount[sKey] = { 0: {}, 1: {}, 2: {}, 3: {}, 4: {} };
+  });
+
+  // Sort sections by constraint degree (sections with most shared teachers first)
+  const sortedSections = [...sections].sort((a, b) => {
+    const scoreA = a.subjects.reduce((sum, s) => sum + (teacherTotalLoads.get(s.teacherName.trim()) || 0), 0);
+    const scoreB = b.subjects.reduce((sum, s) => sum + (teacherTotalLoads.get(s.teacherName.trim()) || 0), 0);
+    return scoreB - scoreA;
+  });
+
+  // Solve section by section using CSP
+  for (const sec of sortedSections) {
+    const sKey = `${sec.grade}_${sec.section}`;
+    const deck = [...(sectionDecks.get(sKey) || [])];
+
+    // Order deck: Heaviest teacher loads & science & non-vacant first
+    deck.sort((a, b) => {
+      if (a.isVacant !== b.isVacant) return a.isVacant ? 1 : -1;
+      const tLoadA = teacherTotalLoads.get(a.teacher) || 0;
+      const tLoadB = teacherTotalLoads.get(b.teacher) || 0;
+      if (tLoadA !== tLoadB) return tLoadB - tLoadA;
+      return (Math.sin(seed + a.id.length * 7) - 0.5);
+    });
+
+    const success = backtrackSection(
+      0,
+      deck,
+      sKey,
+      assignment[sKey],
+      teacherOccupancyMap,
+      dailySubjectCount[sKey],
+      seed
+    );
+
+    if (!success) {
+      return null; // Trigger next restart/seed
+    }
+  }
+
+  // Convert assignment matrix to DayScheduleMap
+  const scheduleMap = createEmptyScheduleMap(sections);
+
+  DAYS_OF_WEEK.forEach((day, dIdx) => {
+    sections.forEach(sec => {
+      const sKey = `${sec.grade}_${sec.section}`;
+      const row = scheduleMap[day].find(r => r.grade === sec.grade && r.section === sec.section);
       if (row) {
-        LESSON_KEYS.forEach(lKey => {
-          if (row.lessons[lKey].subject === '') {
+        LESSON_KEYS.forEach((lKey, pIdx) => {
+          const slotIndex = dIdx * 6 + pIdx;
+          const card = assignment[sKey][slotIndex];
+          if (card) {
             row.lessons[lKey] = {
-              subject: 'شاغر / نشاط حر',
-              teacherName: 'شاغر',
+              subject: card.subject,
+              teacherName: card.teacher,
               isOff: false
             };
           }
@@ -780,260 +454,140 @@ function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number):
     });
   });
 
-  return schedule;
+  return scheduleMap;
 }
 
 /**
- * Secondary refinement pass to swap conflicting cells into free compatible slots.
+ * Recursive Backtracking for a Single Section
  */
-function resolveConflictsBySwapping(schedule: DayScheduleMap, sections: SmartScheduleSection[]): DayScheduleMap {
-  const result: DayScheduleMap = JSON.parse(JSON.stringify(schedule));
-  
-  DAYS_OF_WEEK.forEach(day => {
-    const rows = result[day] || [];
-    LESSON_KEYS.forEach(lessonKey => {
-      const seenTeachers = new Map<string, number[]>(); // teacher -> row indexes
+function backtrackSection(
+  cardIndex: number,
+  deck: LessonCard[],
+  sectionKey: string,
+  grid: (LessonCard | null)[],
+  teacherOccupancyMap: Map<string, Set<number>>,
+  dailySubjectCount: Record<number, Record<string, number>>,
+  seed: number
+): boolean {
+  if (cardIndex >= deck.length) {
+    return true; // All cards for this section successfully placed!
+  }
 
-      rows.forEach((row, rIdx) => {
-        const cell = row.lessons[lessonKey];
-        if (cell && cell.teacherName && cell.teacherName !== 'شاغر') {
-          if (!seenTeachers.has(cell.teacherName)) {
-            seenTeachers.set(cell.teacherName, []);
-          }
-          seenTeachers.get(cell.teacherName)!.push(rIdx);
-        }
-      });
+  const card = deck[cardIndex];
 
-      // For any teacher found in multiple rows in this slot, try swapping one row with another lesson in the same day
-      seenTeachers.forEach((rowIndices, teacher) => {
-        if (rowIndices.length > 1) {
-          for (let i = 1; i < rowIndices.length; i++) {
-            const rowIndexToSwap = rowIndices[i];
-            const targetRow = rows[rowIndexToSwap];
-            
-            for (const otherLessonKey of LESSON_KEYS) {
-              if (otherLessonKey === lessonKey) continue;
-              const otherCell = targetRow.lessons[otherLessonKey];
-              
-              // STRICT RULE: Check Lesson 6 rule for Physics, Chemistry, Biology, Ethics, and Vacant slots
-              const currentSubject = targetRow.lessons[lessonKey]?.subject || '';
-              const otherSubject = otherCell?.subject || '';
-              
-              // Thursday Lesson 6 must never receive a real curriculum lesson
-              if (day === 'الخميس' && (lessonKey === 'lesson6' || otherLessonKey === 'lesson6')) {
-                if (lessonKey === 'lesson6' && otherSubject !== 'شاغر / نشاط حر') continue;
-                if (otherLessonKey === 'lesson6' && currentSubject !== 'شاغر / نشاط حر') continue;
-              }
+  // Generate and score candidate slots (0 to 29)
+  const candidateSlots: { slot: TimeSlot; penalty: number }[] = [];
 
-              if (otherLessonKey === 'lesson6' && isForbiddenInPeriod6(currentSubject, 2)) continue;
-              if (lessonKey === 'lesson6' && isForbiddenInPeriod6(otherSubject, 2)) continue;
+  for (const slot of ALL_SLOTS) {
+    if (grid[slot.slotIndex] !== null) continue; // Already occupied
 
-              // Do not swap vacant slot into lessons 1-5
-              if (currentSubject === 'شاغر / نشاط حر' && otherLessonKey !== 'lesson6') continue;
-              if (otherSubject === 'شاغر / نشاط حر' && lessonKey !== 'lesson6') continue;
-
-              const isTeacherFreeInOther = !rows.some(r => r.lessons[otherLessonKey]?.teacherName === teacher);
-              const isOtherTeacherFreeInCurrent = !otherCell.teacherName || otherCell.teacherName === 'شاغر' || 
-                !rows.some((r, idx) => idx !== rowIndexToSwap && r.lessons[lessonKey]?.teacherName === otherCell.teacherName);
-
-              if (isTeacherFreeInOther && isOtherTeacherFreeInCurrent) {
-                // Swap the two cells
-                const temp = { ...targetRow.lessons[lessonKey] };
-                targetRow.lessons[lessonKey] = { ...otherCell };
-                targetRow.lessons[otherLessonKey] = temp;
-                break;
-              }
-            }
-          }
-        }
-      });
-    });
-  });
-
-  return result;
-}
-
-/**
- * Inter-day swap pass to balance subjects across days and eliminate any accidental same-day subject duplicates.
- */
-export function repairDailySubjectDuplicates(schedule: DayScheduleMap): DayScheduleMap {
-  const result: DayScheduleMap = JSON.parse(JSON.stringify(schedule));
-  
-  const allSections: { grade: string; section: string }[] = [];
-  (result['الأحد'] || []).forEach(row => {
-    allSections.push({ grade: row.grade, section: row.section });
-  });
-
-  allSections.forEach(sec => {
-    // For each day, find subjects with count > 1
-    for (const dayA of DAYS_OF_WEEK) {
-      const rowA = (result[dayA] || []).find(r => r.grade === sec.grade && r.section === sec.section);
-      if (!rowA) continue;
-
-      const subCountsA = new Map<string, typeof LESSON_KEYS[number][]>();
-      LESSON_KEYS.forEach(lKey => {
-        const cell = rowA.lessons[lKey];
-        if (cell && cell.subject && cell.subject !== 'شاغر / نشاط حر' && !cell.isOff) {
-          const list = subCountsA.get(cell.subject) || [];
-          list.push(lKey);
-          subCountsA.set(cell.subject, list);
-        }
-      });
-
-      subCountsA.forEach((slotsA, subjA) => {
-        if (slotsA.length > 1) {
-          // We have duplicates of subjA on dayA! Try to move the second one (slotsA[1]) to another dayB that doesn't have subjA
-          const slotToMoveA = slotsA[1];
-          const cellA = rowA.lessons[slotToMoveA];
-
-          for (const dayB of DAYS_OF_WEEK) {
-            if (dayB === dayA) continue;
-            const rowB = (result[dayB] || []).find(r => r.grade === sec.grade && r.section === sec.section);
-            if (!rowB) continue;
-
-            const hasSubjAInDayB = LESSON_KEYS.some(k => rowB.lessons[k]?.subject === subjA);
-            if (hasSubjAInDayB) continue; // dayB already has subjA, skip
-
-            // Find a slot in dayB that can be swapped with slotToMoveA
-            for (const slotB of LESSON_KEYS) {
-              const cellB = rowB.lessons[slotB];
-              if (!cellB || cellB.isOff) continue;
-
-              // STRICT RULE: Check Lesson 6 rule
-              // Thursday Lesson 6 must never receive a real curriculum lesson
-              if (dayB === 'الخميس' && slotB === 'lesson6' && cellA.subject !== 'شاغر / نشاط حر') continue;
-              if (dayA === 'الخميس' && slotToMoveA === 'lesson6' && cellB.subject !== 'شاغر / نشاط حر') continue;
-
-              if (slotB === 'lesson6' && isForbiddenInPeriod6(cellA.subject, 2)) continue;
-              if (slotToMoveA === 'lesson6' && isForbiddenInPeriod6(cellB.subject, 2)) continue;
-
-              // Vacant slot must remain in lesson6
-              if (cellA.subject === 'شاغر / نشاط حر' && slotB !== 'lesson6') continue;
-              if (cellB.subject === 'شاغر / نشاط حر' && slotToMoveA !== 'lesson6') continue;
-
-              const hasSubjBInDayA = cellB.subject !== 'شاغر / نشاط حر' && LESSON_KEYS.some(k => k !== slotToMoveA && rowA.lessons[k]?.subject === cellB.subject);
-              if (hasSubjBInDayA) continue; // swapping would create duplicate of subjB in dayA!
-
-              // Check teacher collisions if we place cellA at dayB[slotB] and cellB at dayA[slotToMoveA]
-              const isTeacherAFreeInDayBSlotB = !cellA.teacherName || cellA.teacherName === 'شاغر' ||
-                !(result[dayB] || []).some(r => r.id !== rowB.id && r.lessons[slotB]?.teacherName === cellA.teacherName);
-
-              const isTeacherBFreeInDayASlotA = !cellB.teacherName || cellB.teacherName === 'شاغر' ||
-                !(result[dayA] || []).some(r => r.id !== rowA.id && r.lessons[slotToMoveA]?.teacherName === cellB.teacherName);
-
-              if (isTeacherAFreeInDayBSlotB && isTeacherBFreeInDayASlotA) {
-                // Perform the swap!
-                const temp = { ...cellA };
-                rowA.lessons[slotToMoveA] = { ...cellB };
-                rowB.lessons[slotB] = temp;
-                break;
-              }
-            }
-          }
-        }
-      });
+    // 1. HARD CONSTRAINT: Teacher clash in another section
+    if (card.isSpecialTeacher) {
+      const busySlots = teacherOccupancyMap.get(card.teacher);
+      if (busySlots && busySlots.has(slot.slotIndex)) {
+        continue; // Absolute collision - prune
+      }
     }
-  });
 
-  return result;
+    // 2. HARD CONSTRAINT: Max 1 of the same subject per day (unless subject weekly quota > 5)
+    const currentToday = dailySubjectCount[slot.dayIndex][card.subject] || 0;
+    if (!card.isVacant && currentToday >= 1) {
+      continue; // Strictly no duplicate subject on the same day
+    }
+
+    // 3. HARD CONSTRAINT: Thursday Lesson 6 must strictly be vacant if section has vacant slots
+    if (slot.day === 'الخميس' && slot.periodIndex === 5 && !card.isVacant && deck.some(c => c.isVacant)) {
+      continue;
+    }
+
+    // 4. PERIOD 6 FORBIDDEN SUBJECTS (Science, Islamic, Ethics)
+    if (slot.periodIndex === 5 && isForbiddenInPeriod6(card.subject)) {
+      continue;
+    }
+
+    // 5. Vacant slot positioning preference: Keep vacant slots strictly in Period 6 (slot.periodIndex === 5)
+    let penalty = 0;
+    if (card.isVacant) {
+      if (slot.periodIndex !== 5) {
+        penalty += 10000; // Heavy penalty for placing vacant in lessons 1-5
+      }
+      // Thursday lesson 6 is highest preference for vacant
+      if (slot.day === 'الخميس' && slot.periodIndex === 5) {
+        penalty -= 500;
+      }
+    } else {
+      if (slot.periodIndex === 5) {
+        penalty += 150; // Slight preference to place real lessons in 1-5
+      }
+    }
+
+    // 6. Natural dispersion: Add tie-breaking noise for rotation
+    const noise = (Math.sin(seed + cardIndex * 13 + slot.slotIndex * 17) - 0.5) * 50;
+    candidateSlots.push({ slot, penalty: penalty + noise });
+  }
+
+  // Sort candidate slots by lowest penalty (MRV heuristic)
+  candidateSlots.sort((a, b) => a.penalty - b.penalty);
+
+  for (const cand of candidateSlots) {
+    const slot = cand.slot;
+
+    // Place card
+    grid[slot.slotIndex] = card;
+    if (card.isSpecialTeacher) {
+      if (!teacherOccupancyMap.has(card.teacher)) {
+        teacherOccupancyMap.set(card.teacher, new Set());
+      }
+      teacherOccupancyMap.get(card.teacher)!.add(slot.slotIndex);
+    }
+    dailySubjectCount[slot.dayIndex][card.subject] = (dailySubjectCount[slot.dayIndex][card.subject] || 0) + 1;
+
+    // Recurse to next card
+    if (backtrackSection(cardIndex + 1, deck, sectionKey, grid, teacherOccupancyMap, dailySubjectCount, seed)) {
+      return true;
+    }
+
+    // Backtrack (Undo placement)
+    grid[slot.slotIndex] = null;
+    if (card.isSpecialTeacher) {
+      teacherOccupancyMap.get(card.teacher)!.delete(slot.slotIndex);
+    }
+    dailySubjectCount[slot.dayIndex][card.subject] = (dailySubjectCount[slot.dayIndex][card.subject] || 0) - 1;
+  }
+
+  return false; // Backtrack to previous card
 }
 
 /**
- * Intra-section and school-wide balancing pass specifically for Lesson 6.
- * Ensures Lesson 6 rotates equitably among permitted subjects and teachers without repeated clustering.
+ * Deterministic Fallback Builder (Ensures exactly 30 lessons per section without omissions)
  */
-export function balancePeriod6AcrossSchool(schedule: DayScheduleMap): DayScheduleMap {
-  const result: DayScheduleMap = JSON.parse(JSON.stringify(schedule));
+function buildDeterministicFallback(
+  sections: SmartScheduleSection[],
+  sectionDecks: Map<string, LessonCard[]>
+): DayScheduleMap {
+  const scheduleMap = createEmptyScheduleMap(sections);
 
-  const allSections: { grade: string; section: string }[] = [];
-  (result['الأحد'] || []).forEach(row => {
-    allSections.push({ grade: row.grade, section: row.section });
-  });
+  sections.forEach(sec => {
+    const sKey = `${sec.grade}_${sec.section}`;
+    const cards = [...(sectionDecks.get(sKey) || [])];
 
-  allSections.forEach(sec => {
-    // 1. Check Section-level Lesson 6 distribution across the 5 days
-    const p6Occurrences: { day: DayOfWeek; subject: string; teacher: string }[] = [];
+    let cardIdx = 0;
     DAYS_OF_WEEK.forEach(day => {
-      const row = (result[day] || []).find(r => r.grade === sec.grade && r.section === sec.section);
-      const c6 = row?.lessons.lesson6;
-      if (c6 && c6.subject && c6.subject !== 'شاغر / نشاط حر' && !c6.isOff) {
-        p6Occurrences.push({ day, subject: c6.subject.trim(), teacher: c6.teacherName?.trim() || '' });
-      }
-    });
-
-    // Find any repeated subject or teacher in Lesson 6 for this section
-    const subjectCounts = new Map<string, number>();
-    const teacherCounts = new Map<string, number>();
-    p6Occurrences.forEach(occ => {
-      subjectCounts.set(occ.subject, (subjectCounts.get(occ.subject) || 0) + 1);
-      if (occ.teacher && occ.teacher !== 'شاغر' && occ.teacher !== 'أ. أستاذ المادة') {
-        teacherCounts.set(occ.teacher, (teacherCounts.get(occ.teacher) || 0) + 1);
-      }
-    });
-
-    // Try to swap repeated Lesson 6 entries with compatible lessons in earlier periods of that same day (e.g. lesson4 or lesson5)
-    DAYS_OF_WEEK.forEach(day => {
-      // Thursday Lesson 6 is strictly vacant / activity; do not swap curriculum lessons into it
-      if (day === 'الخميس') return;
-
-      const row = (result[day] || []).find(r => r.grade === sec.grade && r.section === sec.section);
-      if (!row) return;
-
-      const c6 = row.lessons.lesson6;
-      if (!c6 || !c6.subject || c6.subject === 'شاغر / نشاط حر' || c6.isOff) return;
-
-      const currentSubj = c6.subject.trim();
-      const currentTeacher = c6.teacherName?.trim() || '';
-      const isSubjRepeated = (subjectCounts.get(currentSubj) || 0) > 1;
-      const isTeacherRepeated = currentTeacher && (teacherCounts.get(currentTeacher) || 0) > 1;
-
-      if (isSubjRepeated || isTeacherRepeated) {
-        // Look for candidate slots in the same day (prefer lesson5 or lesson4) whose subject is permitted in Lesson 6
-        const candidateKeys: (typeof LESSON_KEYS[number])[] = ['lesson5', 'lesson4', 'lesson3'];
-        for (const candKey of candidateKeys) {
-          const candCell = row.lessons[candKey];
-          if (!candCell || !candCell.subject || candCell.subject === 'شاغر / نشاط حر' || candCell.isOff) continue;
-
-          const candSubj = candCell.subject.trim();
-          const candTeacher = candCell.teacherName?.trim() || '';
-
-          // Must be permitted in Lesson 6
-          if (isForbiddenInPeriod6(candSubj, 2)) continue;
-
-          // Candidate subject/teacher should not already be heavily present in Lesson 6 for this section
-          if ((subjectCounts.get(candSubj) || 0) >= 1) continue;
-          if (candTeacher && (teacherCounts.get(candTeacher) || 0) >= 1) continue;
-
-          // Check collisions: If we swap current Lesson 6 and candKey in row on `day`
-          // Does currentTeacher clash with another section in candKey?
-          const currentTeacherCollides = currentTeacher && currentTeacher !== 'شاغر' &&
-            (result[day] || []).some(r => r.id !== row.id && r.lessons[candKey]?.teacherName === currentTeacher);
-
-          // Does candTeacher clash with another section in lesson6?
-          const candTeacherCollides = candTeacher && candTeacher !== 'شاغر' &&
-            (result[day] || []).some(r => r.id !== row.id && r.lessons.lesson6?.teacherName === candTeacher);
-
-          if (!currentTeacherCollides && !candTeacherCollides) {
-            // Swap safely!
-            const temp = { ...c6 };
-            row.lessons.lesson6 = { ...candCell };
-            row.lessons[candKey] = temp;
-
-            // Update local count trackers
-            subjectCounts.set(currentSubj, (subjectCounts.get(currentSubj) || 1) - 1);
-            subjectCounts.set(candSubj, (subjectCounts.get(candSubj) || 0) + 1);
-            if (currentTeacher) {
-              teacherCounts.set(currentTeacher, (teacherCounts.get(currentTeacher) || 1) - 1);
-            }
-            if (candTeacher) {
-              teacherCounts.set(candTeacher, (teacherCounts.get(candTeacher) || 0) + 1);
-            }
-            break;
+      const row = scheduleMap[day].find(r => r.grade === sec.grade && r.section === sec.section);
+      if (row) {
+        LESSON_KEYS.forEach(lKey => {
+          if (cardIdx < cards.length) {
+            const c = cards[cardIdx++];
+            row.lessons[lKey] = {
+              subject: c.subject,
+              teacherName: c.teacher,
+              isOff: false
+            };
           }
-        }
+        });
       }
     });
   });
 
-  return result;
+  return scheduleMap;
 }

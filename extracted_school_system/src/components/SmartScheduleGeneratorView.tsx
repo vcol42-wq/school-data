@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { 
   generateSmartFairSchedule, 
+  sanitizeAndRepairSections,
   checkScheduleCollisions, 
   isForbiddenInPeriod6,
   DAYS_OF_WEEK, 
@@ -137,7 +138,7 @@ const SubjectRow: React.FC<SubjectRowProps> = React.memo(({
           {isRestrictedP6 && (
             <span 
               className="shrink-0 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black"
-              title="مستبعدة برمجياً من الدرس السادس (مادة علمية أو نصاب حصة واحدة)"
+              title="مستبعدة برمجياً من الدرس السادس (مادة علمية أو دينية أو نصاب حصتين فأقل)"
             >
               مستبعدة من درس 6
             </span>
@@ -502,7 +503,10 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
       const saved = localStorage.getItem('diyala_smart_schedule_sections');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const { repaired } = sanitizeAndRepairSections(parsed);
+          return repaired;
+        }
       }
     } catch (e) {}
 
@@ -633,27 +637,38 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
     }));
   }, []);
 
-  // Duplicate an existing subject row (e.g. for different teachers or splitting quotas)
+  // Duplicate an existing subject row (splits quota between teachers without inflating total section quota)
   const handleDuplicateSubject = (sectionId: string, subjectId: string) => {
     setSections(prev => prev.map(sec => {
       if (sec.id !== sectionId) return sec;
       const target = sec.subjects.find(s => s.id === subjectId);
       if (!target) return sec;
+
+      const currentQuota = target.weeklyLessons || 2;
+      const duplicateQuota = Math.max(1, Math.floor(currentQuota / 2));
+      const remainingQuota = Math.max(1, currentQuota - duplicateQuota);
+
+      const updatedTarget: SectionSubjectAssignment = {
+        ...target,
+        weeklyLessons: remainingQuota
+      };
+
       const duplicate: SectionSubjectAssignment = {
         ...target,
         id: `sub-${sec.id}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        subjectName: `${target.subjectName}`,
+        subjectName: target.subjectName,
         teacherName: 'أ. أستاذ آخر',
-        weeklyLessons: Math.max(1, Math.floor((target.weeklyLessons || 2) / 2) || 1)
+        weeklyLessons: duplicateQuota
       };
+
       return {
         ...sec,
-        subjects: [...sec.subjects, duplicate]
+        subjects: sec.subjects.map(s => s.id === subjectId ? updatedTarget : s).concat(duplicate)
       };
     }));
   };
 
-  // Auto-Balance Quota of a Section to exactly 30
+  // Auto-Balance Quota of a Section to exactly 30 (protects Biology & Science quotas)
   const handleAutoBalanceSectionTo30 = (sectionId: string) => {
     setSections(prev => prev.map(sec => {
       if (sec.id !== sectionId) return sec;
@@ -677,11 +692,11 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
           subjects: [...sec.subjects, vacantSub]
         };
       } else {
-        // More than 30: Scale down subjects from non-core or extra subjects
+        // More than 30: Scale down subjects from surplus (e.g. Arabic > 5 or Islamic > 2), protecting Science/Biology
         let surplus = currentQuota - 30;
         const adjustedSubs = [...sec.subjects].map(s => ({ ...s }));
         
-        // Try to reduce or remove any vacant subjects first
+        // 1. Reduce/remove any vacant subjects first
         for (let i = adjustedSubs.length - 1; i >= 0 && surplus > 0; i--) {
           if (adjustedSubs[i].subjectName.includes('شاغر') || adjustedSubs[i].teacherName === 'شاغر') {
             const removable = Math.min(surplus, adjustedSubs[i].weeklyLessons);
@@ -689,10 +704,39 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
             surplus -= removable;
           }
         }
-        
-        // If still surplus, trim last added subjects
+
+        // 2. Reduce Arabic if > 5
+        for (let i = 0; i < adjustedSubs.length && surplus > 0; i++) {
+          if (adjustedSubs[i].subjectName.includes('عرب') && adjustedSubs[i].weeklyLessons > 5) {
+            const removable = Math.min(surplus, adjustedSubs[i].weeklyLessons - 5);
+            adjustedSubs[i].weeklyLessons -= removable;
+            surplus -= removable;
+          }
+        }
+
+        // 3. Reduce Islamic if > 2
+        for (let i = 0; i < adjustedSubs.length && surplus > 0; i++) {
+          if ((adjustedSubs[i].subjectName.includes('اسلام') || adjustedSubs[i].subjectName.includes('دين')) && adjustedSubs[i].weeklyLessons > 2) {
+            const removable = Math.min(surplus, adjustedSubs[i].weeklyLessons - 2);
+            adjustedSubs[i].weeklyLessons -= removable;
+            surplus -= removable;
+          }
+        }
+
+        // 4. Reduce any non-science subject with quota > 2
         for (let i = adjustedSubs.length - 1; i >= 0 && surplus > 0; i--) {
-          if (adjustedSubs[i].weeklyLessons > 1) {
+          const sName = adjustedSubs[i].subjectName;
+          const isSci = isForbiddenInPeriod6(sName);
+          if (!isSci && adjustedSubs[i].weeklyLessons > 2) {
+            const removable = Math.min(surplus, adjustedSubs[i].weeklyLessons - 2);
+            adjustedSubs[i].weeklyLessons -= removable;
+            surplus -= removable;
+          }
+        }
+        
+        // 5. If still surplus, trim any subject > 1 except Biology/Science
+        for (let i = adjustedSubs.length - 1; i >= 0 && surplus > 0; i--) {
+          if (adjustedSubs[i].weeklyLessons > 1 && !isForbiddenInPeriod6(adjustedSubs[i].subjectName)) {
             const removable = Math.min(surplus, adjustedSubs[i].weeklyLessons - 1);
             adjustedSubs[i].weeklyLessons -= removable;
             surplus -= removable;
@@ -1200,6 +1244,23 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { repaired, wasModified, fixesSummary } = sanitizeAndRepairSections(sections);
+                    setSections(repaired);
+                    if (wasModified) {
+                      alert(`✅ تم إصلاح وموازنة الأنصبة بنجاح!\n\n${fixesSummary.join('\n')}\n\nأصبحت جميع الشعب مضبوطة على 30 حصة أسبوعياً.`);
+                    } else {
+                      alert('✅ جميع الأنصبة موزونة تماماً (30 حصة) ولا توجد أي حصص زائدة أو ناقصة.');
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs transition-all shadow-sm cursor-pointer active:scale-95"
+                  title="موازنة فورية لكافة الشعب وإصلاح أي زيادة في العربي أو الإسلامية واستعادة مادة الأحياء"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>⚡ موازنة وإصلاح الأنصبة لكافة الشعب (30 حصة)</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleAutoAssignTeachersBySpec}

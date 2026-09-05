@@ -21,8 +21,8 @@ import {
 } from 'lucide-react';
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { getSupabase } from '../utils/supabaseClient';
-import { generateSmartFairSchedule, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS } from '../utils/scheduleSolver';
-import { SmartScheduleSection, SectionSubjectAssignment } from '../types';
+import { generateSmartFairSchedule, sanitizeAndRepairSections, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS } from '../utils/scheduleSolver';
+import { SmartScheduleSection, SectionSubjectAssignment, StaffMember, Student } from '../types';
 
 interface ScheduleViewProps {
   scheduleMap: DayScheduleMap;
@@ -125,7 +125,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         if (savedSecs) {
           const parsed = JSON.parse(savedSecs);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            candidateSections = parsed;
+            const { repaired } = sanitizeAndRepairSections(parsed);
+            candidateSections = repaired;
           }
         }
       } catch {}
