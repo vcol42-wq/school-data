@@ -59,6 +59,134 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.school.system.data.repository.SecureUploadResult
 import com.school.system.utils.BiometricHelper
 
+data class ProgressiveEvaluationResult(
+    val stageName: String,
+    val totalStudents: Int,
+    val passedStudents: Int,
+    val failedStudents: Int,
+    val passRate: Int
+)
+
+/**
+ * احتساب نسبة النجاح التدريجية وفق آخر عمود مدخل (تجريبي)
+ * بدلاً من الحساب للعمود النهائي أو السعي السنوي عندما لا تزال غير مدخلة،
+ * يتم الكشف عن آخر مرحلة فُعّلت فيها الدرجات (الشهر الأول -> الثاني -> الفصل الأول -> نصف السنة -> ...)
+ */
+fun calculateProgressiveStats(students: List<Student>): ProgressiveEvaluationResult {
+    val total = students.size
+    if (total == 0) {
+        return ProgressiveEvaluationResult(
+            stageName = "السجل فارغ",
+            totalStudents = 0,
+            passedStudents = 0,
+            failedStudents = 0,
+            passRate = 0
+        )
+    }
+
+    // 1. فحص الامتحان النهائي / الدرجة النهائية
+    val hasFinal = students.any { it.marks.finalGrade > 0f || it.marks.finalExamTotal > 0f || it.marks.finalWrittenD1 > 0f }
+    if (hasFinal) {
+        val passed = students.count { 
+            val score = if (it.marks.finalGrade > 0f) it.marks.finalGrade else it.marks.finalExamTotal
+            score >= 50f 
+        }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("النهائية", total, passed, failed, rate)
+    }
+
+    // 2. فحص السعي السنوي
+    val hasAnnual = students.any { it.marks.annualAverage > 0f }
+    if (hasAnnual) {
+        val passed = students.count { it.marks.annualAverage >= 50f }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("السعي السنوي", total, passed, failed, rate)
+    }
+
+    // 3. فحص معدل الفصل الثاني
+    val hasTerm2 = students.any { it.marks.term2Avg > 0f }
+    if (hasTerm2) {
+        val passed = students.count { it.marks.term2Avg >= 50f }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("الفصل الثاني", total, passed, failed, rate)
+    }
+
+    // 4. فحص درجات الشهر الرابع
+    val hasM4 = students.any { it.marks.m4MonthAvg > 0f || it.marks.m4Written > 0f || it.marks.m4Daily.any { d -> d > 0f } }
+    if (hasM4) {
+        val passed = students.count {
+            val score = if (it.marks.m4MonthAvg > 0f) it.marks.m4MonthAvg else (it.marks.m4Written + it.marks.m4Daily.sum())
+            score >= 50f
+        }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("الشهر الرابع", total, passed, failed, rate)
+    }
+
+    // 5. فحص درجات الشهر الثالث
+    val hasM3 = students.any { it.marks.m3MonthAvg > 0f || it.marks.m3Written > 0f || it.marks.m3Daily.any { d -> d > 0f } }
+    if (hasM3) {
+        val passed = students.count {
+            val score = if (it.marks.m3MonthAvg > 0f) it.marks.m3MonthAvg else (it.marks.m3Written + it.marks.m3Daily.sum())
+            score >= 50f
+        }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("الشهر الثالث", total, passed, failed, rate)
+    }
+
+    // 6. فحص درجات نصف السنة
+    val hasMidterm = students.any { it.marks.midtermFinalGrade > 0f || it.marks.midtermTotal > 0f || it.marks.midtermScore > 0f }
+    if (hasMidterm) {
+        val passed = students.count {
+            val score = if (it.marks.midtermFinalGrade > 0f) it.marks.midtermFinalGrade else it.marks.midtermTotal
+            score >= 50f
+        }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("نصف السنة", total, passed, failed, rate)
+    }
+
+    // 7. فحص معدل الفصل الأول
+    val hasTerm1 = students.any { it.marks.term1Avg > 0f }
+    if (hasTerm1) {
+        val passed = students.count { it.marks.term1Avg >= 50f }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("الفصل الأول", total, passed, failed, rate)
+    }
+
+    // 8. فحص درجات الشهر الثاني
+    val hasM2 = students.any { it.marks.m2MonthAvg > 0f || it.marks.m2Written > 0f || it.marks.m2Daily.any { d -> d > 0f } }
+    if (hasM2) {
+        val passed = students.count {
+            val score = if (it.marks.m2MonthAvg > 0f) it.marks.m2MonthAvg else (it.marks.m2Written + it.marks.m2Daily.sum())
+            score >= 50f
+        }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("الشهر الثاني", total, passed, failed, rate)
+    }
+
+    // 9. فحص درجات الشهر الأول
+    val hasM1 = students.any { it.marks.m1MonthAvg > 0f || it.marks.m1Written > 0f || it.marks.m1Daily.any { d -> d > 0f } }
+    if (hasM1) {
+        val passed = students.count {
+            val score = if (it.marks.m1MonthAvg > 0f) it.marks.m1MonthAvg else (it.marks.m1Written + it.marks.m1Daily.sum())
+            score >= 50f
+        }
+        val failed = (total - passed).coerceAtLeast(0)
+        val rate = ((passed.toFloat() / total) * 100).toInt()
+        return ProgressiveEvaluationResult("الشهر الأول", total, passed, failed, rate)
+    }
+
+    // 10. لا توجد أي درجات مدخلة بعد
+    return ProgressiveEvaluationResult("لم تُدخل درجات", total, 0, 0, 0)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GradeRegisterScreen(
@@ -384,19 +512,12 @@ fun GradeRegisterScreen(
                 .fillMaxSize()
                 .nestedScroll(nestedScrollConnection)
         ) {
-            val totalStudents = students.size
-            val passedStudents = if (selectedTab == 0) {
-                students.count { 
-                    it.marks.annualAverage >= 50f || 
-                    it.marks.finalGrade >= 50f || 
-                    (it.marks.m1Daily.isNotEmpty() && it.marks.m1Daily.any { m -> m >= 50f }) ||
-                    (it.marks.m2Daily.isNotEmpty() && it.marks.m2Daily.any { m -> m >= 50f })
-                }
-            } else {
-                students.count { it.marks.finalGrade >= 50f || it.marks.annualAverage >= 50f }
-            }
-            val failedStudents = if (totalStudents > 0) (totalStudents - passedStudents).coerceAtLeast(0) else 0
-            val passRate = if (totalStudents > 0) ((passedStudents.toFloat() / totalStudents) * 100).toInt() else 0
+            val progStats = remember(students) { calculateProgressiveStats(students) }
+            val totalStudents = progStats.totalStudents
+            val passedStudents = progStats.passedStudents
+            val failedStudents = progStats.failedStudents
+            val passRate = progStats.passRate
+            val currentStageName = progStats.stageName
 
             // Top Header: Stats + Tabs move smoothly as a single unified block
             Box(
@@ -481,7 +602,7 @@ fun GradeRegisterScreen(
 
                         // نسبة النجاح
                         EmbossedStatBox3D(
-                            title = "نسبة النجاح",
+                            title = if (currentStageName == "لم تُدخل درجات" || currentStageName == "السجل فارغ") "نسبة النجاح" else "النسبة ($currentStageName)",
                             value = "$passRate%",
                             bgGradient = if (passRate >= 50) {
                                 if (currentTheme.isDark) listOf(Color(0xFF064E3B), Color(0xFF042F2E)) else listOf(Color(0xFFECFDF5), Color(0xFFA7F3D0))
@@ -1090,10 +1211,12 @@ fun exportAndSharePdfWithIText7(
         document.add(dataTable)
 
         // Statistics Summary Bar in PDF (At bottom of page)
-        val totalSt = students.size
-        val passedSt = students.count { it.marks.finalGrade >= 50f }
-        val failedSt = totalSt - passedSt
-        val passRateVal = if (totalSt > 0) ((passedSt.toFloat() / totalSt) * 100).toInt() else 0
+        val progPdfStats = calculateProgressiveStats(students)
+        val totalSt = progPdfStats.totalStudents
+        val passedSt = progPdfStats.passedStudents
+        val failedSt = progPdfStats.failedStudents
+        val passRateVal = progPdfStats.passRate
+        val stageLabel = progPdfStats.stageName
 
         document.add(com.itextpdf.layout.element.Paragraph("\n"))
         val statsTable = com.itextpdf.layout.element.Table(floatArrayOf(25f, 25f, 25f, 25f)).useAllAvailableWidth()
@@ -1102,7 +1225,7 @@ fun exportAndSharePdfWithIText7(
         val cell1 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("عدد الطلاب\n$totalSt").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(248, 250, 252)).setPadding(4f)
         val cell2 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("الناجحين\n$passedSt").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(220, 252, 231)).setPadding(4f)
         val cell3 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("الراسبين\n$failedSt").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(254, 226, 226)).setPadding(4f)
-        val cell4 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("نسبة النجاح\n$passRateVal%").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(241, 245, 249)).setPadding(4f)
+        val cell4 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("نسبة النجاح ($stageLabel)\n$passRateVal%").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(241, 245, 249)).setPadding(4f)
         
         statsTable.addCell(cell1)
         statsTable.addCell(cell2)
@@ -1310,10 +1433,12 @@ fun generateGradesHtml(
     val headerFontSize = if (tabIndex == 0) "7.5px" else if (tabIndex == 1) "7.5px" else "9px"
     val nameFontSize = if (tabIndex == 0) "8.5px" else if (tabIndex == 1) "8.5px" else "10px"
 
-    val totalSt = students.size
-    val passedSt = students.count { it.marks.finalGrade >= 50f }
-    val failedSt = totalSt - passedSt
-    val passRateVal = if (totalSt > 0) ((passedSt.toFloat() / totalSt) * 100).toInt() else 0
+    val progHtmlStats = calculateProgressiveStats(students)
+    val totalSt = progHtmlStats.totalStudents
+    val passedSt = progHtmlStats.passedStudents
+    val failedSt = progHtmlStats.failedStudents
+    val passRateVal = progHtmlStats.passRate
+    val stageLabel = progHtmlStats.stageName
 
     return """
         <!DOCTYPE html>
@@ -1552,7 +1677,7 @@ fun generateGradesHtml(
                         <span style="font-size: 14px; font-weight: bold; color: #dc2626;">$failedSt</span>
                     </div>
                     <div style="text-align: center;">
-                        <span style="font-size: 10px; color: #047857;">نسبة النجاح</span><br>
+                        <span style="font-size: 10px; color: #047857;">نسبة النجاح ($stageLabel)</span><br>
                         <span style="font-size: 14px; font-weight: bold; color: #059669;">$passRateVal%</span>
                     </div>
                 </div>

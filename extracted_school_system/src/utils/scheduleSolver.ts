@@ -591,3 +591,67 @@ function buildDeterministicFallback(
 
   return scheduleMap;
 }
+
+/**
+ * Sanitizes and repairs sections to ensure each section has valid quotas totaling exactly 30 periods.
+ */
+export function sanitizeAndRepairSections(sections: SmartScheduleSection[]): {
+  repaired: SmartScheduleSection[];
+  wasModified: boolean;
+  fixesSummary: string[];
+} {
+  const fixesSummary: string[] = [];
+  let wasModified = false;
+
+  const repaired = sections.map(sec => {
+    let currentTotal = sec.subjects.reduce((sum, s) => sum + (s.weeklyLessons || 0), 0);
+    const newSubjects = sec.subjects.map(s => ({ ...s }));
+
+    if (currentTotal !== TOTAL_PERIODS_PER_WEEK) {
+      wasModified = true;
+      if (currentTotal < TOTAL_PERIODS_PER_WEEK) {
+        // Add vacant or fill quota up to 30
+        const diff = TOTAL_PERIODS_PER_WEEK - currentTotal;
+        const vacantIdx = newSubjects.findIndex(s => s.subjectName === 'شاغر');
+        if (vacantIdx >= 0) {
+          newSubjects[vacantIdx].weeklyLessons += diff;
+        } else {
+          newSubjects.push({
+            id: `sub-vacant-${Date.now()}-${Math.random()}`,
+            subjectName: 'شاغر',
+            teacherName: 'شاغر',
+            weeklyLessons: diff
+          });
+        }
+        fixesSummary.push(`تمت موازنة الشعبة (${sec.grade} - ${sec.section}) بإضافة ${diff} حصص شاغرة للوصول إلى 30 حصة.`);
+      } else {
+        // Exceeds 30: trim vacant or reduce largest quotas
+        let excess = currentTotal - TOTAL_PERIODS_PER_WEEK;
+        for (let i = newSubjects.length - 1; i >= 0 && excess > 0; i--) {
+          if (newSubjects[i].subjectName === 'شاغر') {
+            const reduce = Math.min(newSubjects[i].weeklyLessons, excess);
+            newSubjects[i].weeklyLessons -= reduce;
+            excess -= reduce;
+          }
+        }
+        if (excess > 0) {
+          for (let i = newSubjects.length - 1; i >= 0 && excess > 0; i--) {
+            if (newSubjects[i].weeklyLessons > 1) {
+              const reduce = Math.min(newSubjects[i].weeklyLessons - 1, excess);
+              newSubjects[i].weeklyLessons -= reduce;
+              excess -= reduce;
+            }
+          }
+        }
+        fixesSummary.push(`تم تقليص الزيادة في الشعبة (${sec.grade} - ${sec.section}) لتصبح 30 حصة أسبوعياً.`);
+      }
+    }
+
+    return {
+      ...sec,
+      subjects: newSubjects.filter(s => s.weeklyLessons > 0)
+    };
+  });
+
+  return { repaired, wasModified, fixesSummary };
+}

@@ -116,6 +116,30 @@ class SyncManager @Inject constructor(
                 val parts = trimmed.split(":")
                 pairingCode = parts.getOrNull(1) ?: pairingCode
                 teacherName = parts.getOrNull(2) ?: ""
+            } else if (trimmed.startsWith("TEACHER:", ignoreCase = true)) {
+                val parts = trimmed.split(":")
+                if (parts.size >= 4) {
+                    pairingCode = parts[1].trim()
+                    schoolId = parts[2].trim()
+                    teacherName = parts[3].trim()
+                } else if (parts.size == 3) {
+                    pairingCode = parts[1].trim()
+                    if (parts[2].startsWith("SCH-", ignoreCase = true)) {
+                        schoolId = parts[2].trim()
+                    } else {
+                        teacherName = parts[2].trim()
+                    }
+                } else if (parts.size == 2) {
+                    pairingCode = parts[1].trim()
+                }
+            } else if (trimmed.startsWith("SUPERVISOR:", ignoreCase = true)) {
+                val parts = trimmed.split(":")
+                pairingCode = parts.getOrNull(1)?.trim() ?: pairingCode
+                val secondPart = parts.getOrNull(2)?.trim()
+                if (secondPart != null && secondPart.startsWith("SCH-", ignoreCase = true)) {
+                    schoolId = secondPart
+                }
+                teacherName = "المشرف العام"
             } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
                 url = trimmed
             } else if (trimmed.length in 4..12 && trimmed.all { it.isDigit() || it.isLetter() || it == '-' }) {
@@ -134,7 +158,7 @@ class SyncManager @Inject constructor(
             )
 
             // Auto-verify with school in background
-            requestPairing(
+            val pairRes = requestPairing(
                 teacherName = teacherName,
                 grade = "",
                 section = "",
@@ -142,7 +166,7 @@ class SyncManager @Inject constructor(
                 pairingCode = pairingCode
             )
 
-            true
+            pairRes.success
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -413,6 +437,22 @@ class SyncManager @Inject constructor(
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         val schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
         return syncRepository.downloadSchedule(context, schoolId)
+    }
+
+    suspend fun getSchoolAvailableClasses(): List<SchoolClassSubjectItem> {
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        val schoolId = currentConfig.schoolId.ifEmpty { "SCH-KAB2-6884" }
+        return syncRepository.getSchoolAvailableClasses(schoolId, currentConfig.cloudUrl, currentConfig.cloudKey)
+    }
+
+    suspend fun downloadSelectedClasses(selectedItems: List<SchoolClassSubjectItem>): Boolean {
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        val schoolId = currentConfig.schoolId.ifEmpty { "SCH-KAB2-6884" }
+        val ok = syncRepository.downloadSelectedClassesRoster(schoolId, selectedItems, currentConfig.cloudUrl, currentConfig.cloudKey)
+        if (ok) {
+            propagateStudents()
+        }
+        return ok
     }
 }
 

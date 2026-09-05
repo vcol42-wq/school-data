@@ -18,20 +18,42 @@ import javax.inject.Singleton
 // PostgREST DTOs matching Supabase PostgreSQL tables
 data class SupabaseTeacherDto(
     val id: String,
-    val school_id: String,
+    val school_id: String = "",
     val name: String,
-    val email: String?,
-    val specialization: String?
+    val email: String? = null,
+    val specialization: String? = null
 )
 
 data class SupabaseAssignmentDto(
-    val id: String,
+    val id: String = "",
     val school_id: String,
     val teacher_id: String,
     val class_name: String,
     val section: String,
-    val subject_name: String
+    val subject_name: String,
+    val secret_code: String? = null
 )
+
+data class SupabaseSubjectAssignmentDto(
+    val id: Long? = null,
+    val school_id: String,
+    val grade: String,
+    val section: String,
+    val subject: String,
+    val secret_code: String? = null,
+    val is_locked: Boolean = false,
+    val teacher_name: String? = null
+)
+
+data class SchoolClassSubjectItem(
+    val grade: String,
+    val section: String,
+    val subject: String,
+    val teacherName: String? = null,
+    val teacherId: String? = null,
+    var isSelected: Boolean = false
+)
+
 
 data class SupabaseStudentDto(
     val school_id: String,
@@ -136,8 +158,20 @@ interface SupabaseApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
-        @Query("teacher_id") teacherFilter: String
+        @Query("teacher_id") teacherFilter: String? = null
     ): Response<List<SupabaseAssignmentDto>>
+
+    @GET("rest/v1/subject_assignments")
+    suspend fun getSubjectAssignments(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Query("school_id") schoolFilter: String,
+        @Query("grade") gradeFilter: String? = null,
+        @Query("section") sectionFilter: String? = null,
+        @Query("subject") subjectFilter: String? = null,
+        @Query("secret_code") secretCodeFilter: String? = null
+    ): Response<List<SupabaseSubjectAssignmentDto>>
 
     @GET("rest/v1/students")
     suspend fun getStudents(
@@ -282,7 +316,7 @@ class SyncRepository @Inject constructor(
         const val DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleGVobHZrcGRobXB1a2p5ZHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Njk4NDUsImV4cCI6MjEwMjQ0NTg0NX0.YFDRTLJnB56uD-rGtknex_NhycexP57WHhhTRVas5EY"
     }
 
-    private fun getApi(url: String): SupabaseApi {
+    fun getApi(url: String): SupabaseApi {
         var formattedUrl = url.trim()
         if (!formattedUrl.startsWith("http://") && !formattedUrl.startsWith("https://")) {
             formattedUrl = "https://$formattedUrl"
@@ -537,7 +571,50 @@ class SyncRepository @Inject constructor(
         else if (norm.contains("اعداد") || norm.contains("ثانوي")) branch = "الإعدادي"
         else if (norm.contains("ابتدائ")) branch = "الابتدائي"
 
+        if (branch.isEmpty()) {
+            if (base == "الأول" || base == "الثاني" || base == "الثالث") {
+                branch = "المتوسط"
+            } else if (base == "الرابع" || base == "الخامس" || base == "السادس") {
+                branch = "الإعدادي"
+            }
+        }
+
         return if (branch.isNotEmpty()) "$base $branch" else base
+    }
+
+    /**
+     * Checks if two grade strings represent the same grade level and stage
+     */
+    fun isGradeMatch(g1: String?, g2: String?): Boolean {
+        if (g1.isNullOrBlank() || g2.isNullOrBlank()) return false
+        val std1 = standardizeGradeName(g1)
+        val std2 = standardizeGradeName(g2)
+        if (std1 == std2) return true
+
+        fun extractBase(g: String): String {
+            val norm = normalizeArabic(g)
+            return when {
+                norm.contains("سادس") || norm.contains("6") || norm.contains("٦") -> "سادس"
+                norm.contains("خامس") || norm.contains("5") || norm.contains("٥") -> "خامس"
+                norm.contains("رابع") || norm.contains("4") || norm.contains("٤") -> "رابع"
+                norm.contains("ثالث") || norm.contains("3") || norm.contains("٣") -> "ثالث"
+                norm.contains("ثاني") || norm.contains("2") || norm.contains("٢") -> "ثاني"
+                norm.contains("اول") || norm.contains("1") || norm.contains("١") -> "اول"
+                else -> norm
+            }
+        }
+
+        val b1 = extractBase(g1)
+        val b2 = extractBase(g2)
+        if (b1 != b2) return false
+
+        val n1 = normalizeArabic(g1)
+        val n2 = normalizeArabic(g2)
+        val hasBranch1 = n1.contains("متوسط") || n1.contains("اعداد") || n1.contains("ابتدائ") || n1.contains("ثانوي") || n1.contains("علم") || n1.contains("ادب")
+        val hasBranch2 = n2.contains("متوسط") || n2.contains("اعداد") || n2.contains("ابتدائ") || n2.contains("ثانوي") || n2.contains("علم") || n2.contains("ادب")
+
+        if (!hasBranch1 || !hasBranch2) return true
+        return std1 == std2
     }
 
     /**
@@ -557,6 +634,20 @@ class SyncRepository @Inject constructor(
         if (clean == "و" || lower == "f" || lower == "6" || lower == "٦") return "و"
         return clean.ifBlank { "أ" }
     }
+
+    /**
+     * Checks if two subject strings represent the same subject
+     */
+    fun isSubjectMatch(s1: String?, s2: String?): Boolean {
+        if (s1.isNullOrBlank() || s2.isNullOrBlank()) return false
+        val std1 = standardizeSubjectName(s1)
+        val std2 = standardizeSubjectName(s2)
+        if (std1 == std2) return true
+        val n1 = normalizeArabic(s1)
+        val n2 = normalizeArabic(s2)
+        return n1 == n2 || (n1.length >= 3 && n2.contains(n1)) || (n2.length >= 3 && n1.contains(n2))
+    }
+
 
     /**
      * Verifies school_id and pairingCode/teacherId against Supabase 'teachers' table
@@ -588,25 +679,142 @@ class SyncRepository @Inject constructor(
             var matchedTeacher: SupabaseTeacherDto? = null
             val cleanInput = teacherInput.trim()
 
-            if (cleanInput.isNotBlank()) {
-                // Query all teachers of this school to perform fuzzy and normalized match
-                val allTeachersRes = api.getAllTeachers(
+            // 2.1 التحقق مما إذا كان المدخل كود المشرف العام / المدير / جهة رقابية
+            val isSupervisor = cleanInput.startsWith("SUP-", ignoreCase = true) ||
+                               cleanInput.contains("مشرف") ||
+                               cleanInput.equals("supervisor", ignoreCase = true) ||
+                               cleanInput.startsWith("SUPERVISOR:", ignoreCase = true)
+
+            if (isSupervisor) {
+                val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+                configDao.saveConfig(
+                    currentConfig.copy(
+                        schoolId = schoolId,
+                        schoolName = schoolName,
+                        managerName = "المشرف العام / المدير",
+                        syncSealToken = "__supervisor__",
+                        role = "supervisor",
+                        cloudUrl = url,
+                        cloudKey = apiKey,
+                        pairingCode = pairingCode,
+                        isVerified = true,
+                        isActivated = true
+                    )
+                )
+
+                val rosterSuccess = downloadRoster(schoolId, "__supervisor__", url, apiKey)
+                return if (rosterSuccess) {
+                    PairingResult(
+                        success = true, 
+                        warning = false, 
+                        message = "تم تسجيل دخول المشرف العام بنجاح! تم تنزيل كافة الشعب والصفوف للاطلاع والمتابعة (وضع القراءة فقط) ✓"
+                    )
+                } else {
+                    PairingResult(
+                        success = true, 
+                        warning = true, 
+                        message = "تم تسجيل دخول المشرف العام. لم يتم العثور على جداول مرفوعة للمدرسة في السحابة حتى الآن."
+                    )
+                }
+            }
+
+            var targetName = cleanInput
+            var targetPin = ""
+
+            if (cleanInput.startsWith("TEACHER:", ignoreCase = true)) {
+                val parts = cleanInput.split(":")
+                if (parts.size >= 4) {
+                    targetPin = parts[1].trim()
+                    targetName = parts[3].trim()
+                } else if (parts.size == 3) {
+                    targetPin = parts[1].trim()
+                    if (!parts[2].startsWith("SCH-", ignoreCase = true)) {
+                        targetName = parts[2].trim()
+                    }
+                } else if (parts.size == 2) {
+                    targetPin = parts[1].trim()
+                    targetName = ""
+                }
+            }
+
+            if (targetPin.isBlank() && cleanInput.length in 4..10 && cleanInput.all { it.isDigit() || it == '-' }) {
+                targetPin = cleanInput
+            }
+
+            // Query all teachers of this school to perform match
+            val allTeachersRes = try {
+                api.getAllTeachers(
                     apiKey = apiKey,
                     auth = authHeader,
                     schoolId = schoolId,
                     schoolFilter = "eq.$schoolId"
                 )
+            } catch (e: Exception) { null }
 
-                if (allTeachersRes.isSuccessful && !allTeachersRes.body().isNullOrEmpty()) {
-                    val allTeachers = allTeachersRes.body()!!
-                    val normInput = normalizeArabic(cleanInput.replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
-                    
-                    matchedTeacher = allTeachers.find { t ->
-                        val normTeacherName = normalizeArabic(t.name.replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
-                        t.id == cleanInput ||
-                        normTeacherName == normInput ||
-                        (normInput.length >= 3 && normTeacherName.contains(normInput)) ||
-                        (normTeacherName.length >= 3 && normInput.contains(normTeacherName))
+            val allTeachers = if (allTeachersRes?.isSuccessful == true) {
+                allTeachersRes.body() ?: emptyList()
+            } else emptyList()
+
+            // 1. Try matching teacher by Name or ID
+            if (targetName.isNotBlank() && allTeachers.isNotEmpty()) {
+                val normInput = normalizeArabic(targetName.replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
+                matchedTeacher = allTeachers.find { t ->
+                    val normTeacherName = normalizeArabic(t.name.replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
+                    t.id == targetName ||
+                    normTeacherName == normInput ||
+                    (normInput.length >= 3 && normTeacherName.contains(normInput)) ||
+                    (normTeacherName.length >= 3 && normInput.contains(normTeacherName))
+                }
+            }
+
+            // 2. If not matched, lookup by secret_code (PIN) in subject_assignments & teacher_assignments!
+            if (matchedTeacher == null) {
+                val pinCandidates = listOf(targetPin, pairingCode, cleanInput).filter { it.isNotBlank() }
+                
+                // 2.1 Check subject_assignments (where desktop stores secret_code and teacher_name)
+                try {
+                    val subAssignRes = api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
+                    if (subAssignRes.isSuccessful && !subAssignRes.body().isNullOrEmpty()) {
+                        val subAssignments = subAssignRes.body()!!
+                        for (pin in pinCandidates) {
+                            val foundSub = subAssignments.find { (it.secret_code ?: "").trim() == pin.trim() }
+                            if (foundSub != null) {
+                                val tName = foundSub.teacher_name?.trim() ?: ""
+                                if (tName.isNotBlank() && allTeachers.isNotEmpty()) {
+                                    val normTName = normalizeArabic(tName)
+                                    matchedTeacher = allTeachers.find { normalizeArabic(it.name) == normTName || it.name.contains(tName) }
+                                }
+                                if (matchedTeacher == null) {
+                                    matchedTeacher = SupabaseTeacherDto(
+                                        id = tName.ifBlank { "tch_${foundSub.id ?: 1}" },
+                                        name = tName.ifBlank { "أستاذ المادة" },
+                                        specialization = foundSub.subject
+                                    )
+                                }
+                                break
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("SyncRepository", "Warning fetching subject_assignments: ${e.message}")
+                }
+
+                // 2.2 Check teacher_assignments
+                if (matchedTeacher == null && allTeachers.isNotEmpty()) {
+                    val assignRes = try {
+                        api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
+                    } catch (e: Exception) { null }
+
+                    val assignments = if (assignRes?.isSuccessful == true) {
+                        assignRes.body() ?: emptyList()
+                    } else emptyList()
+
+                    for (pin in pinCandidates) {
+                        val foundAssign = assignments.find { (it.secret_code ?: "").trim() == pin.trim() }
+                        if (foundAssign != null) {
+                            matchedTeacher = allTeachers.find { it.id == foundAssign.teacher_id }
+                            if (matchedTeacher != null) break
+                        }
                     }
                 }
             }
@@ -636,20 +844,49 @@ class SyncRepository @Inject constructor(
                     PairingResult(success = true, warning = true, message = "تم ربط حسابك (${matchedTeacher.name}) بنجاح. لم يتم العثور على حصص مخصصة لك في جدول الإدارة حتى الآن.")
                 }
             } else {
-                // Clear any lingering data from previous logins
-                packageDao.clearAll()
-                studentDao.clearAll()
+                // 3. Fallback: If pairing code or school QR is valid, pair with school directly
+                val isSchoolCodeValid = pairingCode.isNotBlank() || cleanInput.startsWith("SCH-", ignoreCase = true) || cleanInput.length in 4..10
+                if (isSchoolCodeValid) {
+                    val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+                    val savedName = currentConfig.managerName.ifBlank { "كادر المدرسة" }
+                    val teacherIdToken = if (allTeachers.isNotEmpty()) allTeachers.first().id else "__all__"
+                    
+                    configDao.saveConfig(
+                        currentConfig.copy(
+                            schoolId = schoolId,
+                            schoolName = schoolName,
+                            managerName = savedName,
+                            syncSealToken = "__school_paired__",
+                            cloudUrl = url,
+                            cloudKey = apiKey,
+                            pairingCode = pairingCode.ifBlank { cleanInput },
+                            isVerified = true,
+                            isActivated = true
+                        )
+                    )
 
-                // Unregistered teachers or empty input
-                PairingResult(
-                    success = false, 
-                    warning = true, 
-                    message = if (cleanInput.isBlank()) {
-                        "يرجى كتابة اسمك الثلاثي في حقل (اسم المعلم) في شاشة الضبط ثم إعادة مسح الباركود أو المزامنة."
-                    } else {
-                        "عذراً، لم يتم العثور على المعلم (${cleanInput}) في كادر المدرسة بالسحابة. يرجى التأكد من كتابة الاسم كما مسجل لدى الإدارة."
-                    }
-                )
+                    // Pair successfully without flooding the phone with all 30+ school classes
+                    PairingResult(
+                        success = true, 
+                        warning = false, 
+                        message = "تم اقتران مدرسة ($schoolName) بنجاح! يمكنك الآن اختيار وتنزيل شعبك وموادك فقط 📥"
+                    )
+                } else {
+                    // Clear any lingering data from previous logins
+                    packageDao.clearAll()
+                    studentDao.clearAll()
+
+                    // Unregistered teachers or empty input
+                    PairingResult(
+                        success = false, 
+                        warning = true, 
+                        message = if (cleanInput.isBlank()) {
+                            "يرجى كتابة اسمك الثلاثي في حقل (اسم المعلم) في شاشة الضبط ثم إعادة مسح الباركود أو المزامنة."
+                        } else {
+                            "عذراً، لم يتم العثور على المعلم (${cleanInput}) في كادر المدرسة بالسحابة. يرجى التأكد من كتابة الاسم كما مسجل لدى الإدارة."
+                        }
+                    )
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -673,14 +910,58 @@ class SyncRepository @Inject constructor(
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
 
-            // 1. Fetch assignments exclusively for THIS teacher
+            val isSupervisor = teacherId == "__supervisor__" || teacherId == "__all__"
+
+            // 1. Fetch assignments: If supervisor or all, fetch ALL assignments without teacher filter!
             val assignmentsResponse = try { 
-                api.getTeacherAssignments(apiKey, authHeader, schoolId, "eq.$teacherId") 
+                if (isSupervisor) {
+                    api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
+                } else {
+                    api.getTeacherAssignments(apiKey, authHeader, schoolId, "eq.$teacherId")
+                }
             } catch (e: Exception) { null }
             
-            val assignments = if (assignmentsResponse?.isSuccessful == true) {
+            var assignments = if (assignmentsResponse?.isSuccessful == true) {
                 assignmentsResponse.body() ?: emptyList()
             } else emptyList()
+
+            // If empty, fallback to subject_assignments (where desktop app also stores assignments)
+            if (assignments.isEmpty()) {
+                val subAssignRes = try {
+                    api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
+                } catch (e: Exception) { null }
+
+                if (subAssignRes?.isSuccessful == true && !subAssignRes.body().isNullOrEmpty()) {
+                    val subList = subAssignRes.body()!!
+                    assignments = if (isSupervisor) {
+                        subList.map { 
+                            SupabaseAssignmentDto(
+                                school_id = schoolId,
+                                teacher_id = it.teacher_name ?: "__all__",
+                                class_name = it.grade,
+                                section = it.section,
+                                subject_name = it.subject,
+                                secret_code = it.secret_code
+                            )
+                        }
+                    } else {
+                        val filtered = subList.filter { 
+                            it.teacher_name?.trim() == teacherId.trim() || 
+                            normalizeArabic(it.teacher_name ?: "") == normalizeArabic(teacherId)
+                        }
+                        (if (filtered.isNotEmpty()) filtered else subList).map {
+                            SupabaseAssignmentDto(
+                                school_id = schoolId,
+                                teacher_id = it.teacher_name ?: teacherId,
+                                class_name = it.grade,
+                                section = it.section,
+                                subject_name = it.subject,
+                                secret_code = it.secret_code
+                            )
+                        }
+                    }
+                }
+            }
 
             if (assignments.isEmpty()) {
                 // Teacher is registered but has no assigned classes in timetable
@@ -731,7 +1012,7 @@ class SyncRepository @Inject constructor(
                 val targetSubjStd = standardizeSubjectName(assign.subject_name)
 
                 val matchedStudents = studentsList.filter { stdDto ->
-                    standardizeGradeName(stdDto.current_grade) == targetGradeStd &&
+                    isGradeMatch(stdDto.current_grade, targetGradeStd) &&
                     standardizeSectionName(stdDto.section) == targetSecStd
                 }.sortedWith { s1, s2 ->
                     val n1 = s1.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
@@ -750,7 +1031,7 @@ class SyncRepository @Inject constructor(
                     )
 
                     val matchedOld = existingStudents.find { oldStd ->
-                        standardizeGradeName(oldStd.grade) == targetGradeStd &&
+                        isGradeMatch(oldStd.grade, targetGradeStd) &&
                         standardizeSectionName(oldStd.section) == targetSecStd &&
                         standardizeSubjectName(oldStd.subject) == targetSubjStd &&
                         ((oldStd.recordNumber.isNotBlank() && oldStd.recordNumber == stdDto.record_number) ||
@@ -771,6 +1052,186 @@ class SyncRepository @Inject constructor(
             false
         }
     }
+
+    /**
+     * Retrieves all available class-subject pairings in the school from Supabase
+     */
+    suspend fun getSchoolAvailableClasses(
+        schoolId: String,
+        providedUrl: String? = null,
+        providedKey: String? = null
+    ): List<SchoolClassSubjectItem> {
+        return try {
+            val (url, apiKey) = resolveCredentials(providedUrl, providedKey)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            val resultMap = mutableMapOf<String, SchoolClassSubjectItem>()
+
+            // 1. Fetch from teacher_assignments
+            try {
+                val assignRes = api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
+                if (assignRes.isSuccessful && !assignRes.body().isNullOrEmpty()) {
+                    assignRes.body()!!.forEach { a ->
+                        val stdGrd = standardizeGradeName(a.class_name)
+                        val stdSec = standardizeSectionName(a.section)
+                        val stdSubj = standardizeSubjectName(a.subject_name)
+                        val key = "$stdGrd-$stdSec-$stdSubj"
+                        resultMap[key] = SchoolClassSubjectItem(
+                            grade = stdGrd,
+                            section = stdSec,
+                            subject = stdSubj,
+                            teacherId = a.teacher_id,
+                            teacherName = a.teacher_id
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "getTeacherAssignments error: ${e.message}")
+            }
+
+            // 2. Fetch from subject_assignments (where desktop records teacher_name and codes)
+            try {
+                val subRes = api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
+                if (subRes.isSuccessful && !subRes.body().isNullOrEmpty()) {
+                    subRes.body()!!.forEach { s ->
+                        val stdGrd = standardizeGradeName(s.grade)
+                        val stdSec = standardizeSectionName(s.section)
+                        val stdSubj = standardizeSubjectName(s.subject)
+                        val key = "$stdGrd-$stdSec-$stdSubj"
+                        val existing = resultMap[key]
+                        val tName = s.teacher_name?.takeIf { it.isNotBlank() } ?: existing?.teacherName
+                        resultMap[key] = SchoolClassSubjectItem(
+                            grade = stdGrd,
+                            section = stdSec,
+                            subject = stdSubj,
+                            teacherName = tName,
+                            teacherId = existing?.teacherId
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "getSubjectAssignments error: ${e.message}")
+            }
+
+            // 3. Resolve teacher names from teachers table if any
+            try {
+                val teachersRes = api.getAllTeachers(apiKey, authHeader, schoolId, "eq.$schoolId")
+                if (teachersRes.isSuccessful && !teachersRes.body().isNullOrEmpty()) {
+                    val teacherMap = teachersRes.body()!!.associateBy { it.id }
+                    resultMap.values.forEach { item ->
+                        if (item.teacherId != null && teacherMap.containsKey(item.teacherId)) {
+                            val realName = teacherMap[item.teacherId]?.name
+                            if (!realName.isNullOrBlank()) {
+                                resultMap["${item.grade}-${item.section}-${item.subject}"] = item.copy(teacherName = realName)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "getAllTeachers error: ${e.message}")
+            }
+
+            resultMap.values.sortedWith(
+                compareBy<SchoolClassSubjectItem> { it.grade }
+                    .thenBy { it.section }
+                    .thenBy { it.subject }
+            )
+        } catch (e: Exception) {
+            Log.e("SyncRepository", "Error getting available classes: ${e.message}", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Downloads students and creates packages ONLY for the classes specifically selected by the teacher.
+     */
+    suspend fun downloadSelectedClassesRoster(
+        schoolId: String,
+        selectedItems: List<SchoolClassSubjectItem>,
+        providedUrl: String? = null,
+        providedKey: String? = null
+    ): Boolean {
+        if (selectedItems.isEmpty()) return false
+        return try {
+            val (url, apiKey) = resolveCredentials(providedUrl, providedKey)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            val studentsResponse = try { 
+                api.getStudents(apiKey, authHeader, schoolId, "eq.$schoolId") 
+            } catch (e: Exception) { null }
+            val studentsList = if (studentsResponse?.isSuccessful == true) {
+                studentsResponse.body() ?: emptyList()
+            } else emptyList()
+
+            val existingStudents = studentDao.getAllStudentsList()
+
+            // Clear old local packages and students so only selected classes are retained
+            packageDao.clearAll()
+            studentDao.clearAll()
+
+            val maxStudentsPerSection = 60
+            val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
+                strength = java.text.Collator.PRIMARY
+            }
+
+            selectedItems.forEach { item ->
+                val targetGradeStd = standardizeGradeName(item.grade)
+                val targetSecStd = standardizeSectionName(item.section)
+                val targetSubjStd = standardizeSubjectName(item.subject)
+
+                packageDao.insertPackage(
+                    ClassPackage(
+                        grade = targetGradeStd,
+                        section = targetSecStd,
+                        subject = targetSubjStd,
+                        iconName = "yrd"
+                    )
+                )
+
+                val matchedStudents = studentsList.filter { stdDto ->
+                    isGradeMatch(stdDto.current_grade, targetGradeStd) &&
+                    standardizeSectionName(stdDto.section) == targetSecStd
+                }.sortedWith { s1, s2 ->
+                    val n1 = s1.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                    val n2 = s2.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                    collator.compare(n1, n2)
+                }.take(maxStudentsPerSection)
+
+                matchedStudents.forEach { stdDto ->
+                    val newStudent = Student(
+                        recordNumber = stdDto.record_number,
+                        fullName = stdDto.full_name,
+                        grade = targetGradeStd,
+                        section = targetSecStd,
+                        subject = targetSubjStd,
+                        historicalAbsences = stdDto.absences_count
+                    )
+
+                    val matchedOld = existingStudents.find { oldStd ->
+                        isGradeMatch(oldStd.grade, targetGradeStd) &&
+                        standardizeSectionName(oldStd.section) == targetSecStd &&
+                        standardizeSubjectName(oldStd.subject) == targetSubjStd &&
+                        ((oldStd.recordNumber.isNotBlank() && oldStd.recordNumber == stdDto.record_number) ||
+                         (normalizeArabic(oldStd.fullName) == normalizeArabic(stdDto.full_name)))
+                    }
+
+                    if (matchedOld != null) {
+                        studentDao.insertStudent(newStudent.copy(marks = matchedOld.marks))
+                    } else {
+                        studentDao.insertStudent(newStudent)
+                    }
+                }
+            }
+
+            true
+        } catch (e: Exception) {
+            Log.e("SyncRepository", "Error downloading selected classes roster: ${e.message}", e)
+            false
+        }
+    }
+
 
     /**
      * Uploads student grades and attendance records to Supabase tables.

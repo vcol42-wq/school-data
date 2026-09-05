@@ -121,4 +121,10 @@ class DashboardViewModel @Inject constructor(
 
     suspend fun fetchStudentData(schoolId: String, name: String, grade: String, section: String) =
         syncRepository.fetchStudentDashboardData(schoolId, name, grade, section)
+
+    suspend fun getAvailableSchoolClasses(): List<com.school.system.data.SchoolClassSubjectItem> =
+        syncManager.getSchoolAvailableClasses()
+
+    suspend fun downloadSelectedClasses(selectedItems: List<com.school.system.data.SchoolClassSubjectItem>): Boolean =
+        syncManager.downloadSelectedClasses(selectedItems)
 }

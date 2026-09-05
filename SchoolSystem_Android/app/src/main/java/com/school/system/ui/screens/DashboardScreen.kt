@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.school.system.data.model.ClassPackage
+import com.school.system.data.SchoolClassSubjectItem
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,6 +42,7 @@ fun DashboardScreen(
     val config by viewModel.config.collectAsState()
     val packages by viewModel.packages.collectAsState()
     var showSummonDialog by remember { mutableStateOf(false) }
+    var showSelectClassesDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showEditTeacherNameDialog by remember { mutableStateOf(false) }
@@ -55,7 +57,9 @@ fun DashboardScreen(
     val coroutineScope = rememberCoroutineScope()
     var isUploadingGrades by remember { mutableStateOf(false) }
 
-    val isOnlinePaired = (config?.isVerified == true || config?.isActivated == true) && !config?.schoolId.isNullOrEmpty()
+    val isOnlinePaired = (!config?.schoolId.isNullOrEmpty() && config?.schoolId != "school_01") ||
+                         config?.isVerified == true ||
+                         config?.isActivated == true
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
 
     Scaffold(
@@ -143,7 +147,13 @@ fun DashboardScreen(
                     borderColor = currentTheme.tableBorderColor,
                     contentColor = currentTheme.primaryColor,
                     icon = Icons.Default.AddCircleOutline,
-                    onClick = { showSummonDialog = true },
+                    onClick = {
+                        if (isOnlinePaired) {
+                            showSelectClassesDialog = true
+                        } else {
+                            showSummonDialog = true
+                        }
+                    },
                     modifier = Modifier.weight(1f)
                 )
 
@@ -226,8 +236,14 @@ fun DashboardScreen(
                                     fontWeight = FontWeight.Black,
                                     maxLines = 1
                                 )
+                                val displaySchoolName = if (isOnlinePaired) {
+                                    val sName = config?.schoolName?.trim()
+                                    if (!sName.isNullOrEmpty() && sName != "سجل مستقل (أوفلاين)") sName else "مدرسة متصلة بالسحاب ☁️"
+                                } else {
+                                    "سجل محلي مستقل (أوفلاين)"
+                                }
                                 Text(
-                                    text = if (isOnlinePaired) (config?.schoolName ?: "مدرسة متصلة بالسحاب") else "سجل محلي مستقل (أوفلاين)",
+                                    text = displaySchoolName,
                                     color = Color.White.copy(alpha = 0.85f),
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium
@@ -294,7 +310,13 @@ fun DashboardScreen(
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Button(
-                            onClick = { showSummonDialog = true },
+                            onClick = {
+                                if (isOnlinePaired) {
+                                    showSelectClassesDialog = true
+                                } else {
+                                    showSummonDialog = true
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                             shape = RoundedCornerShape(12.dp)
                         ) {
@@ -385,6 +407,20 @@ fun DashboardScreen(
                         Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                     }
                     showSummonDialog = false
+                }
+            )
+        }
+
+        // Dialog 2.1: حوار اختيار وتنزيل شعب ومواد الأستاذ المحددة من السحابة 📥
+        if (showSelectClassesDialog) {
+            SelectTeacherClassesDialog(
+                viewModel = viewModel,
+                schoolName = config?.schoolName ?: "المدرسة",
+                currentTeacherName = teacherNameState,
+                onDismiss = { showSelectClassesDialog = false },
+                onOpenManual = {
+                    showSelectClassesDialog = false
+                    showSummonDialog = true
                 }
             )
         }
@@ -1408,3 +1444,324 @@ fun EditClassSubjectDialog(
         }
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SelectTeacherClassesDialog(
+    viewModel: DashboardViewModel,
+    schoolName: String,
+    currentTeacherName: String,
+    onDismiss: () -> Unit,
+    onOpenManual: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var isLoading by remember { mutableStateOf(true) }
+    var isDownloading by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val availableClasses = remember { mutableStateListOf<SchoolClassSubjectItem>() }
+    val selectedItems = remember { mutableStateMapOf<String, Boolean>() }
+
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            val classes = viewModel.getAvailableSchoolClasses()
+            availableClasses.clear()
+            availableClasses.addAll(classes)
+
+            // Auto-select classes assigned to this teacher if name matches
+            val normCurrentTeacher = viewModel.syncRepository.normalizeArabic(currentTeacherName.replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
+            classes.forEach { item ->
+                val key = "${item.grade}-${item.section}-${item.subject}"
+                val normItemTeacher = viewModel.syncRepository.normalizeArabic((item.teacherName ?: "").replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
+                if (normCurrentTeacher.isNotBlank() && normItemTeacher.isNotBlank() && 
+                    (normCurrentTeacher == normItemTeacher || 
+                     (normCurrentTeacher.length >= 3 && normItemTeacher.contains(normCurrentTeacher)) ||
+                     (normItemTeacher.length >= 3 && normCurrentTeacher.contains(normItemTeacher)))) {
+                    selectedItems[key] = true
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            isLoading = false
+        }
+    }
+
+    val filteredClasses = availableClasses.filter { item ->
+        if (searchQuery.isBlank()) true
+        else {
+            val q = searchQuery.trim().lowercase()
+            item.grade.lowercase().contains(q) ||
+            item.section.lowercase().contains(q) ||
+            item.subject.lowercase().contains(q) ||
+            (item.teacherName ?: "").lowercase().contains(q)
+        }
+    }
+
+    val selectedCount = selectedItems.values.count { it }
+
+    AlertDialog(
+        onDismissRequest = { if (!isDownloading) onDismiss() },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    tint = Color(0xFF2563EB),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "اختيار وتنزيل شعب ومواد الأستاذ 👨‍🏫",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 16.sp,
+                    color = Color(0xFF0F172A)
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    color = Color(0xFFEFF6FF),
+                    shape = RoundedCornerShape(10.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "المدرسة: $schoolName\nحدد فقط الشعب والمواد التي تدرسها لتنزيلها دون بقية المدرسة:",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF1E40AF),
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                // Quick Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (currentTeacherName.isNotBlank()) {
+                        OutlinedButton(
+                            onClick = {
+                                val normCurrent = viewModel.syncRepository.normalizeArabic(currentTeacherName.replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
+                                availableClasses.forEach { item ->
+                                    val key = "${item.grade}-${item.section}-${item.subject}"
+                                    val normT = viewModel.syncRepository.normalizeArabic((item.teacherName ?: "").replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
+                                    val isMatch = normCurrent.isNotBlank() && normT.isNotBlank() && 
+                                        (normCurrent == normT || (normCurrent.length >= 3 && normT.contains(normCurrent)))
+                                    selectedItems[key] = isMatch
+                                }
+                            },
+                            modifier = Modifier.weight(1.2f).height(36.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 4.dp)
+                        ) {
+                            Text("موادي فقط 👨‍🏫", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            filteredClasses.forEach { item ->
+                                selectedItems["${item.grade}-${item.section}-${item.subject}"] = true
+                            }
+                        },
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text("تحديد الكل", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = { selectedItems.clear() },
+                        modifier = Modifier.weight(1f).height(36.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        Text("إلغاء الكل", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Search field if list is large
+                if (availableClasses.size > 5) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("بحث بالصف، الشعبة، أو المادة...", fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                // Main List
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp), color = Color(0xFF2563EB))
+                            Text("جاري استيراد جدول الشعب من السحابة...", fontSize = 12.sp, color = Color(0xFF64748B))
+                        }
+                    }
+                } else if (availableClasses.isEmpty()) {
+                    Surface(
+                        color = Color(0xFFFFFBEB),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "لم يتم العثور على حصص مجدولة للمدرسة في السحابة حالياً.",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFB45309),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "يمكنك استخدام زر (إنشاء يدوي ➕) أدناه لإضافة صفك ومادتك مباشرة.",
+                                fontSize = 11.sp,
+                                color = Color(0xFF92400E),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(filteredClasses) { item ->
+                            val key = "${item.grade}-${item.section}-${item.subject}"
+                            val isChecked = selectedItems[key] == true
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isChecked) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isChecked) Color(0xFF86EFAC) else Color(0xFFE2E8F0)
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedItems[key] = !isChecked }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { selectedItems[key] = it },
+                                        colors = CheckboxDefaults.colors(checkedColor = Color(0xFF16A34A))
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Surface(
+                                                color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    "${item.grade} (${item.section})",
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFF1D4ED8),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            Text(
+                                                item.subject,
+                                                fontSize = 12.5.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color(0xFF0F172A)
+                                            )
+                                        }
+                                        if (!item.teacherName.isNullOrBlank() && !item.teacherName.startsWith("tch_")) {
+                                            Text(
+                                                "الأستاذ: ${item.teacherName}",
+                                                fontSize = 10.5.sp,
+                                                color = Color(0xFF64748B),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val toDownload = availableClasses.filter { selectedItems["${it.grade}-${it.section}-${it.subject}"] == true }
+                    if (toDownload.isEmpty()) {
+                        Toast.makeText(context, "يرجى تحديد شعبة واحدة على الأقل للتنزيل", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
+                    scope.launch {
+                        isDownloading = true
+                        val ok = viewModel.downloadSelectedClasses(toDownload)
+                        isDownloading = false
+                        if (ok) {
+                            Toast.makeText(context, "تم تنزيل ${toDownload.size} شعبة بنجاح وتحديث السجلات ✓", Toast.LENGTH_LONG).show()
+                            onDismiss()
+                        } else {
+                            Toast.makeText(context, "فشل تنزيل الشعب، يرجى التأكد من اتصال الإنترنت والمحاولة مجدداً.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
+                enabled = selectedCount > 0 && !isDownloading,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                if (isDownloading) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("جاري التنزيل...", fontSize = 12.sp)
+                } else {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (selectedCount > 0) "تنزيل الشعب المحددة فقط 📥 ($selectedCount)" else "اختر الشعب للتنزيل",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onOpenManual, enabled = !isDownloading) {
+                    Text("إنشاء يدوي ➕", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                }
+                TextButton(onClick = onDismiss, enabled = !isDownloading) {
+                    Text("إلغاء", fontSize = 11.5.sp)
+                }
+            }
+        }
+    )
+}
+

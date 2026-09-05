@@ -75,6 +75,10 @@ class GradeViewModel @Inject constructor(
     }
 
     fun updateStudentMarks(student: Student, marks: StudentMarks) {
+        if (config.value?.role == "supervisor") {
+            // وضع القراءة فقط للمشرف: ممنوع تعديل الدرجات
+            return
+        }
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.Default) {
             val updatedMarks = calculateTotals(marks, student.subject)
             val updatedStudent = student.copy(marks = updatedMarks)
@@ -263,6 +267,10 @@ class GradeViewModel @Inject constructor(
         secretPin: String,
         onResult: (SecureUploadResult) -> Unit
     ) {
+        if (config.value?.role == "supervisor") {
+            onResult(SecureUploadResult.Failure("غير مصرح: حساب المشرف مخصص للاطلاع والتوجيه فقط ولا يمكنه تعديل أو رفع الدرجات."))
+            return
+        }
         viewModelScope.launch {
             val result = gradesRepository.uploadGradesSecurely(grade, section, subject, secretPin)
             onResult(result)
@@ -270,6 +278,10 @@ class GradeViewModel @Inject constructor(
     }
 
     fun saveAllMarksLocally(onResult: (String) -> Unit) {
+        if (config.value?.role == "supervisor") {
+            onResult("تنبيه: حساب المشرف في وضع القراءة فقط ولا يمكنه حفظ أو تعديل درجات.")
+            return
+        }
         viewModelScope.launch {
             val currentList = _students.value
             currentList.forEach { student ->

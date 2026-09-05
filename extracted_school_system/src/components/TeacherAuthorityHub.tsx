@@ -26,11 +26,20 @@ import {
   FileSpreadsheet,
   Shuffle,
   Edit3,
-  X
+  X,
+  UserCheck,
+  UserX,
+  Send,
+  MessageSquare,
+  Compass,
+  FileText,
+  BadgeCheck,
+  GraduationCap
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
 import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
 
+// Data Transfer Interface matching cloud table & local storage
 export interface SubjectAssignmentRecord {
   id?: number;
   school_id: string;
@@ -44,6 +53,39 @@ export interface SubjectAssignmentRecord {
   last_updated_at?: string;
 }
 
+// Teacher Profile (Teacher-Centric PIN Architecture)
+export interface TeacherAuthorityProfile {
+  teacherId: string;
+  teacherName: string;
+  jobTitle: string;
+  specialization: string;
+  teachingQuota: number;
+  isExempt: boolean; // متفرغ / إداري مستبعد من أكواد التدريس
+  secretCode: string; // كود موحد من 4 أرقام للأستاذ لكافة مواده وشعبه
+  isLocked: boolean; // قفل رفع الدرجات
+  subjects: string[]; // المواد المسندة للأستاذ (يدعم أكثر من مادة)
+  classes: Array<{ grade: string; section: string }>; // الصفوف والشعب المسندة (يدعم أكثر من شعبة)
+}
+
+// Supervisor Profile (المدير / المشرف التربوي / موظف التطبيق)
+export interface SupervisorDirective {
+  id: string;
+  date: string;
+  target: string;
+  message: string;
+}
+
+export interface SupervisorAuthorityProfile {
+  code: string;
+  title: string;
+  name: string;
+  isReadOnly: true;
+  canSendDirectives: true;
+  canViewAllClasses: true;
+  canViewSchedule: true;
+  directives: SupervisorDirective[];
+}
+
 interface TeacherAuthorityHubProps {
   staffList: StaffMember[];
   setStaffList?: React.Dispatch<React.SetStateAction<StaffMember[]>>;
@@ -52,7 +94,7 @@ interface TeacherAuthorityHubProps {
   onBackToMain: () => void;
 }
 
-// Available Grades and Sections for quick assignments
+// Available Grades & Sections
 const COMMON_GRADES = [
   'الأول المتوسط',
   'الثاني المتوسط',
@@ -70,6 +112,117 @@ const COMMON_GRADES = [
 
 const COMMON_SECTIONS = ['أ', 'ب', 'ج', 'د', 'هـ'];
 
+// Helper to detect non-teaching / administrative / exempt staff
+export const detectIsExempt = (member: StaffMember): boolean => {
+  const job = (member.jobTitle || '').trim();
+  const spec = (member.specialization || '').trim();
+  const nonTeachingKeywords = [
+    'مدير', 'مديرة', 'معاون', 'معاونة', 'معاون مدير',
+    'أمين مكتبة', 'أمينة مكتبة', 'مرشد', 'مرشدة', 'مرشد تربوي',
+    'كاتب', 'كاتبة', 'إداري', 'إدارية', 'سكرتير', 'سكرتيرة',
+    'موظف خدمة', 'موظفة خدمة', 'حارس', 'متفرغ', 'تفرغ', 'مشرف'
+  ];
+  const isNonTeachingTitle = nonTeachingKeywords.some(kw => job.includes(kw));
+  const isZeroQuota = member.teachingQuota === 0 || (!member.teachingQuota && (!member.classesTaught || member.classesTaught.length === 0));
+  const isSpecialExempt = spec.includes('إدارة') || spec.includes('تفرغ');
+  const isInactiveStatus = member.status === 'مجاز إجازة طويلة' || member.status === 'منسب خارج المدرسة';
+
+  return isNonTeachingTitle || isZeroQuota || isSpecialExempt || isInactiveStatus;
+};
+
+// Pure SVG Barcode Generator
+const BarcodeSvg: React.FC<{ value: string; height?: number; className?: string }> = ({ value, height = 40, className = "" }) => {
+  const clean = value.replace(/\D/g, '') || '1234';
+  const digits = clean.split('');
+  let bars: boolean[] = [true, false, true, true, false, true];
+  
+  digits.forEach((d) => {
+    const num = parseInt(d, 10) || 0;
+    const pattern = [
+      [1, 2, 1, 1, 2, 1], [2, 1, 1, 2, 1, 1], [1, 1, 2, 1, 2, 1], [2, 2, 1, 1, 1, 1], [1, 2, 2, 1, 1, 1],
+      [1, 1, 1, 2, 2, 1], [1, 1, 2, 2, 1, 1], [2, 1, 1, 1, 2, 1], [1, 2, 1, 1, 1, 2], [2, 1, 2, 1, 1, 1]
+    ][num % 10];
+    
+    pattern.forEach((w, idx) => {
+      const isBar = idx % 2 === 0;
+      for (let i = 0; i < w; i++) {
+        bars.push(isBar);
+      }
+    });
+  });
+  
+  bars.push(true, false, true, true, false, true, true, true);
+  const barWidth = 2.2;
+  const totalWidth = bars.length * barWidth;
+
+  return (
+    <div className={`inline-block bg-white p-1 rounded border border-slate-300 ${className}`}>
+      <svg width={totalWidth} height={height} viewBox={`0 0 ${totalWidth} ${height}`} className="mx-auto block">
+        <rect width={totalWidth} height={height} fill="#ffffff" />
+        {bars.map((isBar, i) =>
+          isBar ? (
+            <rect key={i} x={i * barWidth} y={0} width={barWidth} height={height} fill="#000000" />
+          ) : null
+        )}
+      </svg>
+    </div>
+  );
+};
+
+// Pure SVG QR Code Generator
+const QrCodeSvg: React.FC<{ value: string; size?: number; className?: string }> = ({ value, size = 70, className = "" }) => {
+  const grid = Array(15).fill(0).map(() => Array(15).fill(false));
+  const addFinder = (r: number, c: number) => {
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) {
+        if (i === 0 || i === 4 || j === 0 || j === 4 || (i >= 1 && i <= 3 && j >= 1 && j <= 3 && !(i === 2 && j === 2))) {
+          grid[r + i][c + j] = true;
+        } else if (i === 2 && j === 2) {
+          grid[r + i][c + j] = true;
+        }
+      }
+    }
+  };
+  addFinder(0, 0);
+  addFinder(0, 10);
+  addFinder(10, 0);
+
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) & 0xffffffff;
+  }
+  for (let r = 0; r < 15; r++) {
+    for (let c = 0; c < 15; c++) {
+      if ((r < 5 && c < 5) || (r < 5 && c >= 10) || (r >= 10 && c < 5)) continue;
+      const bit = ((hash ^ (r * 15 + c)) >> ((r + c) % 16)) & 1;
+      grid[r][c] = bit === 1;
+    }
+  }
+
+  const cellSize = size / 15;
+  return (
+    <div className={`inline-block bg-white p-1 rounded border border-slate-300 ${className}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <rect width={size} height={size} fill="#ffffff" />
+        {grid.map((row, r) =>
+          row.map((filled, c) =>
+            filled ? (
+              <rect
+                key={`${r}-${c}`}
+                x={c * cellSize}
+                y={r * cellSize}
+                width={cellSize}
+                height={cellSize}
+                fill="#000000"
+              />
+            ) : null
+          )
+        )}
+      </svg>
+    </div>
+  );
+};
+
 export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
   staffList,
   config,
@@ -78,15 +231,42 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
 }) => {
   const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
 
-  const [assignments, setAssignments] = useState<SubjectAssignmentRecord[]>(() => {
+  // Helper to generate 4-digit PIN
+  const generateRandomPin = () => {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  };
+
+  // 1. TEACHER PROFILES STATE
+  const [profiles, setProfiles] = useState<TeacherAuthorityProfile[]>([]);
+  
+  // 2. SUPERVISOR PROFILE STATE
+  const [supervisor, setSupervisor] = useState<SupervisorAuthorityProfile>(() => {
     try {
-      const saved = localStorage.getItem(`diyala_subject_assignments_${activeSchoolId}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+      const saved = localStorage.getItem(`diyala_supervisor_profile_${activeSchoolId}`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    const defaultCode = localStorage.getItem(`diyala_supervisor_code_${activeSchoolId}`) || `SUP-${Math.floor(1000 + Math.random() * 9000)}`;
+    return {
+      code: defaultCode,
+      title: 'المشرف التربوي / مدير المدرسة / موظف التطبيق',
+      name: config.managerName || 'المشرف التربوي المعتمد',
+      isReadOnly: true,
+      canSendDirectives: true,
+      canViewAllClasses: true,
+      canViewSchedule: true,
+      directives: [
+        {
+          id: 'dir-1',
+          date: new Date().toLocaleDateString('ar-IQ'),
+          target: 'كافة الصفوف والشعب',
+          message: 'يرجى الالتزام بمواعيد تدقيق الدفاتر الامتحانية ومطابقة السجلات قبل الإغلاق النهائي.'
+        }
+      ]
+    };
   });
 
+  // UI State
+  const [activeTab, setActiveTab] = useState<'teaching' | 'exempt' | 'supervisor'>('teaching');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilterSubject, setSelectedFilterSubject] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(false);
@@ -94,107 +274,229 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [showPinMap, setShowPinMap] = useState<{ [key: string]: boolean }>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  
+  // Print Modal State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printTarget, setPrintTarget] = useState<'all_teachers' | 'supervisor_only' | string>('all_teachers');
 
-  // Subject Edit & Add New Modal State
-  const [editingSubjectModal, setEditingSubjectModal] = useState<{
-    index: number;
-    currentSubject: string;
-    teacherName: string;
-  } | null>(null);
-  const [subjectInputValue, setSubjectInputValue] = useState('');
+  // Modals for adding/editing multi-class & multi-subject
+  const [classModalTeacherIdx, setClassModalTeacherIdx] = useState<number | null>(null);
+  const [selectedAddGrade, setSelectedAddGrade] = useState(COMMON_GRADES[0]);
+  const [selectedAddSection, setSelectedAddSection] = useState(COMMON_SECTIONS[0]);
 
-  // Extract any custom subjects outside standard list currently used
-  const customSubjectsList = useMemo(() => {
-    const custom = new Set<string>();
-    assignments.forEach(a => {
-      const std = standardizeSubjectInput(a.subject);
-      if (!std.isApproved && a.subject && a.subject !== 'عام') {
-        custom.add(a.subject);
-      }
-    });
-    return Array.from(custom);
-  }, [assignments]);
+  const [subjectModalTeacherIdx, setSubjectModalTeacherIdx] = useState<number | null>(null);
+  const [selectedAddSubject, setSelectedAddSubject] = useState(STANDARD_APPROVED_SUBJECTS[0]);
+  const [customSubjectInput, setCustomSubjectInput] = useState('');
 
-  // Quick helper to generate a 4 to 6 digit secure code
-  const generateRandomPin = () => {
-    return Math.floor(1000 + Math.random() * 9000).toString();
-  };
+  // Directive Modal for Supervisor
+  const [showDirectiveModal, setShowDirectiveModal] = useState(false);
+  const [directiveTarget, setDirectiveTarget] = useState('كافة الصفوف والشعب');
+  const [directiveMessage, setDirectiveMessage] = useState('');
 
-  // Helper to extract assignments from scheduleMap and staffList
-  const buildInitialAssignments = useCallback(() => {
-    const list: SubjectAssignmentRecord[] = [];
+  // Flatten Profiles into individual SubjectAssignmentRecords for Database & Schedule Map
+  const flattenProfilesToAssignments = useCallback((profList: TeacherAuthorityProfile[]): SubjectAssignmentRecord[] => {
+    const result: SubjectAssignmentRecord[] = [];
     const seen = new Set<string>();
 
-    // 1. Gather from scheduleMap if available
-    if (scheduleMap) {
-      Object.entries(scheduleMap).forEach(([_day, rows]) => {
-        rows.forEach(row => {
-          const grade = row.grade || '';
-          const section = row.section || '';
-          const lessons = [
-            row.lessons?.lesson1,
-            row.lessons?.lesson2,
-            row.lessons?.lesson3,
-            row.lessons?.lesson4,
-            row.lessons?.lesson5,
-            row.lessons?.lesson6
-          ];
+    profList.forEach(prof => {
+      if (prof.isExempt) return; // Skip non-teaching staff
 
-          lessons.forEach(l => {
-            if (l && l.subject && l.teacherName && !l.isOff) {
-              const key = `${grade}__${section}__${l.subject.trim()}`;
-              if (!seen.has(key)) {
-                seen.add(key);
-                list.push({
-                  school_id: activeSchoolId,
-                  grade: grade.trim(),
-                  section: section.trim(),
-                  subject: l.subject.trim(),
-                  secret_code: generateRandomPin(),
-                  is_locked: false,
-                  teacher_name: l.teacherName.trim()
-                });
-              }
-            }
-          });
-        });
-      });
-    }
+      const subjects = prof.subjects && prof.subjects.length > 0 ? prof.subjects : [prof.specialization || 'عام'];
+      const classes = prof.classes && prof.classes.length > 0 ? prof.classes : [{ grade: 'الأول المتوسط', section: 'أ' }];
 
-    // 2. Add remaining teachers from staffList if not yet mapped
-    staffList.forEach(stf => {
-      const isTeacher = ['مدرس', 'معلم'].includes(stf.jobTitle) || (stf.teachingQuota && stf.teachingQuota > 0);
-      if (!isTeacher) return;
-
-      const tName = stf.fullName || `${stf.firstName} ${stf.secondName}`.trim();
-      const subject = stf.actualSubjectTaught || stf.specialization || 'عام';
-      const classes = (stf.classesTaught && stf.classesTaught.length > 0) ? stf.classesTaught : ['الأول المتوسط'];
-
-      classes.forEach(cls => {
-        ['أ'].forEach(sec => {
-          const key = `${cls}__${sec}__${subject}`;
+      subjects.forEach(subj => {
+        classes.forEach(cls => {
+          const key = `${cls.grade.trim()}__${cls.section.trim()}__${subj.trim()}`;
           if (!seen.has(key)) {
             seen.add(key);
-            list.push({
+            result.push({
               school_id: activeSchoolId,
-              grade: cls.trim(),
-              section: sec.trim(),
-              subject: subject.trim(),
-              secret_code: generateRandomPin(),
-              is_locked: false,
-              teacher_id: stf.id,
-              teacher_name: tName
+              grade: cls.grade.trim(),
+              section: cls.section.trim(),
+              subject: subj.trim(),
+              secret_code: prof.secretCode.trim(),
+              is_locked: prof.isLocked,
+              teacher_id: prof.teacherId,
+              teacher_name: prof.teacherName.trim(),
+              last_updated_at: new Date().toISOString()
             });
           }
         });
       });
     });
 
-    return list;
-  }, [scheduleMap, staffList, activeSchoolId]);
+    return result;
+  }, [activeSchoolId]);
 
-  // Fetch from Supabase on mount
+  // Save changes locally
+  const saveProfilesState = useCallback((newProfiles: TeacherAuthorityProfile[], newSupervisor?: SupervisorAuthorityProfile) => {
+    setProfiles(newProfiles);
+    try {
+      localStorage.setItem(`diyala_teacher_profiles_${activeSchoolId}`, JSON.stringify(newProfiles));
+      const flattened = flattenProfilesToAssignments(newProfiles);
+      localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(flattened));
+      
+      if (newSupervisor) {
+        setSupervisor(newSupervisor);
+        localStorage.setItem(`diyala_supervisor_profile_${activeSchoolId}`, JSON.stringify(newSupervisor));
+        localStorage.setItem(`diyala_supervisor_code_${activeSchoolId}`, newSupervisor.code);
+      }
+    } catch (e) {
+      console.error('Error saving profiles locally:', e);
+    }
+  }, [activeSchoolId, flattenProfilesToAssignments]);
+
+  // Initial Load: Build profiles from staffList, scheduleMap, or saved local/cloud data
+  useEffect(() => {
+    const initializeProfiles = () => {
+      try {
+        // 1. Check if saved profiles exist
+        const savedProf = localStorage.getItem(`diyala_teacher_profiles_${activeSchoolId}`);
+        if (savedProf) {
+          const parsed: TeacherAuthorityProfile[] = JSON.parse(savedProf);
+          if (parsed && parsed.length > 0) {
+            setProfiles(parsed);
+            return;
+          }
+        }
+
+        // 2. Check if legacy assignments exist to construct profiles
+        const legacyAss = localStorage.getItem(`diyala_subject_assignments_${activeSchoolId}`);
+        const legacyList: SubjectAssignmentRecord[] = legacyAss ? JSON.parse(legacyAss) : [];
+
+        // Map teacher names from legacy assignments
+        const legacyTeacherMap = new Map<string, {
+          code: string;
+          isLocked: boolean;
+          subjects: Set<string>;
+          classes: Map<string, { grade: string; section: string }>;
+        }>();
+
+        legacyList.forEach(item => {
+          const tName = item.teacher_name?.trim() || '';
+          if (!tName || tName === 'غير مسند') return;
+
+          if (!legacyTeacherMap.has(tName)) {
+            legacyTeacherMap.set(tName, {
+              code: item.secret_code || generateRandomPin(),
+              isLocked: !!item.is_locked,
+              subjects: new Set(),
+              classes: new Map()
+            });
+          }
+          const tData = legacyTeacherMap.get(tName)!;
+          if (item.subject) tData.subjects.add(item.subject.trim());
+          if (item.grade && item.section) {
+            const cKey = `${item.grade.trim()}-${item.section.trim()}`;
+            tData.classes.set(cKey, { grade: item.grade.trim(), section: item.section.trim() });
+          }
+        });
+
+        // 3. Scan ScheduleMap for real timetable lesson mappings
+        const scheduleTeacherMap = new Map<string, {
+          subjects: Set<string>;
+          classes: Map<string, { grade: string; section: string }>;
+        }>();
+
+        if (scheduleMap) {
+          Object.values(scheduleMap).forEach(dayRows => {
+            dayRows.forEach(row => {
+              const gr = row.grade?.trim();
+              const sec = row.section?.trim();
+              if (!gr || !sec) return;
+
+              const slots = [
+                row.lessons?.lesson1,
+                row.lessons?.lesson2,
+                row.lessons?.lesson3,
+                row.lessons?.lesson4,
+                row.lessons?.lesson5,
+                row.lessons?.lesson6
+              ];
+
+              slots.forEach(s => {
+                if (s && s.teacherName && s.subject && !s.isOff) {
+                  const tClean = s.teacherName.trim();
+                  if (!scheduleTeacherMap.has(tClean)) {
+                    scheduleTeacherMap.set(tClean, { subjects: new Set(), classes: new Map() });
+                  }
+                  const tData = scheduleTeacherMap.get(tClean)!;
+                  tData.subjects.add(s.subject.trim());
+                  tData.classes.set(`${gr}-${sec}`, { grade: gr, section: sec });
+                }
+              });
+            });
+          });
+        }
+
+        // 4. Construct TeacherAuthorityProfile for all staff members
+        const builtProfiles: TeacherAuthorityProfile[] = staffList.map((stf, idx) => {
+          const tName = stf.fullName || `${stf.firstName} ${stf.secondName || ''} ${stf.thirdName || ''}`.trim();
+          const isExempt = detectIsExempt(stf);
+          const tId = stf.id || `stf-${idx + 1}`;
+
+          // Match legacy or schedule
+          const leg = legacyTeacherMap.get(tName);
+          const sch = scheduleTeacherMap.get(tName);
+
+          const subjectsSet = new Set<string>();
+          const classesMap = new Map<string, { grade: string; section: string }>();
+
+          if (leg) {
+            leg.subjects.forEach(s => subjectsSet.add(s));
+            leg.classes.forEach((val, k) => classesMap.set(k, val));
+          }
+          if (sch) {
+            sch.subjects.forEach(s => subjectsSet.add(s));
+            sch.classes.forEach((val, k) => classesMap.set(k, val));
+          }
+
+          // Fallback if not mapped
+          if (!isExempt) {
+            if (subjectsSet.size === 0) {
+              const sub = stf.actualSubjectTaught || stf.specialization || 'الرياضيات';
+              subjectsSet.add(sub);
+            }
+            if (classesMap.size === 0) {
+              const classesTaught = stf.classesTaught && stf.classesTaught.length > 0 
+                ? stf.classesTaught 
+                : ['الأول المتوسط'];
+              classesTaught.forEach(cStr => {
+                classesMap.set(`${cStr}-أ`, { grade: cStr, section: 'أ' });
+              });
+            }
+          }
+
+          return {
+            teacherId: tId,
+            teacherName: tName,
+            jobTitle: stf.jobTitle || (isExempt ? 'إداري / متفرغ' : 'مدرس'),
+            specialization: stf.specialization || 'عام',
+            teachingQuota: stf.teachingQuota || 0,
+            isExempt: isExempt,
+            secretCode: leg?.code || generateRandomPin(),
+            isLocked: leg?.isLocked || false,
+            subjects: Array.from(subjectsSet),
+            classes: Array.from(classesMap.values())
+          };
+        });
+
+        // Sort: Active teachers first, then exempt staff
+        builtProfiles.sort((a, b) => {
+          if (a.isExempt === b.isExempt) return a.teacherName.localeCompare(b.teacherName, 'ar');
+          return a.isExempt ? 1 : -1;
+        });
+
+        saveProfilesState(builtProfiles);
+      } catch (err) {
+        console.error('Error constructing initial profiles:', err);
+      }
+    };
+
+    initializeProfiles();
+  }, [staffList, scheduleMap, activeSchoolId, saveProfilesState]);
+
+  // Fetch Cloud assignments on mount and reconcile with profiles
   const fetchCloudAssignments = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -204,172 +506,170 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         .eq('school_id', activeSchoolId);
 
       if (!error && data && data.length > 0) {
-        // Link teachers to loaded cloud assignments
-        const enriched = data.map((item: any) => {
-          let foundName = item.teacher_name;
-          if (!foundName) {
-            const matchedStaff = staffList.find(s => {
-              const sName = s.fullName || `${s.firstName} ${s.secondName}`;
-              const sSub = s.actualSubjectTaught || s.specialization;
-              return (sSub && sSub.trim() === item.subject.trim()) || (s.classesTaught && s.classesTaught.includes(item.grade));
-            });
-            if (matchedStaff) {
-              foundName = matchedStaff.fullName || `${matchedStaff.firstName} ${matchedStaff.secondName}`;
+        // Group by teacher_name
+        setProfiles(prevProfiles => {
+          if (prevProfiles.length === 0) return prevProfiles;
+
+          const updated = prevProfiles.map(prof => {
+            const cloudRecords = data.filter((d: any) => d.teacher_name?.trim() === prof.teacherName.trim());
+            if (cloudRecords.length > 0) {
+              const cloudCode = cloudRecords[0].secret_code || prof.secretCode;
+              const cloudLocked = cloudRecords.some((r: any) => r.is_locked);
+              const cloudSubs = new Set(prof.subjects);
+              const cloudClasses = new Map(prof.classes.map(c => [`${c.grade}-${c.section}`, c]));
+
+              cloudRecords.forEach((r: any) => {
+                if (r.subject) cloudSubs.add(r.subject.trim());
+                if (r.grade && r.section) {
+                  cloudClasses.set(`${r.grade.trim()}-${r.section.trim()}`, { grade: r.grade.trim(), section: r.section.trim() });
+                }
+              });
+
+              return {
+                ...prof,
+                secretCode: cloudCode,
+                isLocked: cloudLocked,
+                subjects: Array.from(cloudSubs),
+                classes: Array.from(cloudClasses.values())
+              };
             }
-          }
-          return {
-            id: item.id,
-            school_id: item.school_id || activeSchoolId,
-            grade: item.grade,
-            section: item.section,
-            subject: item.subject,
-            secret_code: item.secret_code,
-            is_locked: item.is_locked ?? false,
-            teacher_name: foundName || 'غير مسند',
-            last_updated_at: item.last_updated_at
-          };
+            return prof;
+          });
+
+          localStorage.setItem(`diyala_teacher_profiles_${activeSchoolId}`, JSON.stringify(updated));
+          const flattened = flattenProfilesToAssignments(updated);
+          localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(flattened));
+          return updated;
         });
 
-        setAssignments(enriched);
-        localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(enriched));
-        setStatusMessage({ type: 'success', text: `تم جلب ${enriched.length} سجل معتمد من السحابة بنجاح ✓` });
-      } else {
-        // If empty in cloud, populate from local structure
-        setAssignments(prev => {
-          if (prev.length > 0) return prev;
-          const initial = buildInitialAssignments();
-          localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(initial));
-          return initial;
-        });
+        setStatusMessage({ type: 'success', text: `تم الاتصال بالسحابة ومطابقة بيانات المعلمين بنجاح ✓` });
       }
-    } catch (err: any) {
-      console.error('Error fetching subject assignments:', err);
-      setStatusMessage({ type: 'error', text: 'تعذر الاتصال بالسحابة لجلب الأكواد. يتم العمل محلياً.' });
+    } catch (err) {
+      console.warn('Could not fetch cloud subject assignments:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [activeSchoolId, buildInitialAssignments, staffList]);
+  }, [activeSchoolId, flattenProfilesToAssignments]);
 
   useEffect(() => {
     fetchCloudAssignments();
   }, [fetchCloudAssignments]);
 
-  // Save to LocalStorage whenever assignments change
-  const updateAssignmentsState = (newAssignments: SubjectAssignmentRecord[]) => {
-    setAssignments(newAssignments);
-    localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(newAssignments));
-  };
-
-  // 1-Click Sync to Supabase Cloud
+  // SYNC TO SUPABASE CLOUD (1-Click Central Sync)
   const handleSyncToCloud = async () => {
-    if (assignments.length === 0) {
-      alert('لا توجد سجلات لحفظها.');
+    const flattened = flattenProfilesToAssignments(profiles);
+    if (flattened.length === 0) {
+      alert('لا توجد مهام تدريسية للكادر الفعلي لحفظها.');
       return;
     }
 
     setIsSavingCloud(true);
-    setStatusMessage({ type: 'info', text: 'جاري رفع واعتماد أكواد المواد والشعب في السحابة...' });
+    setStatusMessage({ type: 'info', text: 'جاري رفع واعتماد أكواد المعلمين وكود المشرف في السحابة...' });
 
     try {
-      const recordsToUpsert = assignments.map(a => ({
+      // 1. Upsert subject_assignments (Single PIN per teacher across their classes & subjects)
+      const recordsToUpsert = flattened.map(a => ({
         school_id: activeSchoolId,
         grade: a.grade.trim(),
         section: a.section.trim(),
         subject: a.subject.trim(),
         secret_code: a.secret_code.trim(),
         is_locked: a.is_locked,
+        teacher_name: a.teacher_name?.trim() || null,
         last_updated_at: new Date().toISOString()
       }));
 
-      // Upsert into subject_assignments on unique (school_id, grade, section, subject)
-      const { error } = await supabase
+      const { error: assError } = await supabase
         .from('subject_assignments')
-        .upsert(recordsToUpsert, {
-          onConflict: 'school_id,grade,section,subject'
-        });
+        .upsert(recordsToUpsert, { onConflict: 'school_id,grade,section,subject' });
 
-      if (error) {
-        console.error('Cloud upsert error:', error);
-        throw error;
+      if (assError) throw assError;
+
+      // 2. Save Supervisor Profile & Code to School Metadata
+      try {
+        await supabase
+          .from('schools')
+          .update({
+            config: {
+              supervisor_code: supervisor.code,
+              supervisor_name: supervisor.name,
+              supervisor_title: supervisor.title,
+              updated_at: new Date().toISOString()
+            }
+          })
+          .eq('id', activeSchoolId);
+      } catch (schErr) {
+        console.warn('Could not update school config for supervisor:', schErr);
       }
 
       setStatusMessage({ 
         type: 'success', 
-        text: `تم حفظ ومزامنة ${recordsToUpsert.length} كود اعتماد سري في السحابة بنجاح! التطبيق جاهز الآن للتحقق الأمني ✓` 
+        text: `تم حفظ واعتماد ${activeTeachingProfiles.length} كود أستاذ موحد + كود المشرف العام في السحابة بنجاح! التطبيق جاهز ✓` 
       });
-
-      // Refetch to ensure IDs match
-      fetchCloudAssignments();
     } catch (e: any) {
-      console.error('Sync failed:', e);
-      setStatusMessage({ type: 'error', text: `فشل الحفظ في السحابة: ${e.message || 'خطأ غير معروف'}` });
+      console.error('Cloud Sync failed:', e);
+      setStatusMessage({ type: 'error', text: `فشل الحفظ السحابي: ${e.message || 'خطأ غير معروف'}` });
     } finally {
       setIsSavingCloud(false);
     }
   };
 
-  // Toggle Lock for a subject/section
-  const handleToggleLock = (index: number) => {
-    const updated = [...assignments];
-    updated[index].is_locked = !updated[index].is_locked;
-    updateAssignmentsState(updated);
-  };
+  // Toggle Exempt / Active status for a teacher
+  const handleToggleExempt = (teacherIdx: number) => {
+    const updated = [...profiles];
+    const item = updated[teacherIdx];
+    const newExempt = !item.isExempt;
+    item.isExempt = newExempt;
 
-  // Regenerate Code for a specific row
-  const handleRegenerateCode = (index: number) => {
-    const newCode = generateRandomPin();
-    const updated = [...assignments];
-    updated[index].secret_code = newCode;
-    updateAssignmentsState(updated);
-    setStatusMessage({ type: 'info', text: `تم توليد كود جديد (${newCode}) لـ ${updated[index].subject} - ${updated[index].grade}` });
-  };
+    if (!newExempt && (!item.secretCode || item.secretCode.length < 4)) {
+      item.secretCode = generateRandomPin();
+    }
+    if (!newExempt && item.subjects.length === 0) {
+      item.subjects = [item.specialization || 'الرياضيات'];
+    }
+    if (!newExempt && item.classes.length === 0) {
+      item.classes = [{ grade: 'الأول المتوسط', section: 'أ' }];
+    }
 
-  // Regenerate All Missing Codes
-  const handleGenerateAllMissing = () => {
-    const updated = assignments.map(a => {
-      if (!a.secret_code || a.secret_code.length < 4) {
-        return { ...a, secret_code: generateRandomPin() };
-      }
-      return a;
+    saveProfilesState(updated);
+    setStatusMessage({ 
+      type: 'info', 
+      text: newExempt ? `تم استبعاد (${item.teacherName}) كمتفرغ/إداري بدون كود.` : `تم تفعيل (${item.teacherName}) كأستاذ مكلف وتوليد كود له.` 
     });
-    updateAssignmentsState(updated);
-    setStatusMessage({ type: 'success', text: 'تم استكمال وتوليد الأكواد لجميع المواد والشعب بنجاح ✓' });
   };
 
-  // Change Secret Code manually
-  const handleCodeChange = (index: number, val: string) => {
-    const updated = [...assignments];
-    updated[index].secret_code = val.trim();
-    updateAssignmentsState(updated);
+  // Toggle Lock for a teacher
+  const handleToggleLock = (teacherIdx: number) => {
+    const updated = [...profiles];
+    updated[teacherIdx].isLocked = !updated[teacherIdx].isLocked;
+    saveProfilesState(updated);
   };
 
-  // Change Teacher Assignment
-  const handleTeacherChange = (index: number, teacherName: string) => {
-    const updated = [...assignments];
-    updated[index].teacher_name = teacherName;
-    updateAssignmentsState(updated);
+  // Regenerate Code for a specific teacher
+  const handleRegenerateCode = (teacherIdx: number) => {
+    const newCode = generateRandomPin();
+    const updated = [...profiles];
+    updated[teacherIdx].secretCode = newCode;
+    saveProfilesState(updated);
+    setStatusMessage({ type: 'info', text: `تم توليد كود سري جديد (${newCode}) للأستاذ: ${updated[teacherIdx].teacherName}` });
   };
 
-  // Add New Row
-  const handleAddAssignment = () => {
-    const defaultTeacher = staffList.find(s => ['مدرس', 'معلم'].includes(s.jobTitle));
-    const newRow: SubjectAssignmentRecord = {
-      school_id: activeSchoolId,
-      grade: 'الأول المتوسط',
-      section: 'أ',
-      subject: defaultTeacher?.actualSubjectTaught || defaultTeacher?.specialization || 'الرياضيات',
-      secret_code: generateRandomPin(),
-      is_locked: false,
-      teacher_name: defaultTeacher?.fullName || (defaultTeacher ? `${defaultTeacher.firstName} ${defaultTeacher.secondName}` : 'أستاذ جديد')
-    };
-    updateAssignmentsState([newRow, ...assignments]);
+  // Regenerate Code for Supervisor
+  const handleRegenerateSupervisorCode = () => {
+    const newCode = `SUP-${Math.floor(1000 + Math.random() * 9000)}`;
+    const updatedSup = { ...supervisor, code: newCode };
+    saveProfilesState(profiles, updatedSup);
+    setStatusMessage({ type: 'info', text: `تم توليد كود جديد للمشرف العام: (${newCode})` });
   };
 
-  // Delete Row
-  const handleDeleteRow = (index: number) => {
-    if (!confirm('هل أنت متأكد من حذف هذا الإسناد والكود؟')) return;
-    const updated = assignments.filter((_, i) => i !== index);
-    updateAssignmentsState(updated);
+  // Regenerate All Teacher Codes
+  const handleRegenerateAllTeacherCodes = () => {
+    const updated = profiles.map(p => {
+      if (p.isExempt) return p;
+      return { ...p, secretCode: generateRandomPin() };
+    });
+    saveProfilesState(updated);
+    setStatusMessage({ type: 'success', text: 'تم توليد وتحديث الأكواد السرية لجميع أساتذة الكادر الفعلي بنجاح 🎲' });
   };
 
   // Copy Code to Clipboard
@@ -379,51 +679,145 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     setTimeout(() => setCopiedKey(null), 2500);
   };
 
-  // Grouped by Teacher for aggregated viewing & printing
-  const groupedByTeacher = useMemo(() => {
-    const map = new Map<string, SubjectAssignmentRecord[]>();
-    assignments.forEach(a => {
-      const name = a.teacher_name || 'غير محدد';
-      if (!map.has(name)) map.set(name, []);
-      map.get(name)!.push(a);
-    });
-    return Array.from(map.entries()).map(([teacherName, items]) => ({
-      teacherName,
-      items,
-      subject: items[0]?.subject || 'عام',
-      sectionsSummary: items.map(i => `${i.grade} (${i.section})`).join(' ، ')
-    }));
-  }, [assignments]);
+  // Add Subject to a teacher
+  const handleAddSubjectToTeacher = () => {
+    if (subjectModalTeacherIdx === null) return;
+    const finalSubject = customSubjectInput.trim() 
+      ? standardizeSubjectInput(customSubjectInput).standardized 
+      : selectedAddSubject;
 
-  // Filtered List
-  const filteredAssignments = useMemo(() => {
-    return assignments.filter(a => {
-      const matchesSearch = 
-        (a.teacher_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.grade.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        a.secret_code.includes(searchQuery);
-      
-      const matchesSubject = selectedFilterSubject === 'all' || a.subject === selectedFilterSubject;
-      return matchesSearch && matchesSubject;
-    });
-  }, [assignments, searchQuery, selectedFilterSubject]);
+    if (!finalSubject) return;
 
-  // Unique Subjects List for filter
-  const uniqueSubjects = useMemo(() => {
-    return Array.from(new Set(assignments.map(a => a.subject))).filter(Boolean);
-  }, [assignments]);
+    const updated = [...profiles];
+    const prof = updated[subjectModalTeacherIdx];
+    if (!prof.subjects.includes(finalSubject)) {
+      prof.subjects = [...prof.subjects, finalSubject];
+      saveProfilesState(updated);
+      setStatusMessage({ type: 'success', text: `تم إضافة مادة (${finalSubject}) للأستاذ (${prof.teacherName}) ✓` });
+    }
+    setSubjectModalTeacherIdx(null);
+    setCustomSubjectInput('');
+  };
+
+  // Remove Subject from a teacher
+  const handleRemoveSubjectFromTeacher = (teacherIdx: number, subjectName: string) => {
+    const updated = [...profiles];
+    const prof = updated[teacherIdx];
+    if (prof.subjects.length <= 1) {
+      alert('يجب أن تبقى مادة واحدة على الأقل مسندة للأستاذ، أو يمكنك تحويله إلى متفرغ.');
+      return;
+    }
+    prof.subjects = prof.subjects.filter(s => s !== subjectName);
+    saveProfilesState(updated);
+  };
+
+  // Add Class & Section to a teacher
+  const handleAddClassToTeacher = () => {
+    if (classModalTeacherIdx === null) return;
+    const updated = [...profiles];
+    const prof = updated[classModalTeacherIdx];
+    const exists = prof.classes.some(c => c.grade === selectedAddGrade && c.section === selectedAddSection);
+
+    if (!exists) {
+      prof.classes = [...prof.classes, { grade: selectedAddGrade, section: selectedAddSection }];
+      saveProfilesState(updated);
+      setStatusMessage({ type: 'success', text: `تم إضافة شعبة (${selectedAddGrade} - ${selectedAddSection}) للأستاذ (${prof.teacherName}) ✓` });
+    }
+    setClassModalTeacherIdx(null);
+  };
+
+  // Remove Class & Section from a teacher
+  const handleRemoveClassFromTeacher = (teacherIdx: number, grade: string, section: string) => {
+    const updated = [...profiles];
+    const prof = updated[teacherIdx];
+    if (prof.classes.length <= 1) {
+      alert('يجب أن يبقى صف وشعبة واحدة على الأقل مسندة للأستاذ، أو يمكنك تحويله إلى متفرغ.');
+      return;
+    }
+    prof.classes = prof.classes.filter(c => !(c.grade === grade && c.section === section));
+    saveProfilesState(updated);
+  };
+
+  // Add New Directive by Supervisor
+  const handleAddDirective = () => {
+    if (!directiveMessage.trim()) return;
+    const newDir: SupervisorDirective = {
+      id: `dir-${Date.now()}`,
+      date: new Date().toLocaleDateString('ar-IQ'),
+      target: directiveTarget.trim() || 'كافة الصفوف والشعب',
+      message: directiveMessage.trim()
+    };
+
+    const updatedSup = {
+      ...supervisor,
+      directives: [newDir, ...supervisor.directives]
+    };
+    saveProfilesState(profiles, updatedSup);
+    setDirectiveMessage('');
+    setShowDirectiveModal(false);
+    setStatusMessage({ type: 'success', text: 'تم تسجيل وإرسال التوجيه الإشرافي بنجاح ✓' });
+  };
+
+  // Delete Directive
+  const handleDeleteDirective = (id: string) => {
+    const updatedSup = {
+      ...supervisor,
+      directives: supervisor.directives.filter(d => d.id !== id)
+    };
+    saveProfilesState(profiles, updatedSup);
+  };
+
+  // Filtered profiles
+  const activeTeachingProfiles = useMemo(() => {
+    return profiles.filter(p => !p.isExempt);
+  }, [profiles]);
+
+  const exemptProfiles = useMemo(() => {
+    return profiles.filter(p => p.isExempt);
+  }, [profiles]);
+
+  const displayedProfiles = useMemo(() => {
+    const list = activeTab === 'teaching' ? activeTeachingProfiles : exemptProfiles;
+    return list.filter(p => {
+      const q = searchQuery.toLowerCase();
+      const matchSearch = p.teacherName.toLowerCase().includes(q) ||
+        p.specialization.toLowerCase().includes(q) ||
+        p.jobTitle.toLowerCase().includes(q) ||
+        p.secretCode.includes(q) ||
+        p.subjects.some(s => s.toLowerCase().includes(q)) ||
+        p.classes.some(c => c.grade.toLowerCase().includes(q) || c.section.includes(q));
+
+      const matchSubject = selectedFilterSubject === 'all' || p.subjects.includes(selectedFilterSubject);
+      return matchSearch && matchSubject;
+    });
+  }, [activeTab, activeTeachingProfiles, exemptProfiles, searchQuery, selectedFilterSubject]);
+
+  // Unique Subjects for filter
+  const allUniqueSubjects = useMemo(() => {
+    const set = new Set<string>();
+    activeTeachingProfiles.forEach(p => p.subjects.forEach(s => set.add(s)));
+    return Array.from(set);
+  }, [activeTeachingProfiles]);
 
   // Statistics
-  const totalAssignments = assignments.length;
-  const lockedCount = assignments.filter(a => a.is_locked).length;
-  const openCount = totalAssignments - lockedCount;
-  const uniqueTeachersCount = new Set(assignments.map(a => a.teacher_name).filter(Boolean)).size;
+  const totalCoveredLessons = useMemo(() => {
+    let count = 0;
+    activeTeachingProfiles.forEach(p => {
+      count += (p.subjects.length * p.classes.length);
+    });
+    return count;
+  }, [activeTeachingProfiles]);
+
+  const reductionPercentage = useMemo(() => {
+    if (totalCoveredLessons === 0) return 0;
+    const ratio = (1 - (activeTeachingProfiles.length / Math.max(totalCoveredLessons, 1))) * 100;
+    return Math.max(0, Math.round(ratio));
+  }, [activeTeachingProfiles.length, totalCoveredLessons]);
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6 dir-rtl text-slate-800">
       
-      {/* 1. Header Card with Navigation and Quick Summary */}
+      {/* 1. Header Card with Title & Central Action Buttons */}
       <div className="bg-white border-4 border-indigo-500/30 rounded-3xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-blue-600 text-white flex items-center justify-center shadow-lg shadow-indigo-300 shrink-0">
@@ -432,83 +826,191 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-black mb-1">
               <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-              <span>منظومة الحماية وتفويض الصلاحيات المدرسية 🛡️</span>
+              <span>منظومة الحماية وتفويض الصلاحيات الذكية 🛡️</span>
             </div>
             <h1 className="text-xl md:text-2xl font-black text-slate-900">
-              أكواد المعلمين وتفويض الشعب والدرجات
+              أكواد المعلمين وتفويض الشعب (كود موحد لكل أستاذ)
             </h1>
             <p className="text-xs text-slate-600 font-bold mt-0.5">
-              تحديد كود الرفع السري لكل مدرس ومادته وشعبه لمنع التداخل وقفل الشعب عند انتهاء الامتحانات.
+              توليد كود واحد لكل أستاذ يغطي كافة مواده وشعبه، استبعاد المتفرغين، مع كود المشرف العام للاطلاع والتوجيه.
             </p>
           </div>
         </div>
 
         <div className="flex items-center flex-wrap gap-2 shrink-0">
-          {/* Print Security Badges Button */}
+          {/* Print Security Passes Button */}
           <button
-            onClick={() => setIsPrintModalOpen(true)}
+            onClick={() => {
+              setPrintTarget('all_teachers');
+              setIsPrintModalOpen(true);
+            }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs md:text-sm shadow-md transition-all cursor-pointer active:scale-95"
-            title="طباعة بطاقات الاعتماد الرسمية للمعلمين"
+            title="طباعة بطاقات الاعتماد السرية لتسليمها للكادر"
           >
             <Printer className="w-4 h-4" />
-            <span>طباعة بطاقات الأكواد 🖨️</span>
+            <span>طباعة بطاقات الاعتماد 🖨️</span>
           </button>
 
-          {/* Sync to Cloud Button */}
+          {/* Sync to Supabase Cloud */}
           <button
             onClick={handleSyncToCloud}
             disabled={isSavingCloud}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-white font-black text-xs md:text-sm shadow-lg transition-all cursor-pointer active:scale-95 ${
-              isSavingCloud ? 'bg-slate-400 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-indigo-200'
-            }`}
-            title="مزامنة واعتماد الأكواد في سحابة Supabase فوراً"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs md:text-sm shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${isSavingCloud ? 'animate-spin' : ''}`} />
-            <span>{isSavingCloud ? 'جاري الرفع...' : 'حفظ ومزامنة السحابة ⚡'}</span>
+            {isSavingCloud ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>جاري المزامنة...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>حفظ ومزامنة السحابة ☁️</span>
+              </>
+            )}
           </button>
 
           {/* Back Button */}
           <button
             onClick={onBackToMain}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs md:text-sm transition-all cursor-pointer active:scale-95 border border-slate-300"
+            className="p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+            title="رجوع للقائمة الرئيسية"
           >
-            <ArrowRight className="w-4 h-4" />
-            <span>العودة للرئيسية ✕</span>
+            <ArrowRight className="w-5 h-5" />
           </button>
         </div>
       </div>
 
-      {/* Status Notification Toast */}
+      {/* Status Alert Banner */}
       {statusMessage && (
-        <div className={`p-4 rounded-2xl flex items-center justify-between gap-3 shadow-md border ${
+        <div className={`p-4 rounded-2xl text-xs font-bold flex items-center justify-between shadow-sm animate-fade-in ${
           statusMessage.type === 'success' 
-            ? 'bg-emerald-50 border-emerald-300 text-emerald-900' 
+            ? 'bg-emerald-50 text-emerald-900 border border-emerald-300' 
             : statusMessage.type === 'error'
-            ? 'bg-rose-50 border-rose-300 text-rose-900'
-            : 'bg-blue-50 border-blue-300 text-blue-900'
+            ? 'bg-rose-50 text-rose-900 border border-rose-300'
+            : 'bg-indigo-50 text-indigo-900 border border-indigo-300'
         }`}>
-          <div className="flex items-center gap-2.5 font-black text-sm">
-            {statusMessage.type === 'success' ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /> : <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />}
+          <div className="flex items-center gap-2">
+            {statusMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4" />}
             <span>{statusMessage.text}</span>
           </div>
-          <button 
-            onClick={() => setStatusMessage(null)}
-            className="text-xs font-black underline hover:opacity-80 cursor-pointer"
-          >
-            إغلاق ✕
+          <button onClick={() => setStatusMessage(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
+            <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* 2. Key Metrics Bar */}
+      {/* 2. GOLDEN SUPERVISOR CARD (بطاقة كود المشرف العام والرقابي) */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-600/10 border-2 border-amber-400 rounded-3xl p-5 shadow-lg relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <div className="space-y-2 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full bg-amber-500 text-white font-black text-xs shadow-sm flex items-center gap-1.5">
+                <Compass className="w-3.5 h-3.5" />
+                <span>كود المشرف العام والرقابي (Supervisor Code)</span>
+              </span>
+              <span className="text-[11px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-300">
+                المدير / المشرف التربوي / موظف التطبيق
+              </span>
+            </div>
+            
+            <p className="text-xs text-slate-700 font-bold leading-relaxed">
+              🔑 يمنح هذا الكود صلاحية <strong className="text-slate-950 font-black">تنزيل ورؤية كل الشعب والمواد وسجلات الطلاب وجدول الحصص بالكامل</strong>، مع تفعيل <strong className="text-amber-800 underline">وضع القراءة فقط (Read-Only)</strong> لمنع تغيير أو إضافة درجات، مع تمكين إرسال التوجيهات الإشرافية.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-600 font-bold">
+              <span className="flex items-center gap-1 bg-white/80 px-2.5 py-1 rounded-xl border border-amber-200">
+                <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>رؤية وتنزيل كل الشعب</span>
+              </span>
+              <span className="flex items-center gap-1 bg-white/80 px-2.5 py-1 rounded-xl border border-amber-200">
+                <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                <span>استعراض الجدول الأسبوعي</span>
+              </span>
+              <span className="flex items-center gap-1 bg-white/80 px-2.5 py-1 rounded-xl border border-amber-200">
+                <Lock className="w-3.5 h-3.5 text-rose-600" />
+                <span>قراءة فقط بدون تعديل درجات</span>
+              </span>
+              <span className="flex items-center gap-1 bg-white/80 px-2.5 py-1 rounded-xl border border-amber-200">
+                <Send className="w-3.5 h-3.5 text-indigo-600" />
+                <span>إرسال توجيهات إشرافية</span>
+              </span>
+            </div>
+          </div>
+
+          {/* Supervisor PIN Box & Actions */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 bg-white/90 p-3.5 rounded-2xl border-2 border-amber-300 shadow-sm shrink-0">
+            <div className="text-center sm:text-right">
+              <div className="text-[10px] text-slate-500 font-bold">رمز دخول المشرف المعتمد:</div>
+              <div className="font-mono text-xl font-black tracking-widest text-amber-600 mt-0.5">
+                {showPinMap['supervisor'] ? supervisor.code : '••••••••'}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setShowPinMap(prev => ({ ...prev, supervisor: !prev['supervisor'] }))}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                title={showPinMap['supervisor'] ? 'إخفاء الرمز' : 'إظهار الرمز'}
+              >
+                {showPinMap['supervisor'] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleCopyCode(supervisor.code, 'supervisor')}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                title="نسخ كود المشرف"
+              >
+                {copiedKey === 'supervisor' ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleRegenerateSupervisorCode}
+                className="p-2 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer"
+                title="توليد كود مشرف جديد"
+              >
+                <Shuffle className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPrintTarget('supervisor_only');
+                  setIsPrintModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs shadow cursor-pointer"
+                title="طباعة بطاقة المشرف الرسمية"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>بطاقة المشرف</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. Metrics Summary Bar (Code Reduction & Faculty Balance) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-white border-2 border-indigo-100 p-3.5 rounded-2xl shadow-sm flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-black text-indigo-950">{uniqueTeachersCount}</div>
-            <div className="text-[11px] font-bold text-slate-500">معلم ومدرس مفوّض</div>
+            <div className="text-xl font-black text-indigo-950">{activeTeachingProfiles.length}</div>
+            <div className="text-[11px] font-bold text-slate-500">كادر تدريسي (أكواد نشطة)</div>
+          </div>
+        </div>
+
+        <div className="bg-white border-2 border-amber-100 p-3.5 rounded-2xl shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
+            <UserX className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xl font-black text-amber-950">{exemptProfiles.length}</div>
+            <div className="text-[11px] font-bold text-slate-500">متفرغون وإداريون مستبعدون</div>
           </div>
         </div>
 
@@ -517,324 +1019,648 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
             <BookOpen className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xl font-black text-blue-950">{totalAssignments}</div>
-            <div className="text-[11px] font-bold text-slate-500">مادة وشعبة مسندة</div>
+            <div className="text-xl font-black text-blue-950">{totalCoveredLessons}</div>
+            <div className="text-[11px] font-bold text-slate-500">إجمالي حصص وشعب مغطاة</div>
           </div>
         </div>
 
-        <div className="bg-white border-2 border-emerald-100 p-3.5 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
-            <Unlock className="w-5 h-5" />
+        <div className="bg-gradient-to-tr from-emerald-50 to-teal-50 border-2 border-emerald-200 p-3.5 rounded-2xl shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 font-black shadow-md">
+            %
           </div>
           <div>
-            <div className="text-xl font-black text-emerald-950">{openCount}</div>
-            <div className="text-[11px] font-bold text-slate-500">شعب مفتوحة للرفع</div>
-          </div>
-        </div>
-
-        <div className="bg-white border-2 border-rose-100 p-3.5 rounded-2xl shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center shrink-0">
-            <Lock className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-xl font-black text-rose-950">{lockedCount}</div>
-            <div className="text-[11px] font-bold text-slate-500">شعب مقفلة أمنياً</div>
+            <div className="text-xl font-black text-emerald-900">{reductionPercentage}%</div>
+            <div className="text-[11px] font-black text-emerald-700">نسبة اختصار الأكواد 🎉</div>
           </div>
         </div>
       </div>
 
-      {/* 3. Filter & Control Toolbar */}
-      <div className="bg-white border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
-        {/* Search */}
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="بحث باسم الأستاذ، المادة، الصف، أو الكود..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-3 pr-10 py-2 text-xs md:text-sm font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
-          />
+      {/* 4. Tabs Navigation & Control Toolbar */}
+      <div className="bg-white border border-slate-200 p-3.5 rounded-2xl shadow-sm space-y-3">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-3 border-b pb-3">
+          {/* Tabs */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl w-full md:w-auto">
+            <button
+              onClick={() => setActiveTab('teaching')}
+              className={`flex-1 md:flex-initial py-2 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'teaching'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>الكادر التدريسي المكلف ({activeTeachingProfiles.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('exempt')}
+              className={`flex-1 md:flex-initial py-2 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'exempt'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <UserX className="w-3.5 h-3.5" />
+              <span>المتفرغون والإداريون ({exemptProfiles.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('supervisor')}
+              className={`flex-1 md:flex-initial py-2 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'supervisor'
+                  ? 'bg-orange-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>توجيهات المشرف ({supervisor.directives.length})</span>
+            </button>
+          </div>
+
+          {/* Quick Actions */}
+          <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+            <button
+              onClick={handleRegenerateAllTeacherCodes}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-black transition-all cursor-pointer active:scale-95"
+              title="توليد أكواد سرية جديدة لجميع مدرسي الكادر الفعلي"
+            >
+              <Shuffle className="w-3.5 h-3.5 text-purple-600" />
+              <span>توليد أكواد جديدة للكادر 🎲</span>
+            </button>
+          </div>
         </div>
 
-        {/* Subject Filter */}
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <span className="text-xs font-black text-slate-600 shrink-0">تصفية بالمادة:</span>
-          <select
-            value={selectedFilterSubject}
-            onChange={(e) => setSelectedFilterSubject(e.target.value)}
-            className="py-2 px-3 text-xs md:text-sm font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="all">كل المواد ({uniqueSubjects.length})</option>
-            {uniqueSubjects.map(sub => (
-              <option key={sub} value={sub}>{sub}</option>
-            ))}
-          </select>
-        </div>
+        {/* Search & Subject Filter Bar (Shown for teaching & exempt tabs) */}
+        {activeTab !== 'supervisor' && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="بحث باسم الأستاذ، المادة، الصف، أو الكود..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-3 pr-9 py-2 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white"
+              />
+            </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-          <button
-            onClick={handleGenerateAllMissing}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 text-xs font-black transition-all cursor-pointer active:scale-95"
-            title="توليد أكواد سرية جديدة لمن ليس لديه كود"
-          >
-            <Shuffle className="w-3.5 h-3.5 text-purple-600" />
-            <span>توليد للأكواد الفارغة 🎲</span>
-          </button>
-
-          <button
-            onClick={handleAddAssignment}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-md transition-all cursor-pointer active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة مادة وشعبة جديدة +</span>
-          </button>
-        </div>
+            {activeTab === 'teaching' && (
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <span className="text-xs font-black text-slate-600 shrink-0">تصفية بالمادة:</span>
+                <select
+                  value={selectedFilterSubject}
+                  onChange={(e) => setSelectedFilterSubject(e.target.value)}
+                  className="py-1.5 px-3 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="all">كل المواد ({allUniqueSubjects.length})</option>
+                  {allUniqueSubjects.map(sub => (
+                    <option key={sub} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* 4. MAIN TABLE (The 4 Clean Columns Requested by User) */}
-      <div className="bg-white border-2 border-slate-200 rounded-3xl shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-right border-collapse">
-            <thead>
-              <tr className="bg-slate-900 text-white text-xs md:text-sm">
-                <th className="p-4 font-black border-b border-slate-800 w-12 text-center">#</th>
-                <th className="p-4 font-black border-b border-slate-800 min-w-[200px]">1. اسم الأستاذ</th>
-                <th className="p-4 font-black border-b border-slate-800 min-w-[160px]">2. المادة التي يدرسها</th>
-                <th className="p-4 font-black border-b border-slate-800 min-w-[220px]">3. الصفوف والشعب المخصصة</th>
-                <th className="p-4 font-black border-b border-slate-800 min-w-[240px]">4. كود رفع الدرجات للشعب (PIN)</th>
-                <th className="p-4 font-black border-b border-slate-800 w-36 text-center">الحالة والإجراءات</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 text-xs md:text-sm">
-              {filteredAssignments.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-12 text-center text-slate-500 font-bold">
-                    لا توجد سجلات مطابقة للبحث أو التصفية الحالية.
-                  </td>
-                </tr>
-              ) : (
-                filteredAssignments.map((row, idx) => {
-                  const isPinVisible = !!showPinMap[`${row.grade}-${row.section}-${row.subject}`];
-                  const rowIdStr = `${row.grade}-${row.section}-${row.subject}`;
-                  const isCopied = copiedKey === rowIdStr;
+      {/* 5. MAIN CONTENT AREA */}
+      {activeTab === 'supervisor' ? (
+        /* SUPERVISOR DIRECTIVES & AUDIT VIEW */
+        <div className="bg-white border-2 border-slate-200 rounded-3xl p-6 shadow-lg space-y-6">
+          <div className="flex items-center justify-between border-b pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center font-black">
+                <MessageSquare className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">سجل التوجيهات والملاحظات الإشرافية</h3>
+                <p className="text-xs text-slate-500 font-bold">
+                  التوجيهات الصادرة من المشرف التربوي أو الإدارة للمدرسة أو لمعلمي الشعب
+                </p>
+              </div>
+            </div>
 
-                  return (
-                    <tr 
-                      key={`${row.grade}-${row.section}-${row.subject}-${idx}`}
-                      className={`transition-colors hover:bg-indigo-50/40 ${row.is_locked ? 'bg-rose-50/30' : ''}`}
+            <button
+              onClick={() => setShowDirectiveModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-xs shadow cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إرسال توجيه إشرافي جديد +</span>
+            </button>
+          </div>
+
+          {supervisor.directives.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 font-bold text-xs bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+              لا توجد توجيهات إشرافية مسجلة حالياً. اضغط على الزر أعلاه لإضافة توجيه جديد.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {supervisor.directives.map((dir) => (
+                <div key={dir.id} className="p-4 rounded-2xl bg-orange-50/50 border border-orange-200 space-y-2 relative shadow-sm">
+                  <div className="flex items-start justify-between">
+                    <span className="px-2.5 py-0.5 rounded-full bg-orange-200 text-orange-900 text-[10px] font-black">
+                      المستهدف: {dir.target}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold font-mono">
+                      {dir.date}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-800 font-bold leading-relaxed pt-1">
+                    {dir.message}
+                  </p>
+                  <div className="flex justify-end pt-2">
+                    <button
+                      onClick={() => handleDeleteDirective(dir.id)}
+                      className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                      title="حذف التوجيه"
                     >
-                      {/* # Index */}
-                      <td className="p-4 text-center font-black text-slate-400">
-                        {idx + 1}
-                      </td>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* TEACHERS OR EXEMPT STAFF LIST */
+        <div className="bg-white border-2 border-slate-200 rounded-3xl shadow-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right border-collapse">
+              <thead>
+                <tr className="bg-slate-900 text-white text-xs md:text-sm">
+                  <th className="p-3.5 font-black border-b border-slate-800 w-12 text-center">#</th>
+                  <th className="p-3.5 font-black border-b border-slate-800 min-w-[200px]">1. اسم الأستاذ والملاك</th>
+                  <th className="p-3.5 font-black border-b border-slate-800 min-w-[220px]">2. المواد المسندة (متعددة)</th>
+                  <th className="p-3.5 font-black border-b border-slate-800 min-w-[240px]">3. الصفوف والشعب المخصصة</th>
+                  {activeTab === 'teaching' && (
+                    <th className="p-3.5 font-black border-b border-slate-800 min-w-[190px]">4. كود الرفع السري (PIN)</th>
+                  )}
+                  <th className="p-3.5 font-black border-b border-slate-800 w-44 text-center">الحالة والإجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-xs md:text-sm">
+                {displayedProfiles.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-12 text-center text-slate-500 font-bold">
+                      لا توجد سجلات مطابقة في هذا التبويب.
+                    </td>
+                  </tr>
+                ) : (
+                  displayedProfiles.map((prof, idx) => {
+                    const originalIndex = profiles.findIndex(p => p.teacherId === prof.teacherId);
+                    const isPinVisible = !!showPinMap[prof.teacherId];
+                    const isCopied = copiedKey === prof.teacherId;
 
-                      {/* 1. اسم الأستاذ */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-black text-xs flex items-center justify-center shrink-0 border border-indigo-200">
-                            {(row.teacher_name || '؟').charAt(0)}
-                          </div>
-                          <div className="flex-1">
-                            <select
-                              value={row.teacher_name || ''}
-                              onChange={(e) => handleTeacherChange(idx, e.target.value)}
-                              className="font-black text-slate-900 bg-transparent hover:bg-slate-100 p-1 rounded-lg border border-transparent hover:border-slate-300 focus:outline-none focus:bg-white focus:border-indigo-500 w-full"
-                            >
-                              <option value="غير مسند">-- اختر أستاذ المادة --</option>
-                              {staffList.map(stf => {
-                                const fullName = stf.fullName || `${stf.firstName} ${stf.secondName}`;
-                                return (
-                                  <option key={stf.id} value={fullName}>
-                                    {fullName} ({stf.specialization || stf.jobTitle})
-                                  </option>
-                                );
-                              })}
-                            </select>
-                            <div className="text-[10px] text-slate-500 font-bold px-1">
-                              ملاك المدرسة المعتمد
+                    return (
+                      <tr 
+                        key={prof.teacherId}
+                        className={`transition-colors hover:bg-indigo-50/40 ${prof.isLocked ? 'bg-rose-50/30' : ''}`}
+                      >
+                        {/* # Index */}
+                        <td className="p-3.5 text-center font-black text-slate-400">
+                          {idx + 1}
+                        </td>
+
+                        {/* 1. اسم الأستاذ والملاك */}
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-black text-xs shrink-0 border ${
+                              prof.isExempt 
+                                ? 'bg-amber-100 text-amber-800 border-amber-300' 
+                                : 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                            }`}>
+                              {(prof.teacherName || '؟').charAt(0)}
+                            </div>
+                            <div>
+                              <div className="font-black text-slate-900 text-sm">
+                                {prof.teacherName}
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mt-0.5">
+                                <span className="text-indigo-700">{prof.jobTitle}</span>
+                                <span>•</span>
+                                <span>{prof.specialization}</span>
+                                {prof.teachingQuota > 0 && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-emerald-700 font-black">{prof.teachingQuota} حصة</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* 2. المادة التي يدرسها */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-1.5">
-                          <select
-                            value={row.subject}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (val === '__custom_new__') {
-                                setEditingSubjectModal({
-                                  index: idx,
-                                  currentSubject: row.subject,
-                                  teacherName: row.teacher_name || ''
-                                });
-                                setSubjectInputValue(row.subject);
-                              } else {
-                                const updated = [...assignments];
-                                updated[idx].subject = val;
-                                updateAssignmentsState(updated);
-                              }
-                            }}
-                            className="font-black text-slate-900 bg-amber-50/80 hover:bg-amber-100 border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer max-w-[170px]"
-                            title="تعديل المادة أو اختيار مادة معتمدة أو مضافة"
-                          >
-                            <optgroup label="الدروس المعتمدة المثبتة">
-                              {STANDARD_APPROVED_SUBJECTS.map(sub => (
-                                <option key={sub} value={sub}>{sub}</option>
+                        {/* 2. المواد المسندة (Multi-Subject Tags) */}
+                        <td className="p-3.5">
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {prof.subjects.map(sub => (
+                                <span 
+                                  key={sub}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 font-black text-xs shadow-xs"
+                                >
+                                  <span>{sub}</span>
+                                  {!prof.isExempt && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveSubjectFromTeacher(originalIndex, sub)}
+                                      className="text-amber-600 hover:text-rose-600 cursor-pointer text-xs"
+                                      title="إزالة هذه المادة"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </span>
                               ))}
-                            </optgroup>
-                            {customSubjectsList.filter(s => !STANDARD_APPROVED_SUBJECTS.includes(s)).length > 0 && (
-                              <optgroup label="المواد الجديدة المستحدثة">
-                                {customSubjectsList.filter(s => !STANDARD_APPROVED_SUBJECTS.includes(s)).map(sub => (
-                                  <option key={sub} value={sub}>{sub} ✨</option>
-                                ))}
-                              </optgroup>
-                            )}
-                            <option value="__custom_new__">➕ إضافة / كتابة مادة جديدة...</option>
-                          </select>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingSubjectModal({
-                                index: idx,
-                                currentSubject: row.subject,
-                                teacherName: row.teacher_name || ''
-                              });
-                              setSubjectInputValue(row.subject);
-                            }}
-                            title="تعديل أو كتابة اسم مادة جديدة"
-                            className="p-1.5 rounded-lg text-amber-800 hover:bg-amber-200/70 transition-colors cursor-pointer"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* 3. الصفوف والشعب المخصصة */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          {/* Grade Selector */}
-                          <select
-                            value={row.grade}
-                            onChange={(e) => {
-                              const updated = [...assignments];
-                              updated[idx].grade = e.target.value;
-                              updateAssignmentsState(updated);
-                            }}
-                            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-bold rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-indigo-500"
-                          >
-                            {COMMON_GRADES.map(g => (
-                              <option key={g} value={g}>{g}</option>
-                            ))}
-                          </select>
-
-                          {/* Section Selector */}
-                          <select
-                            value={row.section}
-                            onChange={(e) => {
-                              const updated = [...assignments];
-                              updated[idx].section = e.target.value;
-                              updateAssignmentsState(updated);
-                            }}
-                            className="bg-slate-50 border border-slate-300 text-slate-800 text-xs font-black rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-indigo-500"
-                          >
-                            {COMMON_SECTIONS.map(s => (
-                              <option key={s} value={s}>شعبة ({s})</option>
-                            ))}
-                          </select>
-                        </div>
-                      </td>
-
-                      {/* 4. كود رفع الدرجات للشعب (PIN) */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <div className="relative flex-1">
-                            <input
-                              type={isPinVisible ? 'text' : 'password'}
-                              value={row.secret_code}
-                              onChange={(e) => handleCodeChange(idx, e.target.value)}
-                              maxLength={8}
-                              className="w-full font-mono text-center tracking-widest text-sm font-black py-1.5 px-3 rounded-xl bg-slate-900 text-amber-400 border border-slate-700 shadow-inner focus:outline-none focus:ring-2 focus:ring-amber-400"
-                              placeholder="4-6 أرقام"
-                            />
+                              {!prof.isExempt && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSubjectModalTeacherIdx(originalIndex);
+                                    setSelectedAddSubject(STANDARD_APPROVED_SUBJECTS[0]);
+                                    setCustomSubjectInput('');
+                                  }}
+                                  className="p-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold cursor-pointer"
+                                  title="إضافة مادة أخرى للأستاذ"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </div>
+                        </td>
 
-                          {/* Show/Hide PIN Button */}
-                          <button
-                            type="button"
-                            onClick={() => setShowPinMap(prev => ({ ...prev, [rowIdStr]: !prev[rowIdStr] }))}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
-                            title={isPinVisible ? 'إخفاء الرمز' : 'إظهار الرمز'}
-                          >
-                            {isPinVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
+                        {/* 3. الصفوف والشعب المخصصة (Multi-Class/Section Tags) */}
+                        <td className="p-3.5">
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {prof.classes.map(c => (
+                                <span 
+                                  key={`${c.grade}-${c.section}`}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-300 text-blue-950 font-black text-xs shadow-xs"
+                                >
+                                  <span>{c.grade} ({c.section})</span>
+                                  {!prof.isExempt && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveClassFromTeacher(originalIndex, c.grade, c.section)}
+                                      className="text-blue-600 hover:text-rose-600 cursor-pointer text-xs"
+                                      title="إزالة هذه الشعبة"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </span>
+                              ))}
 
-                          {/* Copy PIN */}
-                          <button
-                            type="button"
-                            onClick={() => handleCopyCode(row.secret_code, rowIdStr)}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
-                            title="نسخ الكود"
-                          >
-                            {isCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                          </button>
+                              {!prof.isExempt && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setClassModalTeacherIdx(originalIndex);
+                                    setSelectedAddGrade(COMMON_GRADES[0]);
+                                    setSelectedAddSection(COMMON_SECTIONS[0]);
+                                  }}
+                                  className="p-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold cursor-pointer"
+                                  title="إضافة صف وشعبة أخرى للأستاذ"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </td>
 
-                          {/* Regenerate Random PIN */}
-                          <button
-                            type="button"
-                            onClick={() => handleRegenerateCode(idx)}
-                            className="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 cursor-pointer"
-                            title="توليد كود عشوائي جديد"
-                          >
-                            <Shuffle className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
+                        {/* 4. كود الرفع السري الموحد (PIN) */}
+                        {activeTab === 'teaching' && (
+                          <td className="p-3.5">
+                            <div className="flex items-center gap-1.5">
+                              <div className="relative flex-1">
+                                <input
+                                  type={isPinVisible ? 'text' : 'password'}
+                                  value={prof.secretCode}
+                                  onChange={(e) => {
+                                    const val = e.target.value.trim();
+                                    const updated = [...profiles];
+                                    updated[originalIndex].secretCode = val;
+                                    saveProfilesState(updated);
+                                  }}
+                                  maxLength={8}
+                                  className="w-full font-mono text-center tracking-widest text-sm font-black py-1 px-2 rounded-xl bg-slate-900 text-amber-400 border border-slate-700 shadow-inner focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                  placeholder="4 أرقام"
+                                />
+                              </div>
 
-                      {/* الحالة والإجراءات */}
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          {/* Toggle Lock */}
-                          <button
-                            onClick={() => handleToggleLock(idx)}
-                            className={`p-2 rounded-xl text-xs font-black flex items-center gap-1 transition-all cursor-pointer ${
-                              row.is_locked 
-                                ? 'bg-rose-100 text-rose-800 hover:bg-rose-200 border border-rose-300' 
-                                : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300'
-                            }`}
-                            title={row.is_locked ? 'الشعبة مقفلة أمنياً من الرفع - انقر للفتح' : 'الشعبة مفتوحة للرفع - انقر للقفل'}
-                          >
-                            {row.is_locked ? <Lock className="w-4 h-4 text-rose-600" /> : <Unlock className="w-4 h-4 text-emerald-600" />}
-                            <span>{row.is_locked ? 'مقفل' : 'مفتوح'}</span>
-                          </button>
+                              {/* Show/Hide PIN */}
+                              <button
+                                type="button"
+                                onClick={() => setShowPinMap(prev => ({ ...prev, [prof.teacherId]: !prev[prof.teacherId] }))}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                title={isPinVisible ? 'إخفاء الرمز' : 'إظهار الرمز'}
+                              >
+                                {isPinVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
 
-                          {/* Delete */}
-                          <button
-                            onClick={() => handleDeleteRow(idx)}
-                            className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer"
-                            title="حذف هذا الإسناد"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                              {/* Copy PIN */}
+                              <button
+                                type="button"
+                                onClick={() => handleCopyCode(prof.secretCode, prof.teacherId)}
+                                className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
+                                title="نسخ الكود"
+                              >
+                                {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+
+                              {/* Regenerate Random PIN */}
+                              <button
+                                type="button"
+                                onClick={() => handleRegenerateCode(originalIndex)}
+                                className="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 cursor-pointer"
+                                title="توليد كود عشوائي جديد"
+                              >
+                                <Shuffle className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+
+                        {/* الحالة والإجراءات */}
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {activeTab === 'teaching' ? (
+                              <>
+                                {/* Lock / Unlock */}
+                                <button
+                                  onClick={() => handleToggleLock(originalIndex)}
+                                  className={`p-1.5 rounded-xl text-xs font-black flex items-center gap-1 transition-all cursor-pointer ${
+                                    prof.isLocked 
+                                      ? 'bg-rose-100 text-rose-800 hover:bg-rose-200 border border-rose-300' 
+                                      : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300'
+                                  }`}
+                                  title={prof.isLocked ? 'الرفع مقفل أمنياً لهذا الأستاذ' : 'الرفع مفتوح لهذا الأستاذ'}
+                                >
+                                  {prof.isLocked ? <Lock className="w-3.5 h-3.5 text-rose-600" /> : <Unlock className="w-3.5 h-3.5 text-emerald-600" />}
+                                  <span>{prof.isLocked ? 'مقفل' : 'مفتوح'}</span>
+                                </button>
+
+                                {/* Print Individual Pass */}
+                                <button
+                                  onClick={() => {
+                                    setPrintTarget(prof.teacherId);
+                                    setIsPrintModalOpen(true);
+                                  }}
+                                  className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                                  title="طباعة بطاقة هذا الأستاذ"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+
+                                {/* Exclude to Exempt */}
+                                <button
+                                  onClick={() => handleToggleExempt(originalIndex)}
+                                  className="p-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-[10px] font-bold cursor-pointer"
+                                  title="تحويل إلى متفرغ / استبعاد من الأكواد"
+                                >
+                                  تفريغ
+                                </button>
+                              </>
+                            ) : (
+                              /* Exempt Actions: Activate to Teaching */
+                              <button
+                                onClick={() => handleToggleExempt(originalIndex)}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shadow cursor-pointer"
+                                title="تكليف بحصص وتوليد كود"
+                              >
+                                <UserCheck className="w-3.5 h-3.5" />
+                                <span>تكليف بحصة وتفعيل كود +</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* 5. PRINT MODAL (Official Teacher Security Passes / Slips) */}
+      {/* 6. MODAL: ADD CLASS & SECTION TO TEACHER */}
+      {classModalTeacherIdx !== null && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-indigo-200 p-6 max-w-sm w-full shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  إسناد شعبة جديدة للأستاذ
+                </h3>
+              </div>
+              <button
+                onClick={() => setClassModalTeacherIdx(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 font-bold bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
+              الأستاذ المستهدف: <strong className="text-indigo-950 font-black">{profiles[classModalTeacherIdx]?.teacherName}</strong>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">المرحلة الدراسية:</label>
+                <select
+                  value={selectedAddGrade}
+                  onChange={(e) => setSelectedAddGrade(e.target.value)}
+                  className="w-full py-2 px-3 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
+                >
+                  {COMMON_GRADES.map(g => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">الشعبة المخصصة:</label>
+                <select
+                  value={selectedAddSection}
+                  onChange={(e) => setSelectedAddSection(e.target.value)}
+                  className="w-full py-2 px-3 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
+                >
+                  {COMMON_SECTIONS.map(s => (
+                    <option key={s} value={s}>شعبة ({s})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setClassModalTeacherIdx(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleAddClassToTeacher}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>إضافة الشعبة للأستاذ</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. MODAL: ADD SUBJECT TO TEACHER */}
+      {subjectModalTeacherIdx !== null && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-indigo-200 p-6 max-w-md w-full shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  إسناد مادة إضافية للأستاذ
+                </h3>
+              </div>
+              <button
+                onClick={() => setSubjectModalTeacherIdx(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 font-bold bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
+              الأستاذ المستهدف: <strong className="text-indigo-950 font-black">{profiles[subjectModalTeacherIdx]?.teacherName}</strong>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">اختر من المواد المعتمدة وزارياً:</label>
+                <select
+                  value={selectedAddSubject}
+                  onChange={(e) => {
+                    setSelectedAddSubject(e.target.value);
+                    setCustomSubjectInput('');
+                  }}
+                  className="w-full py-2 px-3 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
+                >
+                  {STANDARD_APPROVED_SUBJECTS.map(sub => (
+                    <option key={sub} value={sub}>{sub}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">أو اكتب اسم مادة خاصة مخصصة:</label>
+                <input
+                  type="text"
+                  placeholder="مثال: علم الأحياء المجهرية، الرسم، الخط..."
+                  value={customSubjectInput}
+                  onChange={(e) => setCustomSubjectInput(e.target.value)}
+                  className="w-full py-2 px-3 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setSubjectModalTeacherIdx(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSubjectToTeacher}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>إضافة المادة للأستاذ</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. MODAL: ADD SUPERVISOR DIRECTIVE */}
+      {showDirectiveModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-orange-300 p-6 max-w-md w-full shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <Send className="w-5 h-5 text-orange-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  إرسال توجيه إشرافي جديد 📢
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowDirectiveModal(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">الجهة أو الشعب المستهدفة:</label>
+                <input
+                  type="text"
+                  placeholder="مثال: كافة الصفوف، مدرسي الرياضيات، الثالث المتوسط..."
+                  value={directiveTarget}
+                  onChange={(e) => setDirectiveTarget(e.target.value)}
+                  className="w-full py-2 px-3 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">نص التوجيه أو الملاحظة الإشرافية:</label>
+                <textarea
+                  rows={4}
+                  placeholder="اكتب التوجيه الإداري أو التربوي هنا..."
+                  value={directiveMessage}
+                  onChange={(e) => setDirectiveMessage(e.target.value)}
+                  className="w-full p-3 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 leading-relaxed"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setShowDirectiveModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleAddDirective}
+                className="px-5 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <Send className="w-4 h-4" />
+                <span>إرسال التوجيه الآن</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. PRINT MODAL: OFFICIAL SECURITY PASSES (Teacher-Centric & Supervisor) */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-4xl w-full p-6 space-y-6 shadow-2xl border-4 border-indigo-500 max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b pb-4">
@@ -844,10 +1670,10 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
                 </div>
                 <div>
                   <h3 className="text-lg font-black text-slate-900">
-                    طباعة بطاقات الاعتماد السرية للمعلمين (Official Security Passes)
+                    طباعة بطاقات الاعتماد السرية الرسمية (Official Passes)
                   </h3>
                   <p className="text-xs text-slate-600 font-bold">
-                    بطاقات مقسمة جاهزة للطباعة والتسليم اليدوي لكل معلم متضمنة رمزه السري ومواده المخصصة.
+                    بطاقة واحدة مخصصة لكل أستاذ بكوده الموحد ومواده وشعبه، وبطاقة المشرف العام للمتابعة.
                   </p>
                 </div>
               </div>
@@ -859,53 +1685,145 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
               </button>
             </div>
 
+            {/* Print Selection Filter in Modal */}
+            <div className="flex items-center gap-2 pb-2">
+              <span className="text-xs font-black text-slate-700">تحديد المستند للطباعة:</span>
+              <button
+                onClick={() => setPrintTarget('all_teachers')}
+                className={`py-1.5 px-3 rounded-xl text-xs font-black cursor-pointer ${
+                  printTarget === 'all_teachers' 
+                    ? 'bg-indigo-600 text-white shadow' 
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                كافة بطاقات المعلمين ({activeTeachingProfiles.length})
+              </button>
+              <button
+                onClick={() => setPrintTarget('supervisor_only')}
+                className={`py-1.5 px-3 rounded-xl text-xs font-black cursor-pointer ${
+                  printTarget === 'supervisor_only' 
+                    ? 'bg-amber-600 text-white shadow' 
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                بطاقة المشرف العام فقط 🌟
+              </button>
+            </div>
+
             {/* Printable Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2" id="printable-badges">
-              {groupedByTeacher.map((gt, i) => (
-                <div 
-                  key={i}
-                  className="bg-white border-2 border-dashed border-slate-300 p-4 rounded-2xl relative shadow-sm hover:border-indigo-400 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-2 mb-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 print:grid-cols-2" id="printable-passes">
+              
+              {/* 1. Supervisor Pass (If selected or showing all) */}
+              {(printTarget === 'supervisor_only' || printTarget === 'all_teachers') && (
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-4 border-double border-amber-400 p-5 rounded-2xl relative shadow-sm space-y-3">
+                  <div className="flex items-start justify-between border-b-2 border-amber-300 pb-2">
                     <div>
-                      <div className="text-[10px] font-black text-indigo-700">جمهورية العراق - وزارة التربية</div>
-                      <div className="text-xs font-black text-slate-800">{config.schoolName || 'المدرسة النموذجية'}</div>
-                      <div className="text-sm font-black text-slate-900 mt-1">الأستاذ: {gt.teacherName}</div>
+                      <div className="text-[10px] font-black text-amber-800">جمهورية العراق - وزارة التربية</div>
+                      <div className="text-xs font-black text-slate-900">{config.schoolName || 'المدرسة النموذجية'}</div>
+                      <div className="text-sm font-black text-amber-900 mt-1 flex items-center gap-1.5">
+                        <Compass className="w-4 h-4 text-amber-600" />
+                        <span>بطاقة اعتماد المشرف العام / المدير</span>
+                      </div>
                     </div>
                     <div className="text-left shrink-0">
-                      <div className="text-[9px] font-bold text-slate-400">معرف المدرسة:</div>
+                      <div className="text-[9px] font-bold text-slate-500">معرف المدرسة:</div>
                       <div className="font-mono text-[10px] font-black text-indigo-900">{activeSchoolId}</div>
                     </div>
                   </div>
 
-                  {/* Badges Info */}
-                  <div className="space-y-1.5 text-xs font-bold text-slate-700">
+                  <div className="space-y-1 text-xs font-bold text-slate-700 bg-white/80 p-3 rounded-xl border border-amber-200">
                     <div className="flex justify-between">
-                      <span className="text-slate-500">المادة المسندة:</span>
-                      <span className="font-black text-slate-900">{gt.subject}</span>
+                      <span className="text-slate-500">المكلف بالبطاقة:</span>
+                      <span className="font-black text-slate-900">{supervisor.name}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">الصفوف والشعب:</span>
-                      <span className="font-black text-slate-900">{gt.sectionsSummary}</span>
+                      <span className="text-slate-500">طبيعة الصلاحية:</span>
+                      <span className="font-black text-amber-800">إشراف واطلاع شامل (قراءة فقط)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">النطاق المشمول:</span>
+                      <span className="font-black text-slate-900">كافة المواد والشعب والجدول</span>
                     </div>
                   </div>
 
-                  {/* Secret Codes Box */}
-                  <div className="mt-3 p-2.5 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-between">
+                  {/* PIN & Barcode Box */}
+                  <div className="p-3 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-between shadow-inner">
                     <div>
-                      <div className="text-[10px] text-slate-400 font-bold">كود رفع الدرجات السري (PIN):</div>
-                      <div className="font-mono text-base font-black tracking-widest">
-                        {gt.items.map(it => it.secret_code).join(' | ')}
+                      <div className="text-[10px] text-slate-400 font-bold">كود المشرف العام (PIN):</div>
+                      <div className="font-mono text-xl font-black tracking-widest text-amber-400">
+                        {supervisor.code}
                       </div>
                     </div>
-                    <Key className="w-5 h-5 text-amber-400" />
+                    <QrCodeSvg value={`SUPERVISOR:${supervisor.code}:${activeSchoolId}`} size={56} />
                   </div>
 
-                  <div className="mt-2 text-[9px] text-slate-400 text-center font-bold">
-                    ⚠️ هذا الرمز شخصي وسري ومخصص لاعتماد ورفع درجات هذه الشعب فقط.
+                  <div className="flex items-center justify-center pt-1">
+                    <BarcodeSvg value={supervisor.code} height={32} />
+                  </div>
+
+                  <div className="text-[9px] text-slate-500 text-center font-bold">
+                    👁️ تستخدم هذه البطاقة لمسح الباركود والدخول الفوري لوضع المشرف الرقابي بالتطبيق.
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* 2. Teacher Passes */}
+              {printTarget !== 'supervisor_only' && activeTeachingProfiles
+                .filter(p => printTarget === 'all_teachers' || p.teacherId === printTarget)
+                .map((prof) => (
+                  <div 
+                    key={prof.teacherId}
+                    className="bg-white border-2 border-dashed border-slate-300 p-4 rounded-2xl relative shadow-sm space-y-2 hover:border-indigo-400 transition-all"
+                  >
+                    <div className="flex items-start justify-between border-b border-slate-200 pb-2">
+                      <div>
+                        <div className="text-[10px] font-black text-indigo-700">جمهورية العراق - وزارة التربية</div>
+                        <div className="text-xs font-black text-slate-800">{config.schoolName || 'المدرسة النموذجية'}</div>
+                        <div className="text-sm font-black text-slate-900 mt-0.5">الأستاذ: {prof.teacherName}</div>
+                      </div>
+                      <div className="text-left shrink-0">
+                        <div className="text-[9px] font-bold text-slate-400">معرف المدرسة:</div>
+                        <div className="font-mono text-[10px] font-black text-indigo-900">{activeSchoolId}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-xs font-bold text-slate-700">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">المواد المسندة:</span>
+                        <span className="font-black text-slate-900">{prof.subjects.join(' ، ')}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">الصفوف والشعب:</span>
+                        <span className="font-black text-slate-900">
+                          {prof.classes.map(c => `${c.grade} (${c.section})`).join(' ، ')}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">الاختصاص:</span>
+                        <span className="text-slate-800">{prof.specialization || prof.jobTitle}</span>
+                      </div>
+                    </div>
+
+                    {/* PIN & Barcode Box */}
+                    <div className="mt-2 p-2.5 rounded-xl bg-slate-900 text-amber-400 flex items-center justify-between">
+                      <div>
+                        <div className="text-[9px] text-slate-400 font-bold">كود رفع الدرجات الموحد (PIN):</div>
+                        <div className="font-mono text-lg font-black tracking-widest text-amber-400">
+                          {prof.secretCode}
+                        </div>
+                      </div>
+                      <QrCodeSvg value={`TEACHER:${prof.secretCode}:${activeSchoolId}:${prof.teacherName}`} size={48} />
+                    </div>
+
+                    <div className="flex items-center justify-center pt-1">
+                      <BarcodeSvg value={prof.secretCode} height={28} />
+                    </div>
+
+                    <div className="text-[9px] text-slate-400 text-center font-bold">
+                      ⚠️ كود شخصي سري موحد معتمد لكافة مواد وشعب الأستاذ أعلاه.
+                    </div>
+                  </div>
+                ))}
             </div>
 
             {/* Modal Actions */}
@@ -922,99 +1840,6 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
                 className="px-5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
               >
                 إغلاق النافذة
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Edit or Add New Subject */}
-      {editingSubjectModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border-2 border-indigo-200 p-6 max-w-md w-full shadow-2xl space-y-4 text-right">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-base font-black text-slate-900">
-                  تعديل المادة أو إضافة مادة جديدة 📚
-                </h3>
-              </div>
-              <button
-                onClick={() => setEditingSubjectModal(null)}
-                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="text-xs text-slate-600 font-bold bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100">
-              الأستاذ: <strong className="text-indigo-950">{editingSubjectModal.teacherName || 'أستاذ المادة'}</strong>
-            </div>
-
-            <div className="space-y-2">
-              <label className="block text-xs font-black text-slate-800">
-                اسم المادة الدراسية:
-              </label>
-              <input
-                type="text"
-                list="approved-subjects-list"
-                value={subjectInputValue}
-                onChange={e => setSubjectInputValue(e.target.value)}
-                placeholder="اكتب اسم المادة (مثال: التربية الإسلامية، علم الأرض، ذكاء اصطناعي...)"
-                className="w-full p-2.5 rounded-xl border-2 border-slate-300 font-black text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
-                autoFocus
-              />
-              <datalist id="approved-subjects-list">
-                {STANDARD_APPROVED_SUBJECTS.map(sub => (
-                  <option key={sub} value={sub} />
-                ))}
-              </datalist>
-            </div>
-
-            {/* Live Normalization / Feedback Badge */}
-            {subjectInputValue.trim() && (() => {
-              const res = standardizeSubjectInput(subjectInputValue);
-              return res.isApproved ? (
-                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>
-                    مادة معتمدة وزارياً: تم الضبط التلقائي لإملاء الدروس المعتمدة: <strong>({res.standardized})</strong> ✓
-                  </span>
-                </div>
-              ) : (
-                <div className="p-3 rounded-2xl bg-purple-50 border border-purple-300 text-purple-900 text-xs font-bold flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
-                  <span>
-                    مادة دراسية جديدة (خارج الدروس المعتمدة): سيتم إضافتها وتثبيتها كما كُتبت: <strong>({res.standardized})</strong> ✨
-                  </span>
-                </div>
-              );
-            })()}
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setEditingSubjectModal(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!subjectInputValue.trim()) return;
-                  const res = standardizeSubjectInput(subjectInputValue);
-                  const updated = [...assignments];
-                  if (updated[editingSubjectModal.index]) {
-                    updated[editingSubjectModal.index].subject = res.standardized;
-                    updateAssignmentsState(updated);
-                  }
-                  setEditingSubjectModal(null);
-                }}
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md cursor-pointer flex items-center gap-1.5"
-              >
-                <Check className="w-4 h-4" />
-                <span>اعتماد وحفظ المادة ✓</span>
               </button>
             </div>
           </div>

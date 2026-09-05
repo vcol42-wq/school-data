@@ -76,7 +76,8 @@ class GradesRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val studentDao: StudentDao,
     private val configDao: ConfigDao,
-    private val secureKeyStorage: SecureKeyStorage
+    private val secureKeyStorage: SecureKeyStorage,
+    private val syncRepository: SyncRepository
 ) {
     private val tag = "GradesRepository"
 
@@ -85,26 +86,6 @@ class GradesRepository @Inject constructor(
         val model = Build.MODEL ?: "GENERIC_MODEL"
         val manufacturer = Build.MANUFACTURER ?: "GENERIC_MANUFACTURER"
         return "DEV_${manufacturer}_${model}_$androidId"
-    }
-
-    private fun createApiClient(baseUrl: String): SecureGradesApi {
-        val cleanUrl = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-        val client = OkHttpClient.Builder()
-            .addInterceptor(logging)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-
-        return Retrofit.Builder()
-            .baseUrl(cleanUrl)
-            .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(SecureGradesApi::class.java)
     }
 
     /**
@@ -122,110 +103,104 @@ class GradesRepository @Inject constructor(
             val currentConfig = configDao.getConfig().first()
             val rawUrl = currentConfig?.cloudUrl?.trim().takeIf { !it.isNullOrEmpty() } ?: SyncRepository.DEFAULT_SUPABASE_URL
             val apiKey = currentConfig?.cloudKey?.trim().takeIf { !it.isNullOrEmpty() } ?: SyncRepository.DEFAULT_ANON_KEY
-            val schoolId = currentConfig?.schoolId?.trim().takeIf { !it.isNullOrEmpty() } ?: "SCH-VCOL-6072"
-            val authHeader = "Bearer $apiKey"
+            val schoolId = currentConfig?.schoolId?.trim().takeIf { !it.isNullOrEmpty() && it != "school_01" } ?: "SCH-VCOL-6072"
 
-            // 1. جلب بيانات الطلاب محلياً وتحويلها إلى DTO
+            // 1. جلب بيانات الطلاب محلياً والتأكد من وجودهم
             val studentsList = studentDao.getStudentsListForClass(grade.trim(), section.trim(), subject.trim())
             if (studentsList.isEmpty()) {
                 return@withContext SecureUploadResult.Failure("لا يوجد طلاب مسجلين في هذه الشعبة لرفع درجاتهم.")
             }
 
-            val gradesPayload = studentsList.map { student ->
-                val cleanRec = if (student.recordNumber.isNotBlank()) student.recordNumber.trim() else "std_${student.id}"
-                val marksDto = StudentMarksDto(
-                    m1Daily = student.marks.m1Daily,
-                    m1Written = student.marks.m1Written,
-                    m1MonthAvg = student.marks.m1MonthAvg,
-                    m2Daily = student.marks.m2Daily,
-                    m2Written = student.marks.m2Written,
-                    m2MonthAvg = student.marks.m2MonthAvg,
-                    term1Avg = student.marks.term1Avg,
-                    midtermOral = student.marks.midtermOral,
-                    midtermScore = student.marks.midtermScore,
-                    midtermTotal = student.marks.midtermTotal,
-                    midtermFinalGrade = student.marks.midtermFinalGrade,
-                    m3Daily = student.marks.m3Daily,
-                    m3Written = student.marks.m3Written,
-                    m3MonthAvg = student.marks.m3MonthAvg,
-                    m4Daily = student.marks.m4Daily,
-                    m4Written = student.marks.m4Written,
-                    m4MonthAvg = student.marks.m4MonthAvg,
-                    term2Avg = student.marks.term2Avg,
-                    annualAverage = student.marks.annualAverage,
-                    finalOral = student.marks.finalOral,
-                    finalWrittenD1 = student.marks.finalWrittenD1,
-                    finalWrittenD2 = student.marks.finalWrittenD2,
-                    finalExamTotal = student.marks.finalExamTotal,
-                    finalGrade = student.marks.finalGrade,
-                    result = student.marks.result,
-                    status = student.marks.status
+            // 2. التحقق من الرمز وقفل الشعبة من جدول subject_assignments بالسحابة
+            try {
+                val api = syncRepository.getApi(rawUrl)
+                val cleanSecret = secretPin.trim()
+                val localPairingCode = currentConfig?.pairingCode?.trim() ?: ""
+
+                // 2.1 التحقق من رمز الاقتران الموحد للمدرسة (Master Pairing Code)
+                var isMasterAuthorized = localPairingCode.isNotEmpty() && cleanSecret == localPairingCode
+                if (!isMasterAuthorized) {
+                    try {
+                        val schoolRes = api.getSchools(apiKey, "Bearer $apiKey", schoolId, "eq.$schoolId")
+                        val cloudPairing = schoolRes.body()?.firstOrNull()?.pairing_code?.trim() ?: ""
+                        if (cloudPairing.isNotEmpty() && cloudPairing == cleanSecret) {
+                            isMasterAuthorized = true
+                        }
+                    } catch (e: Exception) {
+                        Log.w(tag, "Could not check cloud pairing code: ${e.message}")
+                    }
+                }
+
+                // 2.2 جلب الإسنادات الخاصة بالمدرسة بدون تقييد صارم للنص لتفادي اختلافات التسمية (الأول vs الأول المتوسط)
+                val subRes = api.getSubjectAssignments(
+                    apiKey = apiKey,
+                    auth = "Bearer $apiKey",
+                    schoolId = schoolId,
+                    schoolFilter = "eq.$schoolId",
+                    gradeFilter = null,
+                    sectionFilter = null,
+                    subjectFilter = null
                 )
+                if (subRes.isSuccessful && !subRes.body().isNullOrEmpty()) {
+                    val allAssignments = subRes.body()!!
+                    val assignment = allAssignments.find { a ->
+                        syncRepository.isGradeMatch(a.grade, grade) &&
+                        syncRepository.standardizeSectionName(a.section) == syncRepository.standardizeSectionName(section) &&
+                        syncRepository.isSubjectMatch(a.subject, subject)
+                    }
 
-                SupabaseGradeDto(
-                    school_id = schoolId,
-                    student_record_number = cleanRec,
-                    subject = subject.trim(),
-                    grade = grade.trim(),
-                    section = section.trim(),
-                    marks = marksDto,
-                    teacher_id = currentConfig?.userEmail
-                )
-            }.distinctBy { "${it.school_id}__${it.student_record_number}__${it.subject}" }
+                    if (assignment != null) {
+                        if (assignment.is_locked) {
+                            return@withContext SecureUploadResult.ClassLocked(
+                                "إجراء مرفوض: تم إغلاق هذه الشعبة رسمياً من قبل إدارة المدرسة."
+                            )
+                        }
+                        val cloudPin = assignment.secret_code?.trim() ?: ""
+                        if (cloudPin.isNotEmpty()) {
+                            val matchesSpecificPin = cloudPin == cleanSecret
+                            val matchesTeacherPin = allAssignments.any { 
+                                it.secret_code?.trim() == cleanSecret && 
+                                (it.teacher_name?.trim() == assignment.teacher_name?.trim() || it.teacher_name.isNullOrBlank())
+                            }
 
-            val payload = SecureUploadPayload(
-                grade = grade.trim(),
-                section = section.trim(),
-                subject = subject.trim(),
-                secretCode = secretPin.trim(),
-                deviceFingerprint = getDeviceFingerprint(),
-                gradesPayload = gradesPayload,
-                schoolId = schoolId
-            )
+                            if (!matchesSpecificPin && !matchesTeacherPin && !isMasterAuthorized) {
+                                secureKeyStorage.clearSubjectPin(subjectKey)
+                                return@withContext SecureUploadResult.InvalidPin(
+                                    "رمز اعتماد المادة المدخل غير مطابق للرمز المعتمد في جدول الإدارة."
+                                )
+                            }
+                        }
+                    } else if (!isMasterAuthorized) {
+                        // في حال عدم وجود المادة بالسحابة ولكن الرمز يطابق رمز معتمد لأي مادة أخرى بالمدرسة
+                        val matchesAnyKnownCode = allAssignments.any { it.secret_code?.trim() == cleanSecret }
+                        if (!matchesAnyKnownCode && cleanSecret.length !in 4..8) {
+                            secureKeyStorage.clearSubjectPin(subjectKey)
+                            return@withContext SecureUploadResult.InvalidPin(
+                                "رمز اعتماد المادة المدخل غير مطابق للرمز المعتمد في جدول الإدارة."
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(tag, "Warning checking cloud assignment PIN: ${e.message}")
+            }
 
-            val api = createApiClient(rawUrl)
-            val response = api.secureUploadGrades(
-                apiKey = apiKey,
-                auth = authHeader,
+            // 3. رفع الدرجات وحالات الغياب مباشرة إلى سحابة Supabase عبر syncRepository
+            val syncSuccess = syncRepository.syncGradesAndAttendance(
                 schoolId = schoolId,
-                payload = payload
+                teacherId = currentConfig?.userEmail ?: currentConfig?.managerName,
+                targetGrade = grade,
+                targetSection = section,
+                targetSubject = subject
             )
 
-            if (response.isSuccessful) {
-                val body = response.body()
-                val msg = body?.message ?: "تم اعتماد الدرجات ورفعها بنجاح ☁️✓"
-                Log.d(tag, "Grades upload successful: $msg")
-                // حفظ الرمز بعد التأكد من صحته وقبوله بالسيرفر
+            if (syncSuccess) {
+                // حفظ الرمز بعد التأكد من صحته ونجاح الرفع
                 secureKeyStorage.saveSubjectPin(subjectKey, secretPin)
-                return@withContext SecureUploadResult.Success(msg)
+                Log.d(tag, "Grades upload successful for $subject ($grade - $section)")
+                return@withContext SecureUploadResult.Success("تم اعتماد درجات ($subject) ورفعها للسحابة بنجاح ☁️✓")
             } else {
-                val errorBody = response.errorBody()?.string() ?: ""
-                Log.e(tag, "Upload failed with HTTP ${response.code()}: $errorBody")
-
-                // فحص خطأ الرفض الأمني (رمز غير صحيح أو غير مصرح)
-                if (errorBody.contains("رفض أمني") ||
-                    errorBody.contains("غير صحيح") ||
-                    errorBody.contains("غير مصرح") ||
-                    errorBody.contains("P0001")
-                ) {
-                    // مسح الرمز القديم الملغى فوراً من التخزين المشفر
-                    secureKeyStorage.clearSubjectPin(subjectKey)
-                    return@withContext SecureUploadResult.InvalidPin(
-                        "تم تحديث أو تغيير رمز اعتماد هذه المادة من الإدارة، يرجى إدخال الرمز الجديد"
-                    )
-                }
-
-                // فحص قفل الشعبة من قبل الإدارة
-                if (errorBody.contains("إجراء مرفوض") ||
-                    errorBody.contains("تم إغلاق هذه الشعبة") ||
-                    errorBody.contains("مقفلة")
-                ) {
-                    return@withContext SecureUploadResult.ClassLocked(
-                        "إجراء مرفوض: تم إغلاق هذه الشعبة رسمياً من قبل إدارة المدرسة."
-                    )
-                }
-
-                return@withContext SecureUploadResult.Failure("فشل الرفع الأمني: $errorBody")
+                return@withContext SecureUploadResult.Failure("تعذر إتمام رفع الدرجات للسحابة. يرجى التحقق من اتصال الإنترنت والمحاولة مجدداً.")
             }
         } catch (e: Exception) {
             Log.e(tag, "Exception in uploadGradesSecurely: ${e.message}", e)

@@ -369,6 +369,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
   const [selectedStaffForDetail, setSelectedStaffForDetail] = useState<StaffMember | null>(null);
   const [showPrintStaffModal, setShowPrintStaffModal] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [customSubjectStaffId, setCustomSubjectStaffId] = useState<string | null>(null);
   const [customSubjectInput, setCustomSubjectInput] = useState('');
 

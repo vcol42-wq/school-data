@@ -138,34 +138,41 @@ class SettingsViewModel @Inject constructor(
 
     fun verify(code: String) {
         viewModelScope.launch {
-            _connectionStatus.value = "جاري التحقق من رمز المدرسة وتنزيل البيانات..."
-            val result = schoolRepository.verifySchoolCode(code)
-            if (result.isSuccess) {
-                val current = configDao.getConfig().first() ?: SchoolConfig()
-                val schoolId = schoolRepository.getSchoolId() ?: "SCH-VCOL-6072"
-                val schoolName = schoolRepository.getSchoolName() ?: "مدرسة سحابية"
-                
-                configDao.saveConfig(
-                    current.copy(
-                        schoolId = schoolId,
-                        schoolName = schoolName,
-                        pairingCode = code,
-                        cloudUrl = com.school.system.data.SyncRepository.DEFAULT_SUPABASE_URL,
-                        cloudKey = com.school.system.data.SyncRepository.DEFAULT_ANON_KEY,
-                        isVerified = true,
-                        isActivated = true
-                    )
-                )
-
-                val syncSuccess = syncManager.fetchDataFromPrincipal()
-                if (syncSuccess) {
-                    _connectionStatus.value = "تم ربط المدرسة وتنزيل الشعب والطلاب بنجاح ✓"
-                } else {
-                    _connectionStatus.value = "تم ربط المدرسة بنجاح ✓ (جاهز للمزامنة)"
-                }
+            _connectionStatus.value = "جاري التحقق والاتصال بالمدرسة السحابية..."
+            val ok = syncManager.connectAndPairQr(code)
+            if (ok) {
+                _connectionStatus.value = "تم ربط المدرسة وتنزيل الشعب والطلاب بنجاح ✓"
                 checkSupabaseConnection()
             } else {
-                _connectionStatus.value = "فشل الربط: ${result.exceptionOrNull()?.message}"
+                // Fallback to legacy school verification if simple code
+                val result = schoolRepository.verifySchoolCode(code)
+                if (result.isSuccess) {
+                    val current = configDao.getConfig().first() ?: SchoolConfig()
+                    val schoolId = schoolRepository.getSchoolId() ?: "SCH-KAB2-6884"
+                    val schoolName = schoolRepository.getSchoolName() ?: "مدرسة سحابية"
+                    
+                    configDao.saveConfig(
+                        current.copy(
+                            schoolId = schoolId,
+                            schoolName = schoolName,
+                            pairingCode = code,
+                            cloudUrl = com.school.system.data.SyncRepository.DEFAULT_SUPABASE_URL,
+                            cloudKey = com.school.system.data.SyncRepository.DEFAULT_ANON_KEY,
+                            isVerified = true,
+                            isActivated = true
+                        )
+                    )
+
+                    val syncSuccess = syncManager.fetchDataFromPrincipal()
+                    if (syncSuccess) {
+                        _connectionStatus.value = "تم ربط المدرسة وتنزيل الشعب والطلاب بنجاح ✓"
+                    } else {
+                        _connectionStatus.value = "تم ربط المدرسة بنجاح ✓ (جاهز للمزامنة)"
+                    }
+                    checkSupabaseConnection()
+                } else {
+                    _connectionStatus.value = "فشل الربط: ${result.exceptionOrNull()?.message ?: "تعذر التحقق من الكود"}"
+                }
             }
         }
     }

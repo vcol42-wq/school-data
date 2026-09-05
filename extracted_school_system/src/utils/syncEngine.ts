@@ -417,6 +417,106 @@ export async function exportSchoolDataWithProgress(
       emit('step_assignments', 6, 'تصدير إسناد وتوزيع الحصص للمدرسين', 88, 'لا توجد إسنادات جديدة', 'success', 0);
     }
 
+    // 6.1 Sync Unified Teacher Codes & Subject Assignments to 'subject_assignments'
+    try {
+      let subAssignmentsToUpsert: any[] = [];
+      const savedAssStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_subject_assignments_${schoolId}`) : null;
+      const savedProfilesStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_teacher_profiles_${schoolId}`) : null;
+
+      if (savedAssStr) {
+        try {
+          const parsed = JSON.parse(savedAssStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            subAssignmentsToUpsert = parsed.map(a => ({
+              school_id: schoolId,
+              grade: standardizeGradeName(a.grade || ''),
+              section: standardizeSectionName(a.section || ''),
+              subject: standardizeSubjectName(a.subject || ''),
+              secret_code: (a.secret_code || '').trim(),
+              is_locked: !!a.is_locked,
+              teacher_name: (a.teacher_name || '').trim() || null,
+              last_updated_at: new Date().toISOString()
+            }));
+          }
+        } catch (e) {
+          console.warn('Error parsing diyala_subject_assignments:', e);
+        }
+      }
+
+      if (subAssignmentsToUpsert.length === 0 && savedProfilesStr) {
+        try {
+          const profiles: any[] = JSON.parse(savedProfilesStr);
+          profiles.forEach(prof => {
+            if (prof.isExempt) return;
+            const subjects = prof.subjects && prof.subjects.length > 0 ? prof.subjects : [prof.specialization || 'عام'];
+            const classes = prof.classes && prof.classes.length > 0 ? prof.classes : [{ grade: 'الأول المتوسط', section: 'أ' }];
+            subjects.forEach((subj: string) => {
+              classes.forEach((cls: any) => {
+                subAssignmentsToUpsert.push({
+                  school_id: schoolId,
+                  grade: standardizeGradeName(cls.grade || ''),
+                  section: standardizeSectionName(cls.section || ''),
+                  subject: standardizeSubjectName(subj || ''),
+                  secret_code: (prof.secretCode || '').trim() || pairingCode.slice(0, 4) || '1234',
+                  is_locked: !!prof.isLocked,
+                  teacher_name: (prof.teacherName || '').trim() || null,
+                  last_updated_at: new Date().toISOString()
+                });
+              });
+            });
+          });
+        } catch (e) {
+          console.warn('Error building subject assignments from profiles:', e);
+        }
+      }
+
+      // Fallback: build from assignmentMap and staff if no custom codes were set
+      if (subAssignmentsToUpsert.length === 0 && assignmentsPayload.length > 0) {
+        subAssignmentsToUpsert = assignmentsPayload.map(a => {
+          const staffObj = staff.find(s => s.id === a.teacher_id);
+          const tName = staffObj ? `${staffObj.firstName} ${staffObj.secondName || ''}`.trim() : null;
+          return {
+            school_id: schoolId,
+            grade: standardizeGradeName(a.class_name),
+            section: standardizeSectionName(a.section),
+            subject: standardizeSubjectName(a.subject_name),
+            secret_code: pairingCode.slice(0, 4) || '1234',
+            is_locked: false,
+            teacher_name: tName,
+            last_updated_at: new Date().toISOString()
+          };
+        });
+      }
+
+      if (subAssignmentsToUpsert.length > 0) {
+        // Remove old records for this school to clean legacy/conflicting random codes
+        await client.from('subject_assignments').delete().eq('school_id', schoolId);
+        await client.from('subject_assignments').upsert(subAssignmentsToUpsert, {
+          onConflict: 'school_id,grade,section,subject'
+        });
+      }
+
+      // Also sync supervisor configuration to schools.config
+      const supervisorProfileStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_profile_${schoolId}`) : null;
+      if (supervisorProfileStr) {
+        try {
+          const supProfile = JSON.parse(supervisorProfileStr);
+          await client.from('schools').update({
+            config: {
+              supervisor_code: supProfile.code,
+              supervisor_name: supProfile.name,
+              supervisor_title: supProfile.title,
+              updated_at: new Date().toISOString()
+            }
+          }).eq('id', schoolId);
+        } catch (supErr) {
+          console.warn('Could not update supervisor in school config:', supErr);
+        }
+      }
+    } catch (subErr) {
+      console.warn('Could not sync subject_assignments table in cloud sync:', subErr);
+    }
+
     // ----------------------------------------------------
     // Step 7: Export Students Roster (Ensuring Complete full_name & Alphabetical Order)
     // ----------------------------------------------------
