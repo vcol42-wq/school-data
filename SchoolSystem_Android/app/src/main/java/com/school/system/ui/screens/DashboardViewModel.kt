@@ -6,6 +6,7 @@ import com.school.system.data.SyncManager
 import com.school.system.data.SyncRepository
 import com.school.system.data.dao.ClassPackageDao
 import com.school.system.data.dao.ConfigDao
+import com.school.system.data.dao.StudentDao
 import com.school.system.data.model.ClassPackage
 import com.school.system.data.model.SchoolConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,7 +21,8 @@ class DashboardViewModel @Inject constructor(
     private val packageDao: ClassPackageDao,
     val syncManager: SyncManager,
     private val configDao: ConfigDao,
-    val syncRepository: SyncRepository
+    val syncRepository: SyncRepository,
+    private val studentDao: StudentDao
 ) : ViewModel() {
 
     val packages = packageDao.getAllPackages()
@@ -52,12 +54,40 @@ class DashboardViewModel @Inject constructor(
 
     fun addPackage(grade: String, section: String, subject: String, icon: String) {
         viewModelScope.launch {
-            val success = syncManager.downloadSimpleRosterForClass(grade, section, subject)
+            val standardized = syncRepository.standardizeSubjectName(subject)
+            val success = syncManager.downloadSimpleRosterForClass(grade, section, standardized)
             if (!success) {
                 packageDao.insertPackage(
-                    ClassPackage(grade = grade, section = section, subject = subject, iconName = icon)
+                    ClassPackage(grade = grade, section = section, subject = standardized, iconName = icon)
                 )
             }
+            syncManager.propagateStudents()
+        }
+    }
+
+    fun updatePackage(pkg: ClassPackage, newGrade: String, newSection: String, newSubject: String) {
+        viewModelScope.launch {
+            val oldSubject = pkg.subject
+            val oldGrade = pkg.grade
+            val oldSection = pkg.section
+            val cleanGrade = newGrade.trim()
+            val cleanSection = newSection.trim()
+            val cleanSubject = syncRepository.standardizeSubjectName(newSubject.trim())
+
+            val updated = pkg.copy(
+                grade = cleanGrade,
+                section = cleanSection,
+                subject = cleanSubject
+            )
+            packageDao.updatePackage(updated)
+
+            // Update linked students in Room database so grades/roster remain connected
+            studentDao.updateSubjectForClass(
+                grade = oldGrade,
+                section = oldSection,
+                oldSubject = oldSubject,
+                newSubject = cleanSubject
+            )
             syncManager.propagateStudents()
         }
     }

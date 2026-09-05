@@ -707,7 +707,7 @@ fun GeneralDayScheduleGrid(
                                                 text = item.subject.ifEmpty { "درس مقرر" },
                                                 fontWeight = FontWeight.Black,
                                                 fontSize = 11.sp,
-                                                color = Color(0xFF1E3A8A),
+                                                color = if (currentTheme.isDark) Color(0xFF93C5FD) else Color(0xFF1E3A8A),
                                                 maxLines = 1,
                                                 textAlign = TextAlign.Center
                                             )
@@ -716,7 +716,7 @@ fun GeneralDayScheduleGrid(
                                                     text = item.teacherName,
                                                     fontWeight = FontWeight.Bold,
                                                     fontSize = 9.5.sp,
-                                                    color = Color(0xFF64748B),
+                                                    color = if (currentTheme.isDark) Color(0xFFCBD5E1) else Color(0xFF64748B),
                                                     maxLines = 1,
                                                     textAlign = TextAlign.Center
                                                 )
@@ -788,7 +788,7 @@ fun ScheduleHeaderCellWithTiming(lessonTitle: String, timing: String, width: Dp,
                 text = timing,
                 fontWeight = FontWeight.Bold,
                 fontSize = 9.sp,
-                color = Color(0xFFB45309),
+                color = if (currentTheme.isDark) Color(0xFFFBBF24) else Color(0xFFB45309),
                 textAlign = TextAlign.Center
             )
         }
@@ -860,7 +860,7 @@ fun PersonalLessonCardRtl(lesson: TeacherLessonInfo) {
                     }
 
                     Surface(
-                        color = Color(0xFFFEF3C7),
+                        color = if (currentTheme.isDark) Color(0xFF78350F) else Color(0xFFFEF3C7),
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Row(
@@ -870,13 +870,13 @@ fun PersonalLessonCardRtl(lesson: TeacherLessonInfo) {
                             Icon(
                                 Icons.Default.Schedule,
                                 contentDescription = null,
-                                tint = Color(0xFFB45309),
+                                tint = if (currentTheme.isDark) Color(0xFFFDE68A) else Color(0xFFB45309),
                                 modifier = Modifier.size(11.dp)
                             )
                             Spacer(Modifier.width(3.dp))
                             Text(
                                 text = timing,
-                                color = Color(0xFFB45309),
+                                color = if (currentTheme.isDark) Color(0xFFFDE68A) else Color(0xFFB45309),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp
                             )
@@ -901,7 +901,7 @@ fun PersonalLessonCardRtl(lesson: TeacherLessonInfo) {
                     text = lesson.subject.ifEmpty { "درس مقرر" },
                     fontWeight = FontWeight.Black,
                     fontSize = 15.sp,
-                    color = Color(0xFF059669)
+                    color = if (currentTheme.isDark) Color(0xFF34D399) else Color(0xFF059669)
                 )
                 if (lesson.teacherName.isNotEmpty()) {
                     Text(

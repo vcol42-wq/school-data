@@ -24,9 +24,12 @@ import {
   Layers,
   Save,
   FileSpreadsheet,
-  Shuffle
+  Shuffle,
+  Edit3,
+  X
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
+import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
 
 export interface SubjectAssignmentRecord {
   id?: number;
@@ -92,6 +95,26 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
   const [showPinMap, setShowPinMap] = useState<{ [key: string]: boolean }>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Subject Edit & Add New Modal State
+  const [editingSubjectModal, setEditingSubjectModal] = useState<{
+    index: number;
+    currentSubject: string;
+    teacherName: string;
+  } | null>(null);
+  const [subjectInputValue, setSubjectInputValue] = useState('');
+
+  // Extract any custom subjects outside standard list currently used
+  const customSubjectsList = useMemo(() => {
+    const custom = new Set<string>();
+    assignments.forEach(a => {
+      const std = standardizeSubjectInput(a.subject);
+      if (!std.isApproved && a.subject && a.subject !== 'عام') {
+        custom.add(a.subject);
+      }
+    });
+    return Array.from(custom);
+  }, [assignments]);
 
   // Quick helper to generate a 4 to 6 digit secure code
   const generateRandomPin = () => {
@@ -638,9 +661,57 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
 
                       {/* 2. المادة التي يدرسها */}
                       <td className="p-4">
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-black">
-                          <BookOpen className="w-3.5 h-3.5 text-amber-600" />
-                          <span>{row.subject}</span>
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={row.subject}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '__custom_new__') {
+                                setEditingSubjectModal({
+                                  index: idx,
+                                  currentSubject: row.subject,
+                                  teacherName: row.teacher_name || ''
+                                });
+                                setSubjectInputValue(row.subject);
+                              } else {
+                                const updated = [...assignments];
+                                updated[idx].subject = val;
+                                updateAssignmentsState(updated);
+                              }
+                            }}
+                            className="font-black text-slate-900 bg-amber-50/80 hover:bg-amber-100 border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer max-w-[170px]"
+                            title="تعديل المادة أو اختيار مادة معتمدة أو مضافة"
+                          >
+                            <optgroup label="الدروس المعتمدة المثبتة">
+                              {STANDARD_APPROVED_SUBJECTS.map(sub => (
+                                <option key={sub} value={sub}>{sub}</option>
+                              ))}
+                            </optgroup>
+                            {customSubjectsList.filter(s => !STANDARD_APPROVED_SUBJECTS.includes(s)).length > 0 && (
+                              <optgroup label="المواد الجديدة المستحدثة">
+                                {customSubjectsList.filter(s => !STANDARD_APPROVED_SUBJECTS.includes(s)).map(sub => (
+                                  <option key={sub} value={sub}>{sub} ✨</option>
+                                ))}
+                              </optgroup>
+                            )}
+                            <option value="__custom_new__">➕ إضافة / كتابة مادة جديدة...</option>
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingSubjectModal({
+                                index: idx,
+                                currentSubject: row.subject,
+                                teacherName: row.teacher_name || ''
+                              });
+                              setSubjectInputValue(row.subject);
+                            }}
+                            title="تعديل أو كتابة اسم مادة جديدة"
+                            className="p-1.5 rounded-lg text-amber-800 hover:bg-amber-200/70 transition-colors cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </td>
 
@@ -851,6 +922,99 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
                 className="px-5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
               >
                 إغلاق النافذة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit or Add New Subject */}
+      {editingSubjectModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-indigo-200 p-6 max-w-md w-full shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  تعديل المادة أو إضافة مادة جديدة 📚
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingSubjectModal(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 font-bold bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100">
+              الأستاذ: <strong className="text-indigo-950">{editingSubjectModal.teacherName || 'أستاذ المادة'}</strong>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-slate-800">
+                اسم المادة الدراسية:
+              </label>
+              <input
+                type="text"
+                list="approved-subjects-list"
+                value={subjectInputValue}
+                onChange={e => setSubjectInputValue(e.target.value)}
+                placeholder="اكتب اسم المادة (مثال: التربية الإسلامية، علم الأرض، ذكاء اصطناعي...)"
+                className="w-full p-2.5 rounded-xl border-2 border-slate-300 font-black text-sm text-slate-900 focus:border-indigo-600 focus:outline-none"
+                autoFocus
+              />
+              <datalist id="approved-subjects-list">
+                {STANDARD_APPROVED_SUBJECTS.map(sub => (
+                  <option key={sub} value={sub} />
+                ))}
+              </datalist>
+            </div>
+
+            {/* Live Normalization / Feedback Badge */}
+            {subjectInputValue.trim() && (() => {
+              const res = standardizeSubjectInput(subjectInputValue);
+              return res.isApproved ? (
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    مادة معتمدة وزارياً: تم الضبط التلقائي لإملاء الدروس المعتمدة: <strong>({res.standardized})</strong> ✓
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 rounded-2xl bg-purple-50 border border-purple-300 text-purple-900 text-xs font-bold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>
+                    مادة دراسية جديدة (خارج الدروس المعتمدة): سيتم إضافتها وتثبيتها كما كُتبت: <strong>({res.standardized})</strong> ✨
+                  </span>
+                </div>
+              );
+            })()}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setEditingSubjectModal(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!subjectInputValue.trim()) return;
+                  const res = standardizeSubjectInput(subjectInputValue);
+                  const updated = [...assignments];
+                  if (updated[editingSubjectModal.index]) {
+                    updated[editingSubjectModal.index].subject = res.standardized;
+                    updateAssignmentsState(updated);
+                  }
+                  setEditingSubjectModal(null);
+                }}
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>اعتماد وحفظ المادة ✓</span>
               </button>
             </div>
           </div>

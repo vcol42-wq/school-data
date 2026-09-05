@@ -36,6 +36,9 @@ interface StudentDao {
     @Query("UPDATE students SET fullName = :newName WHERE grade = :grade AND section = :section AND recordNumber = :recordNumber")
     suspend fun updateStudentNameForAllSubjects(grade: String, section: String, recordNumber: String, newName: String)
 
+    @Query("UPDATE students SET subject = :newSubject WHERE grade = :grade AND section = :section AND subject = :oldSubject")
+    suspend fun updateSubjectForClass(grade: String, section: String, oldSubject: String, newSubject: String)
+
     @Query("SELECT COUNT(DISTINCT recordNumber) FROM students")
     suspend fun getUniqueStudentsCount(): Int
 

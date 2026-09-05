@@ -46,6 +46,7 @@ fun DashboardScreen(
     var showEditTeacherNameDialog by remember { mutableStateOf(false) }
     var packageToDelete by remember { mutableStateOf<ClassPackage?>(null) }
     var packageToSetup by remember { mutableStateOf<ClassPackage?>(null) }
+    var packageToEdit by remember { mutableStateOf<ClassPackage?>(null) }
 
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
@@ -321,6 +322,9 @@ fun DashboardScreen(
                                     onNavigateToGrades(pkg.grade, pkg.section, pkg.subject)
                                 }
                             },
+                            onEdit = {
+                                packageToEdit = pkg
+                            },
                             onDelete = {
                                 packageToDelete = pkg
                             }
@@ -376,7 +380,8 @@ fun DashboardScreen(
             SummonSectionDialog(
                 onDismiss = { showSummonDialog = false },
                 onConfirm = { grade, section, subject ->
-                    viewModel.summonSectionDetailed(grade, section, subject) { result ->
+                    val standardized = viewModel.syncRepository.standardizeSubjectName(subject)
+                    viewModel.summonSectionDetailed(grade, section, standardized) { result ->
                         Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                     }
                     showSummonDialog = false
@@ -384,11 +389,27 @@ fun DashboardScreen(
             )
         }
 
-        // Dialog 3: حوار إعداد المادة للشعب غير المعينة
+        // Dialog 3: حوار تعديل المادة والشعبة للسجل المحدد ✎
+        if (packageToEdit != null) {
+            val targetPkg = packageToEdit!!
+            EditClassSubjectDialog(
+                pkg = targetPkg,
+                syncRepository = viewModel.syncRepository,
+                onDismiss = { packageToEdit = null },
+                onConfirm = { newGrade, newSection, newSubject ->
+                    viewModel.updatePackage(targetPkg, newGrade, newSection, newSubject)
+                    packageToEdit = null
+                    Toast.makeText(context, "تم تعديل المادة والشعبة بنجاح ✓", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+
+        // Dialog 4: حوار إعداد المادة للشعب غير المعينة
         if (packageToSetup != null) {
             val targetPkg = packageToSetup!!
             SetupClassSubjectDialog(
                 pkg = targetPkg,
+                syncRepository = viewModel.syncRepository,
                 onDismiss = { packageToSetup = null },
                 onConfirm = { updatedSubject, teacherName ->
                     viewModel.addPackage(targetPkg.grade, targetPkg.section, updatedSubject, "")
@@ -508,6 +529,7 @@ fun CloudBadge(
 fun RegisterCardItem(
     pkg: ClassPackage,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
@@ -571,23 +593,50 @@ fun RegisterCardItem(
                 }
             }
 
-            // Right: Delete Button 🗑️
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(36.dp)
+            // Right: Actions (Edit ✎ & Delete 🗑️)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Surface(
-                    color = Color(0xFFFEE2E2),
-                    shape = CircleShape,
-                    modifier = Modifier.size(30.dp)
+                // زر التعديل ✎
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(36.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "حذف السجل",
-                            tint = Color(0xFFDC2626),
-                            modifier = Modifier.size(16.dp)
-                        )
+                    Surface(
+                        color = Color(0xFFEFF6FF),
+                        shape = CircleShape,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "تعديل المادة والشعبة",
+                                tint = Color(0xFF2563EB),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                // زر الحذف 🗑️
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Surface(
+                        color = Color(0xFFFEE2E2),
+                        shape = CircleShape,
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "حذف السجل",
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -967,6 +1016,7 @@ fun DropdownSelector(label: String, options: List<String>, selected: String, onS
 @Composable
 fun SetupClassSubjectDialog(
     pkg: ClassPackage,
+    syncRepository: com.school.system.data.SyncRepository,
     onDismiss: () -> Unit,
     onConfirm: (subject: String, teacherName: String) -> Unit
 ) {
@@ -975,10 +1025,18 @@ fun SetupClassSubjectDialog(
     var teacherName by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
     var subject by remember { mutableStateOf(if (pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر") "" else pkg.subject) }
 
+    val standardized = remember(subject) {
+        syncRepository.standardizeSubjectName(subject)
+    }
+    val isApproved = remember(subject) {
+        syncRepository.isApprovedStandardSubject(standardized)
+    }
+
     val quickSubjects = listOf(
-        "اللغة العربية", "الرياضيات", "التربية الإسلامية", "اللغة الإنكليزية",
+        "التربية الإسلامية", "اللغة العربية", "اللغة الإنكليزية", "الرياضيات",
         "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
-        "الحاسوب", "التربية الفنية", "التربية الرياضية", "النشيد والموسيقى", "الفرنسية"
+        "الحاسوب", "التربية الرياضية", "التربية الفنية", "التربية الأخلاقية",
+        "التاريخ", "الجغرافيا", "الاقتصاد", "الفلسفة وعلم النفس", "اللغة الفرنسية"
     )
 
     AlertDialog(
@@ -1001,8 +1059,10 @@ fun SetupClassSubjectDialog(
         },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
                     value = teacherName,
@@ -1021,11 +1081,74 @@ fun SetupClassSubjectDialog(
                     value = subject,
                     onValueChange = { subject = it },
                     label = { Text("المادة التي تدرّسها لهذه الشعبة") },
-                    placeholder = { Text("اكتب اسم المادة (مثال: اللغة العربية)") },
+                    placeholder = { Text("اكتب اسم المادة المقررة أو مادة جديدة") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
+
+                // Live Indicator Badge
+                if (subject.isNotBlank()) {
+                    if (isApproved) {
+                        Surface(
+                            color = Color(0xFFF0FDF4),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "مادة معتمدة وزارياً (يعاد للإملاء الرسمي)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF15803D)
+                                    )
+                                    Text(
+                                        text = standardized,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF166534)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            color = Color(0xFFFAF5FF),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "مادة دراسية جديدة / مخصصة (مسموح بها خارج المعتمد)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF7E22CE)
+                                    )
+                                    Text(
+                                        text = standardized,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF581C87)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Text(
                     text = "اختيار سريع للمادة (انقر للاختيار):",
@@ -1040,20 +1163,21 @@ fun SetupClassSubjectDialog(
                     contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp)
                 ) {
                     items(quickSubjects) { s ->
+                        val isSelected = standardized == s
                         Surface(
-                            color = if (subject == s) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                            color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
                             shape = RoundedCornerShape(10.dp),
                             border = androidx.compose.foundation.BorderStroke(
                                 1.dp, 
-                                if (subject == s) Color(0xFF1D4ED8) else Color(0xFFCBD5E1)
+                                if (isSelected) Color(0xFF1D4ED8) else Color(0xFFCBD5E1)
                             ),
                             modifier = Modifier.clickable { subject = s }
                         ) {
                             Text(
                                 text = s,
-                                color = if (subject == s) Color.White else Color(0xFF1E293B),
+                                color = if (isSelected) Color.White else Color(0xFF1E293B),
                                 fontSize = 12.sp,
-                                fontWeight = if (subject == s) FontWeight.Black else FontWeight.Medium,
+                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                             )
                         }
@@ -1064,8 +1188,8 @@ fun SetupClassSubjectDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (subject.isNotBlank()) {
-                        onConfirm(subject.trim(), teacherName.trim())
+                    if (standardized.isNotBlank()) {
+                        onConfirm(standardized, teacherName.trim())
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
@@ -1078,6 +1202,209 @@ fun SetupClassSubjectDialog(
             TextButton(onClick = onDismiss) {
                 Text("إلغاء")
             }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditClassSubjectDialog(
+    pkg: ClassPackage,
+    syncRepository: com.school.system.data.SyncRepository,
+    onDismiss: () -> Unit,
+    onConfirm: (grade: String, section: String, subject: String) -> Unit
+) {
+    var grade by remember { mutableStateOf(pkg.grade) }
+    var section by remember { mutableStateOf(pkg.section) }
+    var subject by remember { mutableStateOf(pkg.subject) }
+
+    val standardized = remember(subject) {
+        syncRepository.standardizeSubjectName(subject)
+    }
+    val isApproved = remember(subject) {
+        syncRepository.isApprovedStandardSubject(standardized)
+    }
+
+    val quickSubjects = listOf(
+        "التربية الإسلامية", "اللغة العربية", "اللغة الإنكليزية", "الرياضيات",
+        "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
+        "الحاسوب", "التربية الرياضية", "التربية الفنية", "التربية الأخلاقية",
+        "التاريخ", "الجغرافيا", "الاقتصاد", "الفلسفة وعلم النفس", "اللغة الفرنسية"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Color(0xFFEFF6FF),
+                    shape = CircleShape,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp))
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text("تعديل بيانات السجل والمادة ✎", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFF1E3A8A))
+                    Text("الشعبة الحالية: ${pkg.grade} (${pkg.section})", fontSize = 11.sp, color = Color.Gray)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // 1. Grade & Section
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = grade,
+                        onValueChange = { grade = it },
+                        label = { Text("الصف الدراسي") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1.3f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                    OutlinedTextField(
+                        value = section,
+                        onValueChange = { section = it },
+                        label = { Text("الشعبة") },
+                        singleLine = true,
+                        modifier = Modifier.weight(0.7f),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                // 2. Subject Name Input
+                OutlinedTextField(
+                    value = subject,
+                    onValueChange = { subject = it },
+                    label = { Text("المادة التي يدرّسها") },
+                    placeholder = { Text("اكتب اسم المادة المقررة أو مادة جديدة") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                // 3. Live Standardization Indicator Badge
+                if (subject.isNotBlank()) {
+                    if (isApproved) {
+                        Surface(
+                            color = Color(0xFFF0FDF4),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "مادة معتمدة وزارياً (تم الضبط للإملاء الرسمي)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF15803D)
+                                    )
+                                    Text(
+                                        text = standardized,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF166534)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Surface(
+                            color = Color(0xFFFAF5FF),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF9333EA), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = "مادة دراسية جديدة / مخصصة (مسموح بها خارج المعتمد)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF7E22CE)
+                                    )
+                                    Text(
+                                        text = standardized,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF581C87)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Quick Selection Chips
+                Text(
+                    text = "اختيار سريع من المواد المعتمدة:",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF475569)
+                )
+                androidx.compose.foundation.lazy.LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(quickSubjects) { s ->
+                        val isSelected = standardized == s
+                        Surface(
+                            color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                if (isSelected) Color(0xFF1D4ED8) else Color(0xFFCBD5E1)
+                            ),
+                            modifier = Modifier.clickable { subject = s }
+                        ) {
+                            Text(
+                                text = s,
+                                color = if (isSelected) Color.White else Color(0xFF1E293B),
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (grade.isNotBlank() && section.isNotBlank() && standardized.isNotBlank()) {
+                        onConfirm(grade.trim(), section.trim(), standardized)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("حفظ التعديلات ✓", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إلغاء") }
         }
     )
 }

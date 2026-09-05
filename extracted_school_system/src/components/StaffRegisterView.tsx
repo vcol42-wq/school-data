@@ -28,6 +28,7 @@ import {
   Edit3,
   Save
 } from 'lucide-react';
+import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
 
 interface StaffRegisterViewProps {
   staffList: StaffMember[];
@@ -367,8 +368,9 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
 
   const [selectedStaffForDetail, setSelectedStaffForDetail] = useState<StaffMember | null>(null);
   const [showPrintStaffModal, setShowPrintStaffModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
+  const [customSubjectStaffId, setCustomSubjectStaffId] = useState<string | null>(null);
+  const [customSubjectInput, setCustomSubjectInput] = useState('');
 
   // Filter Logic
   const filteredStaff = staffList.filter(s => {
@@ -590,8 +592,15 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
   };
 
   const handleActualSubjectChange = (staffId: string, newSubject: string) => {
+    if (newSubject === '__custom_new__') {
+      const stf = staffList.find(s => s.id === staffId);
+      setCustomSubjectStaffId(staffId);
+      setCustomSubjectInput(stf?.actualSubjectTaught || '');
+      return;
+    }
+    const res = standardizeSubjectInput(newSubject);
     setStaffList(prev => {
-      const updated = prev.map(s => s.id === staffId ? { ...s, actualSubjectTaught: newSubject } : s);
+      const updated = prev.map(s => s.id === staffId ? { ...s, actualSubjectTaught: res.standardized } : s);
       localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
       return updated;
     });
@@ -902,10 +911,30 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                             }`}
                             title={isSubjectMismatch ? 'تنبيه: المادة المدرّسة تختلف عن الاختصاص الأصلي' : 'المادة المسندة للمدرس'}
                           >
-                            {ALL_SUBJECTS.map(subj => (
-                              <option key={subj} value={subj}>{subj}</option>
-                            ))}
+                            <optgroup label="الدروس الوزارية المعتمدة">
+                              {STANDARD_APPROVED_SUBJECTS.map(subj => (
+                                <option key={subj} value={subj}>{subj}</option>
+                              ))}
+                            </optgroup>
+                            <option value="مفرغ إدارياً / إدارة">مفرغ إدارياً / إدارة</option>
+                            {!STANDARD_APPROVED_SUBJECTS.includes(actualSubject) && actualSubject !== 'مفرغ إدارياً / إدارة' && (
+                              <optgroup label="مادة جديدة مستحدثة">
+                                <option value={actualSubject}>{actualSubject} ✨</option>
+                              </optgroup>
+                            )}
+                            <option value="__custom_new__">➕ إضافة / كتابة مادة جديدة...</option>
                           </select>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomSubjectStaffId(staff.id);
+                              setCustomSubjectInput(actualSubject);
+                            }}
+                            title="تعديل أو كتابة اسم مادة جديدة"
+                            className="p-1 rounded text-sky-700 hover:bg-sky-100 transition-colors cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
                           {isSubjectMismatch && (
                             <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1 py-0.5 rounded border border-amber-300" title="مخالف للاختصاص">
                               مغاير
@@ -1155,6 +1184,26 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                   <div>
                     <label className="text-slate-800 font-bold block mb-1">الاختصاص الدقيق:</label>
                     <input type="text" value={selectedStaffForDetail.specialization || ''} onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, specialization: e.target.value })} className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" />
+                  </div>
+                  <div>
+                    <label className="text-slate-800 font-bold block mb-1">المادة التي يدرسها فعلياً:</label>
+                    <input 
+                      type="text" 
+                      list="staff-modal-approved-subjects"
+                      value={selectedStaffForDetail.actualSubjectTaught || ''} 
+                      onChange={e => setSelectedStaffForDetail({ ...selectedStaffForDetail, actualSubjectTaught: e.target.value })}
+                      onBlur={e => {
+                        const res = standardizeSubjectInput(e.target.value);
+                        setSelectedStaffForDetail({ ...selectedStaffForDetail, actualSubjectTaught: res.standardized });
+                      }}
+                      placeholder="اختر أو اكتب اسم المادة..."
+                      className="w-full p-2 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-black" 
+                    />
+                    <datalist id="staff-modal-approved-subjects">
+                      {STANDARD_APPROVED_SUBJECTS.map(s => (
+                        <option key={s} value={s} />
+                      ))}
+                    </datalist>
                   </div>
                   <div>
                     <label className="text-slate-800 font-bold block mb-1">الموقف / حالة الملاك:</label>
@@ -1493,6 +1542,95 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add or Edit Custom Subject for Staff */}
+      {customSubjectStaffId && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border-2 border-sky-300 p-6 max-w-md w-full shadow-2xl space-y-4 text-right">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-sky-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  تعديل أو إضافة مادة تدريس للأستاذ 📚
+                </h3>
+              </div>
+              <button
+                onClick={() => setCustomSubjectStaffId(null)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-black text-slate-800">
+                اسم المادة الدراسية:
+              </label>
+              <input
+                type="text"
+                list="staff-custom-approved-subjects"
+                value={customSubjectInput}
+                onChange={e => setCustomSubjectInput(e.target.value)}
+                placeholder="اكتب اسم المادة (مثال: التربية الإسلامية، علم الأرض، ذكاء اصطناعي...)"
+                className="w-full p-2.5 rounded-xl border-2 border-slate-300 font-black text-sm text-slate-900 focus:border-sky-600 focus:outline-none"
+                autoFocus
+              />
+              <datalist id="staff-custom-approved-subjects">
+                {STANDARD_APPROVED_SUBJECTS.map(sub => (
+                  <option key={sub} value={sub} />
+                ))}
+              </datalist>
+            </div>
+
+            {/* Live Normalization / Feedback Badge */}
+            {customSubjectInput.trim() && (() => {
+              const res = standardizeSubjectInput(customSubjectInput);
+              return res.isApproved ? (
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    مادة معتمدة وزارياً: تم الضبط التلقائي لإملاء الدروس المعتمدة: <strong>({res.standardized})</strong> ✓
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 rounded-2xl bg-purple-50 border border-purple-300 text-purple-900 text-xs font-bold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>
+                    مادة دراسية جديدة (خارج الدروس المعتمدة): سيتم إضافتها وتثبيتها كما كُتبت: <strong>({res.standardized})</strong> ✨
+                  </span>
+                </div>
+              );
+            })()}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={() => setCustomSubjectStaffId(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!customSubjectInput.trim()) return;
+                  const res = standardizeSubjectInput(customSubjectInput);
+                  setStaffList(prev => {
+                    const updated = prev.map(s => s.id === customSubjectStaffId ? { ...s, actualSubjectTaught: res.standardized } : s);
+                    localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+                    return updated;
+                  });
+                  setCustomSubjectStaffId(null);
+                }}
+                className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs shadow-md cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>حفظ واعتماد المادة ✓</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

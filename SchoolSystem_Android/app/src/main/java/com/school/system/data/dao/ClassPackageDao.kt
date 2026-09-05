@@ -12,6 +12,9 @@ interface ClassPackageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPackage(pkg: ClassPackage)
 
+    @Update
+    suspend fun updatePackage(pkg: ClassPackage)
+
     @Delete
     suspend fun deletePackage(pkg: ClassPackage)
 

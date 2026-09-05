@@ -57,11 +57,8 @@ export default function App() {
   // Navigation & Theme
   const [activeView, setActiveView] = useState<ActiveView>('launcher');
   const [theme, setTheme] = useState<AppTheme>(() => {
-    const saved = localStorage.getItem('diyala_school_theme') as AppTheme;
-    if (saved === 'dark' || saved === 'lunar' || saved === 'cream' || saved === 'burgundy') {
-      return saved;
-    }
-    return 'lunar';
+    localStorage.removeItem('diyala_school_theme');
+    return 'default';
   });
   const [font, setFont] = useState<AppFont>(() => {
     return (localStorage.getItem('diyala_school_font') as AppFont) || 'tajawal';
@@ -193,16 +190,11 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [config.schoolId, config.schoolName, config.pairingCode, config.adminEmail, students, staffList, scheduleMap]);
 
-  // Sync to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('diyala_school_theme', theme);
-    document.body.className = `theme-${theme} font-${font} bg-[var(--theme-bg)] text-[var(--theme-text-main)] min-h-screen transition-colors duration-300`;
-  }, [theme, font]);
-
+  // Sync Font to LocalStorage & Body
   useEffect(() => {
     localStorage.setItem('diyala_school_font', font);
-    document.body.className = `theme-${theme} font-${font} bg-[var(--theme-bg)] text-[var(--theme-text-main)] min-h-screen transition-colors duration-300`;
-  }, [theme, font]);
+    document.body.className = `font-${font} bg-slate-50 text-slate-900 min-h-screen`;
+  }, [font]);
 
   useEffect(() => {
     localStorage.setItem('diyala_school_config', JSON.stringify(config));
@@ -335,6 +327,9 @@ export default function App() {
                 scheduleMap={scheduleMap}
                 setScheduleMap={setScheduleMap}
                 config={config}
+                staffList={staffList}
+                setStaffList={setStaffList}
+                students={students}
                 onOpenSmartGenerator={() => setActiveView('smart_schedule')}
               />
             )}
@@ -344,6 +339,8 @@ export default function App() {
                 scheduleMap={scheduleMap}
                 setScheduleMap={setScheduleMap}
                 staffList={staffList}
+                setStaffList={setStaffList}
+                students={students}
                 config={config}
                 onBackToLauncher={() => setActiveView('launcher')}
               />

@@ -15,15 +15,22 @@ import {
   BellRing,
   Printer,
   CloudUpload,
-  Loader2
+  Loader2,
+  Wand2,
+  CheckCircle2
 } from 'lucide-react';
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { getSupabase } from '../utils/supabaseClient';
+import { generateSmartFairSchedule, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS } from '../utils/scheduleSolver';
+import { SmartScheduleSection, SectionSubjectAssignment } from '../types';
 
 interface ScheduleViewProps {
   scheduleMap: DayScheduleMap;
   setScheduleMap: React.Dispatch<React.SetStateAction<DayScheduleMap>>;
   config: AppConfig;
+  staffList?: StaffMember[];
+  setStaffList?: React.Dispatch<React.SetStateAction<StaffMember[]>>;
+  students?: Student[];
   onOpenSmartGenerator?: () => void;
 }
 
@@ -31,6 +38,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   scheduleMap,
   setScheduleMap,
   config,
+  staffList = [],
+  setStaffList,
+  students = [],
   onOpenSmartGenerator
 }) => {
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('الأحد');
@@ -97,6 +107,176 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [replaceOldTeacher, setReplaceOldTeacher] = useState('');
   const [replaceNewTeacher, setReplaceNewTeacher] = useState('');
   const [replaceStatus, setReplaceStatus] = useState('');
+  const [isDirectGenerating, setIsDirectGenerating] = useState(false);
+  const [directSuccessMsg, setDirectSuccessMsg] = useState('');
+
+  // ⚡ Direct Smart Auto-Generation and Instant Saving (التوليد الآلي المباشر والحفظ في جدول الحصص)
+  const handleDirectAutoGenerateAndSave = async () => {
+    setIsDirectGenerating(true);
+    setDirectSuccessMsg('');
+
+    try {
+      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
+
+      // 1. Gather sections from existing saved smart sections, or discover dynamically from students/schedule
+      let candidateSections: SmartScheduleSection[] = [];
+      try {
+        const savedSecs = localStorage.getItem('diyala_smart_schedule_sections');
+        if (savedSecs) {
+          const parsed = JSON.parse(savedSecs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            candidateSections = parsed;
+          }
+        }
+      } catch {}
+
+      // If no saved smart sections, discover from students or scheduleMap
+      if (candidateSections.length === 0) {
+        const studentSectionMap = new Map<string, { grade: string; section: string }>();
+        if (students && students.length > 0) {
+          students.forEach(s => {
+            if (s.currentGrade && s.section) {
+              const rawGrade = s.currentGrade.trim();
+              const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
+              const cleanSec = s.section.trim();
+              const key = `${cleanGrade}_${cleanSec}`;
+              if (!studentSectionMap.has(key)) {
+                studentSectionMap.set(key, { grade: cleanGrade, section: cleanSec });
+              }
+            }
+          });
+        }
+
+        if (studentSectionMap.size === 0 && scheduleMap) {
+          DAYS_OF_WEEK.forEach(day => {
+            (scheduleMap[day] || []).forEach(row => {
+              if (row.grade && row.section) {
+                const rawGrade = row.grade.trim();
+                const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
+                const cleanSec = row.section.trim();
+                const key = `${cleanGrade}_${cleanSec}`;
+                if (!studentSectionMap.has(key)) {
+                  studentSectionMap.set(key, { grade: cleanGrade, section: cleanSec });
+                }
+              }
+            });
+          });
+        }
+
+        const discovered = Array.from(studentSectionMap.values());
+        if (discovered.length === 0) {
+          alert('لم يتم العثور على أي صفوف أو شعب في سجل الطلاب أو الجدول الحالي. يرجى إضافة صفوف وشعب أولاً.');
+          setIsDirectGenerating(false);
+          return;
+        }
+
+        // Standard Ministry Template for secondary / intermediate schools
+        const STANDARD_TEMPLATE = [
+          { name: 'التربية الإسلامية', quota: 2 },
+          { name: 'اللغة العربية', quota: 5 },
+          { name: 'اللغة الانكليزية', quota: 4 },
+          { name: 'الرياضيات', quota: 5 },
+          { name: 'الكيمياء', quota: 2 },
+          { name: 'الفيزياء', quota: 3 },
+          { name: 'الأحياء', quota: 2 },
+          { name: 'الاجتماعيات', quota: 3 },
+          { name: 'التربية الرياضية', quota: 2 },
+          { name: 'التربية الفنية', quota: 1 },
+          { name: 'التربية الأخلاقية', quota: 1 },
+        ];
+
+        candidateSections = discovered.map((item, idx) => ({
+          id: `sec-direct-${Date.now()}-${idx}`,
+          grade: item.grade,
+          section: item.section,
+          subjects: STANDARD_TEMPLATE.map((tmpl, sIdx) => {
+            const fallbackTeacher = staffList[sIdx % (staffList.length || 1)]
+              ? (staffList[sIdx % staffList.length].fullName || `${staffList[sIdx % staffList.length].firstName} ${staffList[sIdx % staffList.length].secondName}`.trim())
+              : 'أ. أستاذ المادة';
+            return {
+              id: `sub-${idx}-${sIdx}`,
+              subjectName: tmpl.name,
+              teacherName: fallbackTeacher,
+              weeklyLessons: tmpl.quota
+            };
+          })
+        }));
+      }
+
+      // 2. Run smart fair solver with full rules (0 science in Lesson 6, 0 single/dual in Lesson 6, 0 lesson in Thursday Lesson 6)
+      const freshSeed = Date.now() + Math.random() * 100000;
+      const result = generateSmartFairSchedule(candidateSections, 400, freshSeed);
+
+      if (!result.success && result.collisions.length > 0) {
+        if (!confirm(`⚠️ تم توليد الجدول مع (${result.collisions.length}) تضارب في أنصبة بعض المعلمين. هل ترغب في اعتماده وحفظه الآن؟`)) {
+          setIsDirectGenerating(false);
+          return;
+        }
+      }
+
+      // 3. Adopt directly to state and local storage
+      setScheduleMap(result.scheduleMap);
+      localStorage.setItem('diyala_school_schedule', JSON.stringify(result.scheduleMap));
+
+      // 4. Update Staff assignments & teaching quotas automatically
+      if (staffList && staffList.length > 0 && setStaffList) {
+        const updatedStaffList = staffList.map(staff => {
+          let totalLessons = 0;
+          const classesSet = new Set<string>();
+          const subjectsSet = new Set<string>();
+
+          DAYS_OF_WEEK.forEach(day => {
+            const rows = result.scheduleMap[day] || [];
+            rows.forEach(row => {
+              LESSON_KEYS.forEach(lk => {
+                const cell = row.lessons[lk];
+                if (cell && !cell.isOff && cell.teacherName) {
+                  const sName = (staff.fullName || `${staff.firstName} ${staff.secondName}`).trim().toLowerCase();
+                  const cName = cell.teacherName.trim().toLowerCase();
+                  if (cName.includes(sName) || sName.includes(cName)) {
+                    totalLessons++;
+                    classesSet.add(`${row.grade} (${row.section})`);
+                    if (cell.subject) subjectsSet.add(cell.subject);
+                  }
+                }
+              });
+            });
+          });
+
+          if (totalLessons > 0 || classesSet.size > 0) {
+            return {
+              ...staff,
+              teachingQuota: totalLessons,
+              classesTaught: Array.from(classesSet),
+              actualSubjectTaught: Array.from(subjectsSet)[0] || staff.actualSubjectTaught || staff.specialization
+            };
+          }
+          return staff;
+        });
+
+        setStaffList(updatedStaffList);
+        localStorage.setItem('diyala_school_staff', JSON.stringify(updatedStaffList));
+      }
+
+      // 5. Direct Cloud Sync to Supabase
+      try {
+        const client = getSupabase(activeSchoolId);
+        await client.from('schedules').upsert({
+          id: activeSchoolId,
+          schedule_map: result.scheduleMap
+        }, { onConflict: 'id', ignoreDuplicates: false });
+      } catch (err) {
+        console.warn('Could not sync to cloud in background:', err);
+      }
+
+      setDirectSuccessMsg('تم التوليد الآلي المباشر للجدول المدرسي وحفظه وتحديث أنصبة الكادر بنجاح! ⚡');
+      setTimeout(() => setDirectSuccessMsg(''), 6000);
+    } catch (e: any) {
+      alert('حدث خطأ أثناء التوليد الآلي المباشر: ' + (e?.message || 'يرجى المحاولة مجدداً'));
+    } finally {
+      setIsDirectGenerating(false);
+    }
+  };
 
   const daysList: DayOfWeek[] = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
@@ -338,20 +518,42 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            {directSuccessMsg && (
+              <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-300 animate-pulse flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>{directSuccessMsg}</span>
+              </span>
+            )}
+
             {uploadSuccessMsg && (
               <span className="text-xs font-black text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-300 animate-pulse">
                 {uploadSuccessMsg}
               </span>
             )}
 
+            {/* زر التوليد الآلي المباشر والحفظ فوراً في جدول الحصص */}
+            <button
+              onClick={handleDirectAutoGenerateAndSave}
+              disabled={isDirectGenerating}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-black transition-all cursor-pointer shadow-lg border-2 border-emerald-300 hover:scale-105 active:scale-95 disabled:opacity-50"
+              title="توليد جدول الحصص آلياً وفق كافة الضوابط التربوية والموازين وحفظه وتحديث أنصبة المعلمين مباشرة"
+            >
+              {isDirectGenerating ? (
+                <Loader2 className="w-4 h-4 text-amber-300 animate-spin" />
+              ) : (
+                <Wand2 className="w-4 h-4 text-amber-300 animate-bounce" />
+              )}
+              <span>{isDirectGenerating ? 'جاري التوليد والحفظ...' : 'توليد آلي وحفظ مباشر ⚡'}</span>
+            </button>
+
             {onOpenSmartGenerator && (
               <button
                 onClick={onOpenSmartGenerator}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white text-xs font-black transition-all cursor-pointer shadow-md border border-purple-400"
-                title="فتح معالج التوليد الآلي والعادل للجدول المدرسي ومنع تضارب المدرسين"
+                title="فتح معالج التوليد الذكي للتحكم بالأنصبة والمواد والشعب يدوياً"
               >
                 <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
-                <span>المولّد الذكي للجدول 🪄</span>
+                <span>معالج الجدول المتقدم 🪄</span>
               </button>
             )}
 

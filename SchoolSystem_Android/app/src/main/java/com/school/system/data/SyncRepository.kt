@@ -357,13 +357,42 @@ class SyncRepository @Inject constructor(
     }
 
     /**
-     * Standardizes Subject Name considering all common aliases and variations:
-     * - اللغة الإنكليزية: اللغة الانجليزية / اللغة الإنكليزية / الانكليزية / الانجليزية / انكليزي / انجليزي / English / E / Eng / EN / EL
-     * - الأحياء: علم الأحياء / علوم الأحياء / احياء / الاحياء
-     * - التربية الإسلامية: اسلامية / الاسلامية / التربية الاسلامية / دين / قرآن
-     * - اللغة العربية: عربي / العربي / لغة عربية / اللغة العربية
-     * - لغة أخرى: كردي / تركماني / فرنسي / الماني / اسباني / سرياني / لغة...
-     * - فيزياء / كيمياء / اجتماعيات / رياضيات / أخرى
+     * القائمة الرسمية للمواد الدراسية المعتمدة وزارياً
+     */
+    val STANDARD_APPROVED_SUBJECTS = listOf(
+        "التربية الإسلامية",
+        "اللغة العربية",
+        "اللغة الإنكليزية",
+        "الرياضيات",
+        "الاجتماعيات",
+        "الأحياء",
+        "الكيمياء",
+        "الفيزياء",
+        "الحاسوب",
+        "التربية الرياضية",
+        "التربية الفنية",
+        "التربية الأخلاقية",
+        "العلوم",
+        "العلوم العامة",
+        "التاريخ",
+        "الجغرافيا",
+        "التربية الوطنية",
+        "الاقتصاد",
+        "الفلسفة وعلم النفس",
+        "علم الأرض",
+        "اللغة الفرنسية",
+        "النشيد والموسيقى"
+    )
+
+    fun isApprovedStandardSubject(name: String): Boolean {
+        val norm = normalizeArabic(name.trim()).lowercase()
+        return STANDARD_APPROVED_SUBJECTS.any { normalizeArabic(it).lowercase() == norm }
+    }
+
+    /**
+     * Standardizes Subject Name considering all common aliases, variations, and misspellings:
+     * - If the subject corresponds to an official ministry curriculum subject, it reverts strictly to the approved spelling.
+     * - If it is a new/custom curriculum subject outside the approved list, it is preserved cleanly.
      */
     fun standardizeSubjectName(raw: String?): String {
         if (raw.isNullOrBlank()) return "المادة العامة"
@@ -371,8 +400,8 @@ class SyncRepository @Inject constructor(
         val norm = normalizeArabic(s).lowercase()
         val rawLower = s.lowercase().replace("[^a-z0-9\u0600-\u06FF]".toRegex(), "")
 
-        // 1. اللغة الإنكليزية: جميع التسميات (عربي، إنجليزي، انكليزي، أحرف لاتينية)
-        if (norm.contains("انكل") || norm.contains("انجل") ||
+        // 1. اللغة الإنكليزية: جميع التسميات والرموز
+        if (norm.contains("انكل") || norm.contains("انجل") || norm.contains("انقل") ||
             rawLower.contains("engl") || rawLower.startsWith("eng") || rawLower.endsWith("eng") ||
             rawLower == "e" || rawLower == "en" || rawLower == "el" ||
             rawLower.contains("english") || norm.contains("انكلش") || norm.contains("انجلش") ||
@@ -381,21 +410,105 @@ class SyncRepository @Inject constructor(
             return "اللغة الإنكليزية"
         }
 
-        // 2. الأحياء: علم الأحياء / علوم الأحياء / احياء / الأحياء
-        if (norm.contains("احياء") || norm.contains("علماحياء") || norm.contains("علوماحياء")) return "الأحياء"
+        // 2. الأحياء
+        if (norm.contains("احيا") || norm.contains("علماحياء") || norm.contains("علوماحياء") ||
+            norm.contains("بايو") || rawLower.contains("bio")
+        ) {
+            return "الأحياء"
+        }
 
-        // 3. التربية الإسلامية: إسلامية / الاسلامية / دين / قرآن
-        if (norm.contains("اسلام") || norm.contains("قران") || norm.contains("دين")) return "التربية الإسلامية"
+        // 3. التربية الإسلامية
+        if (norm.contains("اسلام") || norm.contains("قران") || norm.contains("دين") ||
+            norm.contains("عقيد") || norm.contains("فقه") || norm.contains("شريع")
+        ) {
+            return "التربية الإسلامية"
+        }
 
-        // 4. اللغة العربية: عربي / العربي
-        if (norm.contains("عرب")) return "اللغة العربية"
+        // 4. الكيمياء
+        if (norm.contains("كيم") || norm.contains("كمي") || rawLower.contains("chem")) {
+            return "الكيمياء"
+        }
 
-        // 5. باقي المواد
-        if (norm.contains("فيزيا")) return "الفيزياء"
-        if (norm.contains("كيميا")) return "الكيمياء"
-        if (norm.contains("اجتماع") || norm.contains("تاريخ") || norm.contains("جغرافي") || norm.contains("وطني")) return "الاجتماعيات"
-        if (norm.contains("رياض")) return "الرياضيات"
+        // 5. الفيزياء
+        if (norm.contains("فيز") || rawLower.contains("phys")) {
+            return "الفيزياء"
+        }
 
+        // 6. التربية الرياضية
+        if (norm == "رياضه" || norm.contains("تربيهرياض") || norm.contains("العاب") ||
+            norm.contains("بدني") || rawLower == "pe" || rawLower.contains("sport")
+        ) {
+            return "التربية الرياضية"
+        }
+
+        // 7. الرياضيات (مع استثناء التربية الرياضية)
+        if ((norm.contains("رياض") && !norm.contains("بدني") && !norm.contains("العاب") && !norm.contains("تربيه")) ||
+            norm.contains("حساب") || norm.contains("جبر") || norm.contains("هندس") ||
+            norm.contains("تفاضل") || norm.contains("تكامل") || rawLower.contains("math")
+        ) {
+            return "الرياضيات"
+        }
+
+        // 8. التربية الفنية
+        if (norm.contains("فني") || norm.contains("رسم") || norm.contains("فنون") || rawLower.contains("art")) {
+            return "التربية الفنية"
+        }
+
+        // 9. التربية الأخلاقية
+        if (norm.contains("اخلاق")) {
+            return "التربية الأخلاقية"
+        }
+
+        // 10. الحاسوب
+        if (norm.contains("حاس") || norm.contains("كمبيوتر") || norm.contains("كومبيوتر") ||
+            norm.contains("برمج") || norm.contains("معلومات") || rawLower == "it" || rawLower.contains("computer")
+        ) {
+            return "الحاسوب"
+        }
+
+        // 11. اللغات والمواد التخصصية
+        if (norm.contains("فرنس") || rawLower.contains("french")) {
+            return "اللغة الفرنسية"
+        }
+        if (norm.contains("ارض") || norm.contains("جيولوج")) {
+            return "علم الأرض"
+        }
+        if (norm.contains("فلسف") || norm.contains("علمنفس") || (norm.contains("نفس") && norm.contains("علم"))) {
+            return "الفلسفة وعلم النفس"
+        }
+        if (norm.contains("اقتصاد")) {
+            return "الاقتصاد"
+        }
+        if (norm.contains("تاريخ")) {
+            return "التاريخ"
+        }
+        if (norm.contains("جغراف")) {
+            return "الجغرافيا"
+        }
+        if (norm.contains("وطني") && !norm.contains("لغ")) {
+            return "التربية الوطنية"
+        }
+        if (norm.contains("اجتماع") || norm.contains("دراساتاجتماعي")) {
+            return "الاجتماعيات"
+        }
+        if (norm.contains("موسيق") || norm.contains("نشيد")) {
+            return "النشيد والموسيقى"
+        }
+
+        // 12. العلوم / العلوم العامة
+        if (norm == "علوم" || norm.contains("علوماسام") || norm.contains("علومعام") || rawLower.contains("science")) {
+            return "العلوم"
+        }
+
+        // 13. اللغة العربية
+        if (norm.contains("عرب") || norm.contains("قواعد") || norm.contains("ادب") ||
+            norm.contains("نصوص") || norm.contains("بلاغ") || norm.contains("املا") ||
+            norm.contains("انشا") || norm.contains("قراءه") || norm.contains("مطالع")
+        ) {
+            return "اللغة العربية"
+        }
+
+        // 14. إذا كانت مادة مخصصة جديدة خارج المواد المعتمدة
         return s
     }
 

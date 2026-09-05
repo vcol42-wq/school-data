@@ -52,27 +52,9 @@ enum class AppThemeType(
     val ribbonGradient: List<Color>,
     val isDark: Boolean = false
 ) {
-    // 1. الوضع الليلي (Dark Slate / Calm Midnight)
-    NIGHT(
-        titleArabic = "الوضع الليلي",
-        primaryColor = Color(0xFF60A5FA),
-        secondaryColor = Color(0xFF818CF8),
-        backgroundColor = Color(0xFF0F172A),
-        surfaceColor = Color(0xFF1E293B),
-        textPrimaryColor = Color(0xFFF1F5F9),
-        textSecondaryColor = Color(0xFF94A3B8),
-        tableHeaderBg = Color(0xFF1E293B),
-        tableHeaderTextColor = Color(0xFF93C5FD),
-        tableCellBg = Color(0xFF131C2E),
-        tableAltCellBg = Color(0xFF0F172A),
-        tableBorderColor = Color(0xFF334155),
-        ribbonGradient = listOf(Color(0xFF1E293B), Color(0xFF0F172A)),
-        isDark = true
-    ),
-
-    // 2. الوضع الكريمي (Cream / Warm Vanilla Ivory)
+    // 1. الوضع الكريمي الدافئ (Cream / Warm Vanilla Ivory)
     CREAM(
-        titleArabic = "الوضع الكريمي",
+        titleArabic = "الوضع الكريمي الدافئ",
         primaryColor = Color(0xFF786248),
         secondaryColor = Color(0xFFA89078),
         backgroundColor = Color(0xFFFDFBF7),
@@ -88,25 +70,25 @@ enum class AppThemeType(
         isDark = false
     ),
 
-    // 3. الوضع الوردي الفاتح (Light Baby Pink / Pastel Blush)
-    LIGHT_PINK(
-        titleArabic = "وردي فاتح بنك",
-        primaryColor = Color(0xFFB55D81),
-        secondaryColor = Color(0xFFE8A2BF),
-        backgroundColor = Color(0xFFFFF7FA),
+    // 2. الوضع العنابي الملكي (Royal Burgundy / Rich Wine)
+    BURGUNDY(
+        titleArabic = "الوضع العنابي الملكي",
+        primaryColor = Color(0xFF881337),
+        secondaryColor = Color(0xFF9F1239),
+        backgroundColor = Color(0xFFFFF1F2),
         surfaceColor = Color(0xFFFFFFFF),
-        textPrimaryColor = Color(0xFF4A2030),
-        textSecondaryColor = Color(0xFF8A4962),
-        tableHeaderBg = Color(0xFFFCEBF2),
-        tableHeaderTextColor = Color(0xFF4A2030),
+        textPrimaryColor = Color(0xFF4C0519),
+        textSecondaryColor = Color(0xFF9F1239),
+        tableHeaderBg = Color(0xFFFFE4E6),
+        tableHeaderTextColor = Color(0xFF4C0519),
         tableCellBg = Color(0xFFFFFFFF),
-        tableAltCellBg = Color(0xFFFFF5F9),
-        tableBorderColor = Color(0xFFF3D5E2),
-        ribbonGradient = listOf(Color(0xFF8A4962), Color(0xFFB55D81)),
+        tableAltCellBg = Color(0xFFFFF1F2),
+        tableBorderColor = Color(0xFFFECDD3),
+        ribbonGradient = listOf(Color(0xFF4C0519), Color(0xFF881337)),
         isDark = false
     ),
 
-    // 4. الوضع السماوي الهادئ (Serene Sky / Coastal Blue)
+    // 3. الوضع السماوي الهادئ (Serene Sky / Coastal Blue)
     SKY(
         titleArabic = "الوضع السماوي",
         primaryColor = Color(0xFF2B6CB0),
@@ -124,7 +106,7 @@ enum class AppThemeType(
         isDark = false
     ),
 
-    // 5. الوضع الزمردي الهادئ (Sage / Forest Moss)
+    // 4. الوضع الزمردي الهادئ (Sage / Forest Moss)
     EMERALD(
         titleArabic = "الوضع الزمردي",
         primaryColor = Color(0xFF2F6F52),
@@ -140,6 +122,42 @@ enum class AppThemeType(
         tableBorderColor = Color(0xFFD1E2D7),
         ribbonGradient = listOf(Color(0xFF245740), Color(0xFF2F6F52)),
         isDark = false
+    ),
+
+    // 5. الوضع الليلي عالي التباين (Night / High-Contrast Dark)
+    NIGHT(
+        titleArabic = "الوضع الليلي عالي التباين",
+        primaryColor = Color(0xFF38BDF8),
+        secondaryColor = Color(0xFF60A5FA),
+        backgroundColor = Color(0xFF0F172A),
+        surfaceColor = Color(0xFF1E293B),
+        textPrimaryColor = Color(0xFFF8FAFC),
+        textSecondaryColor = Color(0xFFCBD5E1),
+        tableHeaderBg = Color(0xFF1E293B),
+        tableHeaderTextColor = Color(0xFF93C5FD),
+        tableCellBg = Color(0xFF1E293B),
+        tableAltCellBg = Color(0xFF0F172A),
+        tableBorderColor = Color(0xFF475569),
+        ribbonGradient = listOf(Color(0xFF0F172A), Color(0xFF1E293B)),
+        isDark = true
+    ),
+
+    // 6. الوضع القمري الهادئ (Lunar / Deep Midnight Moonlight)
+    LUNAR(
+        titleArabic = "الوضع القمري الهادئ",
+        primaryColor = Color(0xFF818CF8),
+        secondaryColor = Color(0xFFA5B4FC),
+        backgroundColor = Color(0xFF090D16),
+        surfaceColor = Color(0xFF131B2E),
+        textPrimaryColor = Color(0xFFF1F5F9),
+        textSecondaryColor = Color(0xFF94A3B8),
+        tableHeaderBg = Color(0xFF131B2E),
+        tableHeaderTextColor = Color(0xFFA5B4FC),
+        tableCellBg = Color(0xFF131B2E),
+        tableAltCellBg = Color(0xFF0E1524),
+        tableBorderColor = Color(0xFF334155),
+        ribbonGradient = listOf(Color(0xFF090D16), Color(0xFF1E1B4B)),
+        isDark = true
     )
 }
 
@@ -147,21 +165,22 @@ object ThemeManager {
     private const val PREFS_NAME = "diyala_theme_prefs"
     private const val KEY_THEME = "selected_theme_key"
 
-    private val _currentTheme = MutableStateFlow(AppThemeType.SKY)
+    private val _currentTheme = MutableStateFlow(AppThemeType.CREAM)
     val currentTheme = _currentTheme.asStateFlow()
 
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val savedName = prefs.getString(KEY_THEME, AppThemeType.SKY.name) ?: AppThemeType.SKY.name
+        val savedName = prefs.getString(KEY_THEME, AppThemeType.CREAM.name) ?: AppThemeType.CREAM.name
         val theme = try {
             when (savedName) {
-                "MOONLIGHT" -> AppThemeType.CREAM
-                "ROSE" -> AppThemeType.LIGHT_PINK
-                "BURGUNDY", "CRIMSON" -> AppThemeType.CREAM
+                "DARK", "NIGHT" -> AppThemeType.NIGHT
+                "MOONLIGHT", "LUNAR" -> AppThemeType.LUNAR
+                "ROSE", "LIGHT_PINK" -> AppThemeType.CREAM
+                "BURGUNDY", "CRIMSON" -> AppThemeType.BURGUNDY
                 else -> AppThemeType.valueOf(savedName)
             }
         } catch (e: Exception) {
-            AppThemeType.SKY
+            AppThemeType.CREAM
         }
         _currentTheme.value = theme
     }
@@ -173,7 +192,7 @@ object ThemeManager {
     }
 }
 
-val LocalAppTheme = staticCompositionLocalOf { AppThemeType.SKY }
+val LocalAppTheme = staticCompositionLocalOf { AppThemeType.CREAM }
 
 @Composable
 fun SchoolSystemTheme(
@@ -189,16 +208,30 @@ fun SchoolSystemTheme(
     val colorScheme = if (activeTheme.isDark) {
         darkColorScheme(
             primary = activeTheme.primaryColor,
+            onPrimary = Color(0xFF0F172A),
             secondary = activeTheme.secondaryColor,
+            onSecondary = Color(0xFF0F172A),
             background = activeTheme.backgroundColor,
-            surface = activeTheme.surfaceColor
+            onBackground = activeTheme.textPrimaryColor,
+            surface = activeTheme.surfaceColor,
+            onSurface = activeTheme.textPrimaryColor,
+            surfaceVariant = activeTheme.tableAltCellBg,
+            onSurfaceVariant = activeTheme.textSecondaryColor,
+            outline = activeTheme.tableBorderColor
         )
     } else {
         lightColorScheme(
             primary = activeTheme.primaryColor,
+            onPrimary = Color.White,
             secondary = activeTheme.secondaryColor,
+            onSecondary = Color.White,
             background = activeTheme.backgroundColor,
-            surface = activeTheme.surfaceColor
+            onBackground = activeTheme.textPrimaryColor,
+            surface = activeTheme.surfaceColor,
+            onSurface = activeTheme.textPrimaryColor,
+            surfaceVariant = activeTheme.tableAltCellBg,
+            onSurfaceVariant = activeTheme.textSecondaryColor,
+            outline = activeTheme.tableBorderColor
         )
     }
 
@@ -266,7 +299,7 @@ fun ThemeSelectionDialog(
                     columns = GridCells.Fixed(2),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().height(210.dp)
+                    modifier = Modifier.fillMaxWidth().height(260.dp)
                 ) {
                     items(AppThemeType.values()) { theme ->
                         val isSelected = theme == currentTheme

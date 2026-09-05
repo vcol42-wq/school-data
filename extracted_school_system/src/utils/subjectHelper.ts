@@ -220,6 +220,65 @@ export const MASTER_SUBJECTS_LIST = [
 ];
 
 /**
+ * All officially approved ministry curriculum subjects (Primary + Intermediate + High School)
+ */
+export const STANDARD_APPROVED_SUBJECTS = [
+  ...MASTER_SUBJECTS_LIST,
+  'العلوم',
+  'العلوم العامة',
+  'التاريخ',
+  'الجغرافيا',
+  'التربية الوطنية',
+  'الاقتصاد',
+  'الفلسفة وعلم النفس',
+  'علم الأرض',
+  'اللغة الفرنسية',
+  'النشيد والموسيقى'
+];
+
+/**
+ * Standardizes a subject input:
+ * - If the entered name corresponds to any approved standard subject, it strictly reverts to the official approved spelling ("يعاد إلى إملاء الدروس المعتمدة").
+ * - If the entered name is outside approved subjects (new curriculum / specialized subject), it is accepted cleanly as a custom subject.
+ */
+export const standardizeSubjectInput = (input: string): { standardized: string; isApproved: boolean } => {
+  const trimmed = (input || '').trim();
+  if (!trimmed) return { standardized: 'المادة العامة', isApproved: false };
+
+  const norm = normalizeText(trimmed);
+
+  // Check against specific approved subjects by canonical matching
+  const canonical = canonicalSubject(trimmed);
+
+  // 1. Direct or normalized match with STANDARD_APPROVED_SUBJECTS
+  const directMatch = STANDARD_APPROVED_SUBJECTS.find(
+    appr => normalizeText(appr) === norm || appr === trimmed
+  );
+  if (directMatch) {
+    return { standardized: directMatch, isApproved: true };
+  }
+
+  // 2. Canonical Match (if canonical maps to recognized master/approved subject)
+  const isCanonApproved = STANDARD_APPROVED_SUBJECTS.some(
+    appr => normalizeText(appr) === normalizeText(canonical) || appr === canonical
+  );
+  if (isCanonApproved && canonical !== trimmed && canonical !== 'عام' && canonical !== 'مفرغ إدارياً / إدارة') {
+    const matched = STANDARD_APPROVED_SUBJECTS.find(appr => normalizeText(appr) === normalizeText(canonical)) || canonical;
+    return { standardized: matched, isApproved: true };
+  }
+
+  // 3. Specific branch checks
+  if (norm.includes('فرنس')) return { standardized: 'اللغة الفرنسية', isApproved: true };
+  if (norm.includes('ارض') || norm.includes('جيولوج')) return { standardized: 'علم الأرض', isApproved: true };
+  if (norm.includes('فلسف') || norm.includes('نفس')) return { standardized: 'الفلسفة وعلم النفس', isApproved: true };
+  if (norm.includes('اقتصاد')) return { standardized: 'الاقتصاد', isApproved: true };
+  if (norm.includes('موسيق') || norm.includes('نشيد')) return { standardized: 'النشيد والموسيقى', isApproved: true };
+
+  // 4. Custom Subject outside approved curriculum
+  return { standardized: trimmed, isApproved: false };
+};
+
+/**
  * Smart Matcher between Staff Member and Schedule Cell (Teacher Name & Subject)
  */
 export const matchStaffWithScheduleCell = (

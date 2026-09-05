@@ -12,6 +12,7 @@ import {
 import { 
   generateSmartFairSchedule, 
   checkScheduleCollisions, 
+  isForbiddenInPeriod6,
   DAYS_OF_WEEK, 
   LESSON_KEYS, 
   LESSON_LABELS,
@@ -43,11 +44,15 @@ import {
 } from 'lucide-react';
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { getSupabase } from '../utils/supabaseClient';
+import { canonicalSubject, MASTER_SUBJECTS_LIST, matchStaffWithScheduleCell } from '../utils/subjectHelper';
+import { Student } from '../types';
 
 interface SmartScheduleGeneratorViewProps {
   scheduleMap: DayScheduleMap;
   setScheduleMap: React.Dispatch<React.SetStateAction<DayScheduleMap>>;
   staffList: StaffMember[];
+  setStaffList?: React.Dispatch<React.SetStateAction<StaffMember[]>>;
+  students?: Student[];
   config: AppConfig;
   onBackToLauncher: () => void;
 }
@@ -64,13 +69,179 @@ const STANDARD_SUBJECTS_TEMPLATE: { name: string; quota: number }[] = [
   { name: 'الاجتماعيات', quota: 3 },
   { name: 'التربية الرياضية', quota: 2 },
   { name: 'التربية الفنية', quota: 1 },
-  { name: 'الحاسوب', quota: 1 },
+  { name: 'التربية الأخلاقية', quota: 1 },
 ];
+
+// High-Performance Row Component to isolate typing re-renders and eliminate lag
+interface SubjectRowProps {
+  sectionId: string;
+  sub: SectionSubjectAssignment;
+  sIdx: number;
+  staffList: StaffMember[];
+  onUpdateSubject: (sectionId: string, subId: string, updates: Partial<SectionSubjectAssignment>) => void;
+  onBlurSubjectName: (sectionId: string, subId: string, val: string) => void;
+  onApplyTeacherToAll: (subjectName: string, teacherName: string) => void;
+  onDuplicate: (sectionId: string, subId: string) => void;
+  onDelete: (sectionId: string, subId: string) => void;
+}
+
+const SubjectRow: React.FC<SubjectRowProps> = React.memo(({
+  sectionId,
+  sub,
+  sIdx,
+  staffList,
+  onUpdateSubject,
+  onBlurSubjectName,
+  onApplyTeacherToAll,
+  onDuplicate,
+  onDelete
+}) => {
+  const [localSubject, setLocalSubject] = useState(sub.subjectName);
+  const [localTeacher, setLocalTeacher] = useState(sub.teacherName);
+  const [localQuota, setLocalQuota] = useState(sub.weeklyLessons);
+
+  useEffect(() => {
+    setLocalSubject(sub.subjectName);
+  }, [sub.subjectName]);
+
+  useEffect(() => {
+    setLocalTeacher(sub.teacherName);
+  }, [sub.teacherName]);
+
+  useEffect(() => {
+    setLocalQuota(sub.weeklyLessons);
+  }, [sub.weeklyLessons]);
+
+  const isRestrictedP6 = isForbiddenInPeriod6(sub.subjectName, sub.weeklyLessons);
+
+  return (
+    <tr className="hover:bg-white transition-colors">
+      <td className="p-2 text-center font-mono font-bold text-slate-500">{sIdx + 1}</td>
+      <td className="p-2">
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            list="master-subjects-datalist"
+            value={localSubject}
+            onChange={e => {
+              setLocalSubject(e.target.value);
+            }}
+            onBlur={e => {
+              const val = e.target.value;
+              onUpdateSubject(sectionId, sub.id, { subjectName: val });
+              onBlurSubjectName(sectionId, sub.id, val);
+            }}
+            placeholder="اسم المادة"
+            className="w-full p-1.5 rounded-lg border border-slate-300 font-bold bg-white text-slate-900 focus:border-indigo-600 focus:outline-none"
+          />
+          {isRestrictedP6 && (
+            <span 
+              className="shrink-0 px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-black"
+              title="مستبعدة برمجياً من الدرس السادس (مادة علمية أو نصاب حصة واحدة)"
+            >
+              مستبعدة من درس 6
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="p-2">
+        <div className="flex items-center gap-1.5">
+          <input
+            type="text"
+            list="teachers-datalist"
+            value={localTeacher}
+            onChange={e => {
+              setLocalTeacher(e.target.value);
+            }}
+            onBlur={e => {
+              const val = e.target.value;
+              onUpdateSubject(sectionId, sub.id, { teacherName: val });
+            }}
+            placeholder="اكتب أو اختر اسم الأستاذ"
+            className="w-full p-1.5 rounded-lg border border-slate-300 font-bold bg-white text-slate-900 focus:border-indigo-600 focus:outline-none"
+          />
+          {staffList.length > 0 && (
+            <select
+              value={localTeacher}
+              onChange={e => {
+                const val = e.target.value;
+                setLocalTeacher(val);
+                onUpdateSubject(sectionId, sub.id, { teacherName: val });
+              }}
+              title="اختيار سريع من الكادر"
+              className="w-8 p-1.5 rounded-lg border border-slate-300 bg-slate-50 text-slate-700 font-bold cursor-pointer text-xs"
+            >
+              <option value="">اختيار...</option>
+              {staffList.map(stf => {
+                const fullName = stf.fullName || `${stf.firstName} ${stf.secondName}`.trim();
+                return <option key={stf.id} value={fullName}>{fullName}</option>;
+              })}
+            </select>
+          )}
+        </div>
+      </td>
+      <td className="p-2 text-center">
+        <input
+          type="number"
+          min="1"
+          max="15"
+          value={localQuota}
+          onChange={e => {
+            const val = Number(e.target.value);
+            setLocalQuota(val);
+          }}
+          onBlur={e => {
+            const val = Math.max(1, Number(e.target.value) || 1);
+            setLocalQuota(val);
+            onUpdateSubject(sectionId, sub.id, { weeklyLessons: val });
+          }}
+          className="w-16 p-1.5 rounded-lg border border-slate-300 font-black font-mono text-center bg-white text-slate-900 focus:border-indigo-600 focus:outline-none"
+        />
+      </td>
+      <td className="p-2 text-center">
+        <button
+          type="button"
+          onClick={() => onApplyTeacherToAll(sub.subjectName, localTeacher)}
+          title={`تعيين [${localTeacher}] لمادة [${sub.subjectName}] في كافة الشعب`}
+          className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all cursor-pointer"
+        >
+          تطبيق للكل
+        </button>
+      </td>
+      <td className="p-2 text-center">
+        <div className="flex items-center justify-center gap-1">
+          <button
+            type="button"
+            onClick={() => onDuplicate(sectionId, sub.id)}
+            title="تكرار هذه المادة (لإسناد مدرس آخر أو تقسيم الحصص)"
+            className="p-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white border border-purple-200 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            <span>تكرار</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(sectionId, sub.id)}
+            title="حذف هذه المادة من هذه الشعبة"
+            className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white border border-rose-200 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>حذف</span>
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+SubjectRow.displayName = 'SubjectRow';
+
 
 export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProps> = ({
   scheduleMap,
   setScheduleMap,
   staffList,
+  setStaffList,
+  students,
   config,
   onBackToLauncher
 }) => {
@@ -80,6 +251,250 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
   const [startHour, setStartHour] = useState(config.schoolStartHour || '08:00');
   const [lessonDuration, setLessonDuration] = useState(config.lessonDurationMinutes || 40);
   const [breakDuration, setBreakDuration] = useState(config.breakDurationMinutes || 10);
+
+  // Student Roster stats and auto-discovered classes
+  const studentDiscoveredStats = React.useMemo(() => {
+    const secMap = new Map<string, { grade: string; section: string; count: number }>();
+    if (students && students.length > 0) {
+      students.forEach(s => {
+        if (s.currentGrade && s.section) {
+          const rawGrade = s.currentGrade.trim();
+          const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
+          const cleanSec = s.section.trim();
+          const key = `${cleanGrade}_${cleanSec}`;
+          const cur = secMap.get(key);
+          if (cur) cur.count++;
+          else secMap.set(key, { grade: cleanGrade, section: cleanSec, count: 1 });
+        }
+      });
+    }
+    const list = Array.from(secMap.values());
+    const gradesSet = new Set(list.map(i => i.grade));
+    return {
+      totalStudents: students?.length || 0,
+      sectionsCount: list.length,
+      gradesCount: gradesSet.size,
+      sectionsList: list
+    };
+  }, [students]);
+
+  // Enhanced Smart Auto-Import from Student Roster and Staff Distribution Register
+  const handleSmartSyncFromStudentsAndStaff = (showToast = true) => {
+    const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
+
+    // 1. Discover unique classes and sections from students
+    const studentSectionMap = new Map<string, { grade: string; section: string; studentCount: number }>();
+    if (students && students.length > 0) {
+      students.forEach(s => {
+        if (s.currentGrade && s.section) {
+          const rawGrade = s.currentGrade.trim();
+          const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
+          const cleanSec = s.section.trim();
+          const key = `${cleanGrade}_${cleanSec}`;
+          const existing = studentSectionMap.get(key);
+          if (existing) {
+            existing.studentCount++;
+          } else {
+            studentSectionMap.set(key, { grade: cleanGrade, section: cleanSec, studentCount: 1 });
+          }
+        }
+      });
+    }
+
+    // Fallback to scheduleMap if students is not yet populated
+    if (studentSectionMap.size === 0 && scheduleMap) {
+      DAYS_OF_WEEK.forEach(day => {
+        (scheduleMap[day] || []).forEach(row => {
+          if (row.grade && row.section) {
+            const rawGrade = row.grade.trim();
+            const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
+            const cleanSec = row.section.trim();
+            const key = `${cleanGrade}_${cleanSec}`;
+            if (!studentSectionMap.has(key)) {
+              studentSectionMap.set(key, { grade: cleanGrade, section: cleanSec, studentCount: 0 });
+            }
+          }
+        });
+      });
+    }
+
+    const discoveredList = Array.from(studentSectionMap.values());
+    if (discoveredList.length === 0) {
+      if (showToast) alert('لم يتم العثور على سجلات طلاب أو شعب في النظام حتى الآن. يمكنك إضافة الشعب يدوياً.');
+      return;
+    }
+
+    // 2. Read Staff Subject Assignments from localStorage (Authority Hub)
+    let authorityAssignments: any[] = [];
+    try {
+      const rawAss = localStorage.getItem(`diyala_subject_assignments_${activeSchoolId}`);
+      if (rawAss) {
+        authorityAssignments = JSON.parse(rawAss);
+      }
+    } catch {}
+
+    // 3. Build sections with full curriculum & teacher assignments
+    const newSections: SmartScheduleSection[] = discoveredList.map((item, idx) => {
+      const gradeNorm = item.grade.replace(/^الصف\s+/, '').trim();
+      
+      const subjects: SectionSubjectAssignment[] = STANDARD_SUBJECTS_TEMPLATE.map((tmpl, sIdx) => {
+        const subCanon = canonicalSubject(tmpl.name);
+
+        // Priority 1: Direct assignment from TeacherAuthorityHub for this grade & section
+        const directAuthority = authorityAssignments.find(ass => {
+          const assGradeNorm = (ass.grade || '').replace(/^الصف\s+/, '').trim();
+          const assSec = (ass.section || '').trim();
+          const assSubCanon = canonicalSubject(ass.subject || '');
+          return (assGradeNorm === gradeNorm || assGradeNorm.includes(gradeNorm) || gradeNorm.includes(assGradeNorm)) &&
+                 assSec === item.section &&
+                 assSubCanon === subCanon;
+        });
+
+        if (directAuthority && directAuthority.teacher_name) {
+          return {
+            id: `sub-${idx}-${sIdx}`,
+            subjectName: tmpl.name,
+            teacherName: directAuthority.teacher_name.trim(),
+            weeklyLessons: tmpl.quota
+          };
+        }
+
+        // Priority 2: Staff member with classesTaught matching this class and section
+        const staffWithClass = staffList.find(stf => {
+          const stfSubCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
+          if (stfSubCanon !== subCanon) return false;
+          return (stf.classesTaught || []).some(cls => {
+            const clsClean = cls.replace(/^الصف\s+/, '').trim();
+            return clsClean.includes(gradeNorm) && clsClean.includes(item.section);
+          });
+        });
+
+        if (staffWithClass) {
+          const tName = staffWithClass.fullName || `${staffWithClass.firstName} ${staffWithClass.secondName}`.trim();
+          return {
+            id: `sub-${idx}-${sIdx}`,
+            subjectName: tmpl.name,
+            teacherName: tName,
+            weeklyLessons: tmpl.quota
+          };
+        }
+
+        // Priority 3: Staff member with matching specialization or actualSubjectTaught
+        const staffBySpec = staffList.find(stf => {
+          const stfSubCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
+          return stfSubCanon === subCanon;
+        });
+
+        const fallbackTeacher = staffBySpec
+          ? (staffBySpec.fullName || `${staffBySpec.firstName} ${staffBySpec.secondName}`.trim())
+          : 'أ. أستاذ المادة';
+
+        return {
+          id: `sub-${idx}-${sIdx}`,
+          subjectName: tmpl.name,
+          teacherName: fallbackTeacher,
+          weeklyLessons: tmpl.quota
+        };
+      });
+
+      return {
+        id: `sec-smart-${Date.now()}-${idx}`,
+        grade: item.grade,
+        section: item.section,
+        subjects
+      };
+    });
+
+    setSections(newSections);
+    localStorage.setItem('diyala_smart_schedule_sections', JSON.stringify(newSections));
+    if (showToast) {
+      alert(`تم استيراد وتوزيع عدد (${newSections.length}) شعبة تلقائياً من أيقونة الطلاب، وتوزيع المناهج وإسناد الأساتذة من سجل الكادر بنجاح! ⚡`);
+    }
+  };
+
+  // Auto-assign teachers across all sections based on their specialization and actual subject
+  const handleAutoAssignTeachersBySpec = () => {
+    if (!staffList || staffList.length === 0) {
+      alert('لا يوجد كادر مسجل في المدرسة للإسناد التلقائي.');
+      return;
+    }
+
+    const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
+    let authorityAssignments: any[] = [];
+    try {
+      const rawAss = localStorage.getItem(`diyala_subject_assignments_${activeSchoolId}`);
+      if (rawAss) {
+        authorityAssignments = JSON.parse(rawAss);
+      }
+    } catch {}
+
+    setSections(prev => prev.map(sec => {
+      const gradeNorm = sec.grade.replace(/^الصف\s+/, '').trim();
+      return {
+        ...sec,
+        subjects: sec.subjects.map(sub => {
+          const subCanon = canonicalSubject(sub.subjectName);
+
+          // Priority 1: Direct assignment from TeacherAuthorityHub
+          const directAuthority = authorityAssignments.find(ass => {
+            const assGradeNorm = (ass.grade || '').replace(/^الصف\s+/, '').trim();
+            const assSec = (ass.section || '').trim();
+            const assSubCanon = canonicalSubject(ass.subject || '');
+            return (assGradeNorm === gradeNorm || assGradeNorm.includes(gradeNorm) || gradeNorm.includes(assGradeNorm)) &&
+                   assSec === sec.section &&
+                   assSubCanon === subCanon;
+          });
+
+          if (directAuthority && directAuthority.teacher_name) {
+            return { ...sub, teacherName: directAuthority.teacher_name.trim() };
+          }
+
+          // Priority 2: Staff member with classesTaught matching this class and section
+          const staffWithClass = staffList.find(stf => {
+            const stfSubCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
+            if (stfSubCanon !== subCanon) return false;
+            return (stf.classesTaught || []).some(cls => {
+              const clsClean = cls.replace(/^الصف\s+/, '').trim();
+              return clsClean.includes(gradeNorm) && clsClean.includes(sec.section);
+            });
+          });
+
+          if (staffWithClass) {
+            const tName = staffWithClass.fullName || `${staffWithClass.firstName} ${staffWithClass.secondName}`.trim();
+            return { ...sub, teacherName: tName };
+          }
+
+          // Priority 3: Staff member matching specialization or actual subject
+          const matchingStaff = staffList.find(stf => {
+            const stfCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
+            return stfCanon === subCanon;
+          });
+
+          if (matchingStaff) {
+            const tName = matchingStaff.fullName || `${matchingStaff.firstName} ${matchingStaff.secondName}`.trim();
+            return { ...sub, teacherName: tName };
+          }
+
+          return sub;
+        })
+      };
+    }));
+
+    alert('تم مطابقة وإسناد الأساتذة تلقائياً لجميع المواد في كل الشعب وفق سجل الكادر وتوزيع الصلاحيات بنجاح! 🪄');
+  };
+
+  // Canonical subject name validator on edit blur
+  const handleSubjectNameBlur = (secId: string, subId: string, currentVal: string) => {
+    const trimmed = currentVal.trim();
+    if (!trimmed) return;
+    const canonical = canonicalSubject(trimmed);
+    const isMaster = MASTER_SUBJECTS_LIST.includes(canonical) || canonical === 'العلوم' || canonical === 'التربية الأخلاقية';
+    const finalName = isMaster ? canonical : trimmed;
+    setSections(prev => prev.map(s => s.id === secId ? {
+      ...s,
+      subjects: s.subjects.map(item => item.id === subId ? { ...item, subjectName: finalName } : item)
+    } : s));
+  };
 
   // Sections configuration
   const [sections, setSections] = useState<SmartScheduleSection[]>(() => {
@@ -91,43 +506,16 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
       }
     } catch (e) {}
 
-    // Default 3 sample sections
-    return [
-      {
-        id: 'sec-1',
-        grade: 'الصف الأول متوسط',
-        section: 'أ',
-        subjects: STANDARD_SUBJECTS_TEMPLATE.map((sub, idx) => ({
-          id: `sub-1-${idx}`,
-          subjectName: sub.name,
-          teacherName: staffList[idx % staffList.length] ? `${staffList[idx % staffList.length].firstName} ${staffList[idx % staffList.length].secondName}` : 'أ. أستاذ المادة',
-          weeklyLessons: sub.quota
-        }))
-      },
-      {
-        id: 'sec-2',
-        grade: 'الصف الأول متوسط',
-        section: 'ب',
-        subjects: STANDARD_SUBJECTS_TEMPLATE.map((sub, idx) => ({
-          id: `sub-2-${idx}`,
-          subjectName: sub.name,
-          teacherName: staffList[idx % staffList.length] ? `${staffList[idx % staffList.length].firstName} ${staffList[idx % staffList.length].secondName}` : 'أ. أستاذ المادة',
-          weeklyLessons: sub.quota
-        }))
-      },
-      {
-        id: 'sec-3',
-        grade: 'الصف الثاني متوسط',
-        section: 'أ',
-        subjects: STANDARD_SUBJECTS_TEMPLATE.map((sub, idx) => ({
-          id: `sub-3-${idx}`,
-          subjectName: sub.name,
-          teacherName: staffList[(idx + 2) % staffList.length] ? `${staffList[(idx + 2) % staffList.length].firstName} ${staffList[(idx + 2) % staffList.length].secondName}` : 'أ. أستاذ المادة',
-          weeklyLessons: sub.quota
-        }))
-      }
-    ];
+    return [];
   });
+
+  // Auto-sync on mount if no sections saved or only empty
+  useEffect(() => {
+    const saved = localStorage.getItem('diyala_smart_schedule_sections');
+    if ((!saved || sections.length === 0) && studentDiscoveredStats.sectionsCount > 0) {
+      handleSmartSyncFromStudentsAndStaff(false);
+    }
+  }, [studentDiscoveredStats.sectionsCount]);
 
   // Generated schedule candidate state
   const [generatedMap, setGeneratedMap] = useState<DayScheduleMap>(() => scheduleMap);
@@ -234,6 +622,17 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
     }));
   };
 
+  // Update a single subject's property
+  const handleUpdateSubjectAssignment = React.useCallback((sectionId: string, subId: string, updates: Partial<SectionSubjectAssignment>) => {
+    setSections(prev => prev.map(sec => {
+      if (sec.id !== sectionId) return sec;
+      return {
+        ...sec,
+        subjects: sec.subjects.map(item => item.id === subId ? { ...item, ...updates } : item)
+      };
+    }));
+  }, []);
+
   // Duplicate an existing subject row (e.g. for different teachers or splitting quotas)
   const handleDuplicateSubject = (sectionId: string, subjectId: string) => {
     setSections(prev => prev.map(sec => {
@@ -254,8 +653,73 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
     }));
   };
 
+  // Auto-Balance Quota of a Section to exactly 30
+  const handleAutoBalanceSectionTo30 = (sectionId: string) => {
+    setSections(prev => prev.map(sec => {
+      if (sec.id !== sectionId) return sec;
+      const currentQuota = sec.subjects.reduce((sum, s) => sum + (s.weeklyLessons || 0), 0);
+      if (currentQuota === 30) {
+        alert('مجموع حصص هذه الشعبة هو 30 حصة بالفعل (متوازن تماماً).');
+        return sec;
+      }
+
+      if (currentQuota < 30) {
+        // Less than 30: add a vacant/free activity lesson for the remainder
+        const diff = 30 - currentQuota;
+        const vacantSub: SectionSubjectAssignment = {
+          id: `sub-${sec.id}-${Date.now()}-vacant`,
+          subjectName: 'شاغر / نشاط حر',
+          teacherName: 'شاغر',
+          weeklyLessons: diff
+        };
+        return {
+          ...sec,
+          subjects: [...sec.subjects, vacantSub]
+        };
+      } else {
+        // More than 30: Scale down subjects from non-core or extra subjects
+        let surplus = currentQuota - 30;
+        const adjustedSubs = [...sec.subjects].map(s => ({ ...s }));
+        
+        // Try to reduce or remove any vacant subjects first
+        for (let i = adjustedSubs.length - 1; i >= 0 && surplus > 0; i--) {
+          if (adjustedSubs[i].subjectName.includes('شاغر') || adjustedSubs[i].teacherName === 'شاغر') {
+            const removable = Math.min(surplus, adjustedSubs[i].weeklyLessons);
+            adjustedSubs[i].weeklyLessons -= removable;
+            surplus -= removable;
+          }
+        }
+        
+        // If still surplus, trim last added subjects
+        for (let i = adjustedSubs.length - 1; i >= 0 && surplus > 0; i--) {
+          if (adjustedSubs[i].weeklyLessons > 1) {
+            const removable = Math.min(surplus, adjustedSubs[i].weeklyLessons - 1);
+            adjustedSubs[i].weeklyLessons -= removable;
+            surplus -= removable;
+          }
+        }
+
+        const filtered = adjustedSubs.filter(s => s.weeklyLessons > 0);
+        return {
+          ...sec,
+          subjects: filtered
+        };
+      }
+    }));
+  };
+
   // Add a new subject to a section
   const handleAddSubjectToSection = (sectionId: string, subjectName: string = 'مادة جديدة', quota: number = 2) => {
+    const sec = sections.find(s => s.id === sectionId);
+    if (sec) {
+      const current = sec.subjects.reduce((sum, s) => sum + (s.weeklyLessons || 0), 0);
+      if (current + quota > 30) {
+        if (!confirm(`⚠️ تنبيه: إضافة هذه المادة (${quota} حصص) ستجعل مجموع حصص الشعبة (${current + quota}) وهو أعلى من 30 حصة المسموح بها أسبوعياً.\n\nهل ترغب في إضافتها على أن تقوم بضبط باقي الحصص لاحقاً؟`)) {
+          return;
+        }
+      }
+    }
+
     setSections(prev => prev.map(sec => {
       if (sec.id !== sectionId) return sec;
       const newSub: SectionSubjectAssignment = {
@@ -304,6 +768,18 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
   // Trigger Smart Algorithm
   const handleRunGenerator = () => {
+    // 1. Strict Quota Validation: Check if any section has quota > 30 (Extra lessons prevention)
+    const overQuotaSections = sections.filter(sec => {
+      const q = sec.subjects.reduce((sum, s) => sum + (s.weeklyLessons || 0), 0);
+      return q > 30;
+    });
+
+    if (overQuotaSections.length > 0) {
+      const names = overQuotaSections.map(s => `[${s.grade} - ${s.section}] (${s.subjects.reduce((sum, sub) => sum + (sub.weeklyLessons || 0), 0)} حصة)`).join('، ');
+      alert(`⚠️ لا يمكن توليد الجدول بسبب وجود حصص زيادة في الشعب التالية:\n${names}\n\nالحد الأقصى المسموح به هو 30 حصة أسبوعياً (5 أيام × 6 دروس). يرجى تقليل حصص المواد الزائدة أو مسحها حتى لا تتجاوز 30.`);
+      return;
+    }
+
     setIsGenerating(true);
     setSaveSuccessMsg('');
 
@@ -378,7 +854,50 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
     setScheduleMap(generatedMap);
     localStorage.setItem('diyala_school_schedule', JSON.stringify(generatedMap));
-    setSaveSuccessMsg('تم حفظ واعتماد الجدول المدرسي الأسبوعي رسمياً في النظام! 💾');
+
+    // 1. Calculate and update Staff Members according to the adopted schedule
+    if (staffList && staffList.length > 0) {
+      const updatedStaffList = staffList.map(staff => {
+        let totalLessons = 0;
+        const classesSet = new Set<string>();
+        const subjectsSet = new Set<string>();
+
+        DAYS_OF_WEEK.forEach(day => {
+          const rows = generatedMap[day] || [];
+          rows.forEach(row => {
+            LESSON_KEYS.forEach(lk => {
+              const cell = row.lessons[lk];
+              if (cell && !cell.isOff && cell.teacherName) {
+                const isMatch = matchStaffWithScheduleCell(staff, cell.teacherName, cell.subject);
+                if (isMatch) {
+                  totalLessons++;
+                  classesSet.add(`${row.grade} (${row.section})`);
+                  if (cell.subject) subjectsSet.add(cell.subject);
+                }
+              }
+            });
+          });
+        });
+
+        if (totalLessons > 0 || classesSet.size > 0) {
+          const primarySubject = Array.from(subjectsSet)[0] || staff.actualSubjectTaught || staff.specialization;
+          return {
+            ...staff,
+            teachingQuota: totalLessons,
+            classesTaught: Array.from(classesSet),
+            actualSubjectTaught: primarySubject
+          };
+        }
+        return staff;
+      });
+
+      if (setStaffList) {
+        setStaffList(updatedStaffList);
+      }
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updatedStaffList));
+    }
+
+    setSaveSuccessMsg('تم حفظ واعتماد الجدول المدرسي وتحديث أنصبة ومواد كادر التدريس رسمياً! 💾');
 
     // Sync to Supabase
     try {
@@ -388,7 +907,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
         id: schoolId,
         schedule_map: generatedMap
       }, { onConflict: 'id', ignoreDuplicates: false });
-      setSaveSuccessMsg('تم حفظ واعتماد الجدول ورفعه ومزامنته مع السحابة بنجاح تام! 🚀');
+      setSaveSuccessMsg('تم حفظ واعتماد الجدول وتحديث أنصبة المعلمين ورفعها للسحابة بنجاح تام! 🚀');
     } catch (e) {}
 
     setTimeout(() => setSaveSuccessMsg(''), 5000);
@@ -522,10 +1041,50 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
           {/* Add Section Card */}
           <div className="bg-white border-2 border-slate-300 rounded-3xl p-6 shadow-sm space-y-4">
-            <h3 className="text-base font-black text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
-              <Layers className="w-5 h-5 text-indigo-600" />
-              <span>إضافة وتحديد الصفوف والشعب المدرسية</span>
-            </h3>
+            
+            {/* Student & Staff Sync Info Banner */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border-2 border-emerald-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-emerald-950 text-sm flex items-center gap-1.5">
+                    <span>إحصائية بيانات الطلاب والكادر المكتشفة في النظام</span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 text-[11px] font-black">ربط تلقائي</span>
+                  </h4>
+                  <p className="text-xs text-emerald-800 font-bold mt-0.5">
+                    {studentDiscoveredStats.totalStudents > 0 ? (
+                      <>
+                        تم اكتشاف <strong>{studentDiscoveredStats.totalStudents}</strong> طالباً موزعين على <strong>{studentDiscoveredStats.sectionsCount}</strong> شعبة ضمن <strong>{studentDiscoveredStats.gradesCount}</strong> مراحل دراسية.
+                      </>
+                    ) : (
+                      'يمكنك الاستيراد المباشر من سجل الطلاب وسجل توزيع الكادر بضغطة زر أدناه.'
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSmartSyncFromStudentsAndStaff(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition-all shadow-sm cursor-pointer whitespace-nowrap active:scale-95 shrink-0"
+                title="توليد جميع الشعب وفق سجل الطلاب وإسناد الأساتذة وفق سجل الكادر"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                <span>⚡ استيراد الشعب والمواد من سجل الطلاب والكادر</span>
+              </button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-200 pb-3">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Layers className="w-5 h-5 text-indigo-600" />
+                <span>إضافة وتحديد الصفوف والشعب المدرسية</span>
+              </h3>
+              <span className="text-xs font-black text-indigo-900 bg-indigo-50 px-3 py-1 rounded-xl border border-indigo-200">
+                الشعب المعتمدة حالياً: {sections.length}
+              </span>
+            </div>
 
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[200px]">
@@ -640,10 +1199,67 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAutoAssignTeachersBySpec}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black text-xs transition-all shadow-sm cursor-pointer active:scale-95"
+                  title="مطابقة مواد كل الشعب مع اختصاصات كادر المدرسة المسجل تلقائياً"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>🪄 إسناد الأساتذة تلقائياً حسب الاختصاص</span>
+                </button>
                 <span className="text-xs font-black text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
                   إجمالي الشعب: {sections.length}
                 </span>
+              </div>
+            </div>
+
+            {/* Smart Rules & Constraints Card (ضوابط وقوانين الجدول المدرسي المعتمدة) */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white shadow-md border border-indigo-700/50">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                <h4 className="font-black text-sm text-indigo-100">
+                  ضوابط وقوانين التوزيع المبرمجة آلياً في خوارزمية التوليد:
+                </h4>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+                <div className="flex items-start gap-2 bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="text-rose-400 font-black text-base leading-none">🚫</span>
+                  <div>
+                    <span className="font-black text-amber-300 block mb-0.5">استبعاد الدرس السادس</span>
+                    <p className="text-[11px] text-slate-200 leading-relaxed font-bold">
+                      المواد العلمية (فيزياء، كيمياء، أحياء) والدروس الفردية والثنائية (نصاب حصة أو حصتان كالأخلاقية) لا توضع أبداً في الدرس السادس.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="text-amber-400 font-black text-base leading-none">📅</span>
+                  <div>
+                    <span className="font-black text-amber-300 block mb-0.5">سادس الخميس شاغر حتماً</span>
+                    <p className="text-[11px] text-slate-200 leading-relaxed font-bold">
+                      لا يوضع درس حقيقي في الدرس السادس يوم الخميس؛ فهو مخصص لانتهاء الدوام أو النشاط الحر لجميع الصفوف.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="text-emerald-400 font-black text-base leading-none">🛑</span>
+                  <div>
+                    <span className="font-black text-emerald-300 block mb-0.5">الشواغر في الدرس السادس</span>
+                    <p className="text-[11px] text-slate-200 leading-relaxed font-bold">
+                      إذا قل نصاب الحصص عن 30 حصة، يتم حصر الحصص الشاغرة حتماً في نهاية الدوام دون أي فراغات وسط اليوم المدرسي.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 bg-white/10 p-2.5 rounded-xl border border-white/10">
+                  <span className="text-cyan-400 font-black text-base leading-none">⚖️</span>
+                  <div>
+                    <span className="font-black text-cyan-300 block mb-0.5">توازن السادس والتدوير العادل</span>
+                    <p className="text-[11px] text-slate-200 leading-relaxed font-bold">
+                      توزيع متكافئ للدرس السادس بين المواد المسموحة والمدرسين دون تكرار مدرس أو درس أكثر من غيره، مع تدوير الحصص بين بداية ونهاية الدوام.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -662,9 +1278,15 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                           {sec.grade} - شعبة ({sec.section})
                         </h4>
                         <span className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
-                          totalQuota === 30 ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-amber-100 text-amber-900 border border-amber-300'
+                          totalQuota === 30 
+                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' 
+                            : totalQuota > 30 
+                              ? 'bg-rose-100 text-rose-900 border-2 border-rose-400 animate-pulse' 
+                              : 'bg-amber-100 text-amber-900 border border-amber-300'
                         }`}>
-                          المجموع: {totalQuota} / 30 حصة
+                          {totalQuota === 30 && 'المجموع: 30 / 30 حصة (مثالي ✓)'}
+                          {totalQuota > 30 && `⚠️ زيادة: ${totalQuota} / 30 حصة (زيادة ${totalQuota - 30} حصص!)`}
+                          {totalQuota < 30 && `المجموع: ${totalQuota} / 30 حصة (شاغر ${30 - totalQuota})`}
                         </span>
                       </div>
 
@@ -702,89 +1324,18 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                             </tr>
                           ) : (
                             sec.subjects.map((sub, sIdx) => (
-                              <tr key={sub.id} className="hover:bg-white transition-colors">
-                                <td className="p-2 text-center font-mono font-bold text-slate-500">{sIdx + 1}</td>
-                                <td className="p-2">
-                                  <input
-                                    type="text"
-                                    value={sub.subjectName}
-                                    onChange={e => {
-                                      const val = e.target.value;
-                                      setSections(prev => prev.map(s => s.id === sec.id ? {
-                                        ...s,
-                                        subjects: s.subjects.map(item => item.id === sub.id ? { ...item, subjectName: val } : item)
-                                      } : s));
-                                    }}
-                                    className="w-full p-1.5 rounded-lg border border-slate-300 font-bold bg-white text-slate-900 focus:border-indigo-600 focus:outline-none"
-                                  />
-                                </td>
-                                <td className="p-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <input
-                                      type="text"
-                                      list="teachers-datalist"
-                                      value={sub.teacherName}
-                                      onChange={e => {
-                                        const val = e.target.value;
-                                        setSections(prev => prev.map(s => s.id === sec.id ? {
-                                          ...s,
-                                          subjects: s.subjects.map(item => item.id === sub.id ? { ...item, teacherName: val } : item)
-                                        } : s));
-                                      }}
-                                      placeholder="اكتب أو اختر اسم الأستاذ"
-                                      className="w-full p-1.5 rounded-lg border border-slate-300 font-bold bg-white text-slate-900 focus:border-indigo-600 focus:outline-none"
-                                    />
-                                  </div>
-                                </td>
-                                <td className="p-2 text-center">
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    max="15"
-                                    value={sub.weeklyLessons}
-                                    onChange={e => {
-                                      const val = Number(e.target.value);
-                                      setSections(prev => prev.map(s => s.id === sec.id ? {
-                                        ...s,
-                                        subjects: s.subjects.map(item => item.id === sub.id ? { ...item, weeklyLessons: val } : item)
-                                      } : s));
-                                    }}
-                                    className="w-16 p-1.5 rounded-lg border border-slate-300 font-black font-mono text-center bg-white text-slate-900 focus:border-indigo-600 focus:outline-none"
-                                  />
-                                </td>
-                                <td className="p-2 text-center">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleApplyTeacherToAllSections(sub.subjectName, sub.teacherName)}
-                                    title={`تعيين [${sub.teacherName}] لمادة [${sub.subjectName}] في كافة الشعب`}
-                                    className="text-[10px] font-black px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-600 hover:text-white transition-all cursor-pointer"
-                                  >
-                                    تطبيق للكل
-                                  </button>
-                                </td>
-                                <td className="p-2 text-center">
-                                  <div className="flex items-center justify-center gap-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDuplicateSubject(sec.id, sub.id)}
-                                      title="تكرار هذه المادة (لإسناد مدرس آخر أو تقسيم الحصص)"
-                                      className="p-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-600 hover:text-white border border-purple-200 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                                    >
-                                      <Copy className="w-3.5 h-3.5" />
-                                      <span>تكرار</span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteSubject(sec.id, sub.id)}
-                                      title="حذف هذه المادة من هذه الشعبة (بسبب ضغط الدوام أو شاغر)"
-                                      className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white border border-rose-200 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 shadow-2xs"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                      <span>حذف</span>
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
+                              <SubjectRow
+                                key={sub.id}
+                                sectionId={sec.id}
+                                sub={sub}
+                                sIdx={sIdx}
+                                staffList={staffList}
+                                onUpdateSubject={handleUpdateSubjectAssignment}
+                                onBlurSubjectName={handleSubjectNameBlur}
+                                onApplyTeacherToAll={handleApplyTeacherToAllSections}
+                                onDuplicate={handleDuplicateSubject}
+                                onDelete={handleDeleteSubject}
+                              />
                             ))
                           )}
                         </tbody>
@@ -830,6 +1381,14 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
+                          onClick={() => handleAutoBalanceSectionTo30(sec.id)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-black transition-all cursor-pointer shadow-2xs flex items-center gap-1"
+                          title="موازنة مجموع الحصص آلياً ليصبح 30 حصة تماماً"
+                        >
+                          ⚖️ موازنة لـ 30 حصة
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => handleResetSectionToTemplate(sec.id)}
                           className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
                           title="استعادة المواد الوزارية القياسية (30 حصة)"
@@ -851,12 +1410,6 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
               })}
             </div>
 
-            {/* Datalist for teacher autocomplete */}
-            <datalist id="teachers-datalist">
-              {teacherOptions.map(t => (
-                <option key={t} value={t} />
-              ))}
-            </datalist>
 
             {/* Bottom Actions */}
             <div className="flex items-center justify-between pt-4 border-t border-slate-200">
@@ -1273,6 +1826,23 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
         </div>
       </PrintPreviewModal>
+
+      {/* Datalists for Easy Input & Canonical Matching */}
+      <datalist id="master-subjects-datalist">
+        {MASTER_SUBJECTS_LIST.map(sub => (
+          <option key={sub} value={sub} />
+        ))}
+        <option value="العلوم" />
+        <option value="التربية الأخلاقية" />
+      </datalist>
+
+      <datalist id="teachers-datalist">
+        {staffList.map(stf => {
+          const fullName = stf.fullName || `${stf.firstName} ${stf.secondName}`.trim();
+          const spec = stf.specialization ? ` (${stf.specialization})` : '';
+          return <option key={stf.id} value={fullName}>{fullName}{spec}</option>;
+        })}
+      </datalist>
 
     </div>
   );

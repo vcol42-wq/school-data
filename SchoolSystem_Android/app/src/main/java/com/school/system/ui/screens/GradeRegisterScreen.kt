@@ -2188,8 +2188,16 @@ fun PaperHeaderCell(
     backgroundColor: Color? = null
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
-    val effectiveBg = backgroundColor ?: currentTheme.tableHeaderBg
-    val effectiveTextColor = textColor ?: currentTheme.tableHeaderTextColor
+    val effectiveBg = if (currentTheme.isDark) {
+        currentTheme.tableHeaderBg
+    } else {
+        backgroundColor ?: currentTheme.tableHeaderBg
+    }
+    val effectiveTextColor = if (currentTheme.isDark) {
+        currentTheme.tableHeaderTextColor
+    } else {
+        textColor ?: currentTheme.tableHeaderTextColor
+    }
     val borderColor = currentTheme.tableBorderColor
 
     Box(
@@ -2228,8 +2236,16 @@ fun PaperHeaderCellWithAdd(
     backgroundColor: Color? = null
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
-    val effectiveBg = backgroundColor ?: currentTheme.tableHeaderBg
-    val effectiveTextColor = textColor ?: currentTheme.tableHeaderTextColor
+    val effectiveBg = if (currentTheme.isDark) {
+        currentTheme.tableHeaderBg
+    } else {
+        backgroundColor ?: currentTheme.tableHeaderBg
+    }
+    val effectiveTextColor = if (currentTheme.isDark) {
+        currentTheme.tableHeaderTextColor
+    } else {
+        textColor ?: currentTheme.tableHeaderTextColor
+    }
     val borderColor = currentTheme.tableBorderColor
 
     Box(
@@ -2312,8 +2328,16 @@ fun EditableHeaderCell(
     onClick: () -> Unit
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
-    val effectiveBg = backgroundColor ?: currentTheme.tableHeaderBg
-    val effectiveTextColor = textColor ?: currentTheme.tableHeaderTextColor
+    val effectiveBg = if (currentTheme.isDark) {
+        currentTheme.tableHeaderBg
+    } else {
+        backgroundColor ?: currentTheme.tableHeaderBg
+    }
+    val effectiveTextColor = if (currentTheme.isDark) {
+        currentTheme.tableHeaderTextColor
+    } else {
+        textColor ?: currentTheme.tableHeaderTextColor
+    }
 
     Box(
         modifier = Modifier
@@ -2352,8 +2376,18 @@ fun PaperTableCell(
     onLongClick: (() -> Unit)? = null
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
-    val effectiveTextColor = textColor ?: if (currentTheme.isDark) currentTheme.textPrimaryColor else Color(0xFF0F172A)
-    val effectiveBg = backgroundColor ?: currentTheme.tableCellBg
+    val effectiveTextColor = if (currentTheme.isDark) {
+        if (textColor == Color(0xFFDC2626) || textColor == Color.Red) Color(0xFFF87171)
+        else currentTheme.textPrimaryColor
+    } else {
+        textColor ?: Color(0xFF0F172A)
+    }
+    val effectiveBg = if (currentTheme.isDark) {
+        if (backgroundColor == currentTheme.tableAltCellBg) currentTheme.tableAltCellBg
+        else currentTheme.tableCellBg
+    } else {
+        backgroundColor ?: currentTheme.tableCellBg
+    }
     val borderColor = currentTheme.tableBorderColor
 
     val clickModifier = when {

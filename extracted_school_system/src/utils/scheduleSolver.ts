@@ -42,6 +42,32 @@ const SUBJECT_TIME_PRIORITY: Record<string, number> = {
 };
 
 /**
+ * Strict Rule: 
+ * 1. Science subjects (Physics, Chemistry, Biology) CANNOT be placed in Lesson 6.
+ * 2. Single-period subjects (like Ethics) and dual-period subjects (نصاب فردي أو ثنائي <= 2) CANNOT be placed in Lesson 6.
+ * 3. Thursday Lesson 6 is strictly vacant / activity (لا يوضع درس حقيقي في الدرس السادس يوم الخميس).
+ * 4. Any vacant slots must strictly be placed in Lesson 6.
+ */
+export function isForbiddenInPeriod6(subjectName: string, weeklyQuota: number = 2): boolean {
+  if (!subjectName) return false;
+  const s = subjectName.trim().toLowerCase();
+  
+  // 1. المواد العلمية (الفيزياء، الكيمياء، الأحياء)
+  const isScience = 
+    s.includes('فيز') || 
+    s.includes('كيم') || 
+    s.includes('احيا') || 
+    s.includes('phys') || 
+    s.includes('chem') || 
+    s.includes('bio');
+
+  // 2. الدروس التي نصابها درس واحد أو درسان (أحادي أو ثنائي <= 2 حصص أسبوعياً) مثل الأخلاقية
+  const isLowQuota = weeklyQuota <= 2 || s.includes('اخلاق') || s.includes('أخلاق');
+
+  return isScience || isLowQuota;
+}
+
+/**
  * Validates whether a generated or manually edited schedule has any teacher collisions.
  */
 export function checkScheduleCollisions(scheduleMap: DayScheduleMap): CollisionReport[] {
@@ -186,22 +212,107 @@ function calculateFairnessScore(schedule: DayScheduleMap): number {
             score -= (count - 1) * 3500; // Strong penalty for repeating same subject in the same day!
           }
         });
+
+        // 2. STRICT RULE FOR PERIOD 6:
+        // - No real lesson in Thursday Lesson 6 (الخميس الدرس السادس مخصص حصراً للشواغر / النشاط ولا يوضع فيه درس).
+        // - No Physics, Chemistry, Biology, or single/dual-period subjects (<= 2 حصص كالأخلاقية والدروس الثنائية) in Lesson 6.
+        const cell6 = row.lessons.lesson6;
+        if (cell6 && cell6.subject && cell6.subject !== 'شاغر / نشاط حر' && !cell6.isOff) {
+          if (day === 'الخميس') {
+            score -= 100000; // Violates rule: Thursday Lesson 6 must NOT have a real curriculum lesson!
+          }
+          const quota = subjectPeriodsMap.get(cell6.subject.trim())?.length || 2;
+          if (isForbiddenInPeriod6(cell6.subject, quota)) {
+            score -= 50000; // Severe violation: Science or <= 2 quota subject in Lesson 6!
+          }
+        }
+
+        // 3. VACANT PERIOD RULE:
+        // Vacant periods should strictly be in Lesson 6 at the end of the day, not in Lessons 1-5!
+        for (let p = 0; p < 5; p++) {
+          const key = LESSON_KEYS[p];
+          if (row.lessons[key]?.subject === 'شاغر / نشاط حر') {
+            score -= 15000; // Vacant period in the middle/start of the day is heavily penalized!
+          }
+        }
       }
     });
 
-    // 2. Reward spreading recurring subjects across different days of the week
+    // 4. Reward spreading recurring subjects across different days of the week
     subjectDaysMap.forEach((days, subj) => {
       score += days.size * 40; // e.g. 5 days = +200 points
     });
 
-    // 3. Reward diversity of period indices (rotation)
+    // 5. Reward diversity of period indices (rotation between early, middle, and late)
     subjectPeriodsMap.forEach((periods) => {
       if (periods.length > 1) {
         const uniquePeriods = new Set(periods);
-        score += uniquePeriods.size * 25; // Reward for distributing across different lesson numbers
+        score += uniquePeriods.size * 35; // Reward for rotating period index across days
+
+        // Reward balance between early (periods 0, 1, 2) and late (periods 3, 4, 5)
+        const earlyCount = periods.filter(p => p < 3).length;
+        const lateCount = periods.filter(p => p >= 3).length;
+        const balanceDiff = Math.abs(earlyCount - lateCount);
+        score += Math.max(0, 10 - balanceDiff) * 15;
+      }
+    });
+
+    // 6. LESSON 6 SECTION-LEVEL FAIRNESS (توازن الدرس السادس داخل الشعبة):
+    // Reward having diverse teachers and subjects in Lesson 6 across the week without repeating
+    const secP6Subjects = new Map<string, number>();
+    const secP6Teachers = new Map<string, number>();
+    DAYS_OF_WEEK.forEach(day => {
+      const row = (schedule[day] || []).find(r => r.grade === grade && r.section === section);
+      const c6 = row?.lessons.lesson6;
+      if (c6 && c6.subject && c6.subject !== 'شاغر / نشاط حر' && !c6.isOff) {
+        const s = c6.subject.trim();
+        secP6Subjects.set(s, (secP6Subjects.get(s) || 0) + 1);
+        if (c6.teacherName && c6.teacherName !== 'شاغر' && c6.teacherName !== 'أ. أستاذ المادة') {
+          const t = c6.teacherName.trim();
+          secP6Teachers.set(t, (secP6Teachers.get(t) || 0) + 1);
+        }
+      }
+    });
+
+    // Heavy penalty for repeating the same teacher or subject in Lesson 6 for this section
+    secP6Subjects.forEach((count) => {
+      if (count > 1) {
+        score -= (count - 1) * 3000;
+      } else {
+        score += 80; // Reward unique subject in Lesson 6
+      }
+    });
+    secP6Teachers.forEach((count) => {
+      if (count > 1) {
+        score -= (count - 1) * 3500;
+      } else {
+        score += 100; // Reward unique teacher in Lesson 6
       }
     });
   });
+
+  // 7. LESSON 6 SCHOOL-WIDE FAIRNESS (توازن الدرس السادس بين جميع مدرسي المدرسة):
+  // Ensure no teacher is disproportionately burdened with Lesson 6 across multiple sections
+  const schoolP6TeacherLoads = new Map<string, number>();
+  DAYS_OF_WEEK.forEach(day => {
+    (schedule[day] || []).forEach(row => {
+      const c6 = row.lessons.lesson6;
+      if (c6 && c6.teacherName && c6.teacherName !== 'شاغر' && c6.teacherName !== 'أ. أستاذ المادة' && !c6.isOff && c6.subject !== 'شاغر / نشاط حر') {
+        const t = c6.teacherName.trim();
+        schoolP6TeacherLoads.set(t, (schoolP6TeacherLoads.get(t) || 0) + 1);
+      }
+    });
+  });
+
+  if (schoolP6TeacherLoads.size > 1) {
+    const loads = Array.from(schoolP6TeacherLoads.values());
+    const maxLoad = Math.max(...loads);
+    const minLoad = Math.min(...loads);
+    const spread = maxLoad - minLoad;
+    if (spread > 1) {
+      score -= (spread - 1) * 750; // Penalize uneven distribution among teachers
+    }
+  }
 
   return score;
 }
@@ -256,8 +367,11 @@ export function generateSmartFairSchedule(
     const seed = randomSeed + attempt * 17.31 + Math.random() * 1000;
     const candidateMap = buildCandidateSchedule(sections, seed);
     const candidateRepaired = repairDailySubjectDuplicates(candidateMap);
-    const collisions = checkScheduleCollisions(candidateRepaired);
-    const activeCandidate = collisions.length === 0 ? candidateRepaired : candidateMap;
+    const candidateBalanced = balancePeriod6AcrossSchool(candidateRepaired);
+    
+    // Validate candidate
+    const collisions = checkScheduleCollisions(candidateBalanced);
+    const activeCandidate = collisions.length === 0 ? candidateBalanced : (checkScheduleCollisions(candidateRepaired).length === 0 ? candidateRepaired : candidateMap);
     const currentCollisions = checkScheduleCollisions(activeCandidate);
 
     if (currentCollisions.length === 0) {
@@ -286,7 +400,11 @@ export function generateSmartFairSchedule(
 
   // If 0 collision schedule was found among attempts, refine and return it
   if (minCollisionsCount === 0) {
-    const finalClean = repairDailySubjectDuplicates(bestSchedule);
+    let finalClean = repairDailySubjectDuplicates(bestSchedule);
+    finalClean = balancePeriod6AcrossSchool(finalClean);
+    if (checkScheduleCollisions(finalClean).length > 0) {
+      finalClean = bestSchedule; // safety fallback if balance introduced collision
+    }
     return {
       success: true,
       scheduleMap: finalClean,
@@ -297,6 +415,7 @@ export function generateSmartFairSchedule(
   // If not 100% collision-free in random passes, apply deterministic conflict resolution swap pass
   let resolvedMap = resolveConflictsBySwapping(bestSchedule, sections);
   resolvedMap = repairDailySubjectDuplicates(resolvedMap);
+  resolvedMap = balancePeriod6AcrossSchool(resolvedMap);
   const finalCollisions = checkScheduleCollisions(resolvedMap);
 
   return {
@@ -357,6 +476,9 @@ function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number):
     'الأربعاء': { lesson1: new Set(), lesson2: new Set(), lesson3: new Set(), lesson4: new Set(), lesson5: new Set(), lesson6: new Set() },
     'الخميس': { lesson1: new Set(), lesson2: new Set(), lesson3: new Set(), lesson4: new Set(), lesson5: new Set(), lesson6: new Set() },
   };
+
+  // School-wide Lesson 6 load tracking to ensure even distribution among teachers
+  const schoolWidePeriod6TeacherCount = new Map<string, number>();
 
   // Priority slots for vacant / free periods
   // Strictly assign vacant slots to the 6th lesson across days starting from end of week (Thursday, Wednesday, Tuesday, Monday, Sunday)
@@ -419,6 +541,7 @@ function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number):
 
     // 1. Assign vacant periods directly to the end of the week
     const reservedVacantKeys = new Set<string>();
+    // If section has any vacant slots (vacantCount >= 1), ensure Thursday Lesson 6 is the first vacant reserved!
     for (let v = 0; v < vacantCount && v < endOfWeekVacantCandidates.length; v++) {
       const vSlot = endOfWeekVacantCandidates[v];
       const row = sectionRowRefs[vSlot.day];
@@ -446,6 +569,8 @@ function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number):
     const daySubjectCounts: Record<DayOfWeek, Record<string, number>> = {
       'الأحد': {}, 'الإثنين': {}, 'الثلاثاء': {}, 'الأربعاء': {}, 'الخميس': {}
     };
+    const secPeriod6SubjectCount = new Map<string, number>();
+    const secPeriod6TeacherCount = new Map<string, number>();
     const subjectAssignedPeriods: Record<string, number[]> = {};
     const subjectQuotas: Record<string, number> = {};
     realLessons.forEach(l => { subjectQuotas[l.subject] = (subjectQuotas[l.subject] || 0) + 1; });
@@ -462,6 +587,10 @@ function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number):
         const periodIndex = (p + periodRotationOffset) % 6;
         const lessonKey = LESSON_KEYS[periodIndex];
         const slotKey = `${day}_${lessonKey}`;
+        // If Thursday Lesson 6: strictly disallow adding it as an available slot for real lessons if total quota <= 29
+        if (day === 'الخميس' && lessonKey === 'lesson6' && realLessons.length < 30) {
+          continue;
+        }
         if (!reservedVacantKeys.has(slotKey)) {
           availableSlots.push({ day, dayIndex: dIdx, lessonKey, periodIndex });
         }
@@ -508,17 +637,62 @@ function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number):
           penalty -= 80;
         }
 
-        // Critical Fairness Constraint 3: Rotation across periods (Prevent fixing in Lesson 1!)
+        // Hard Constraint 0: Strict Period 6 Rules
+        // Rule A: Thursday Lesson 6 is strictly forbidden for any curriculum lesson (ممنوع وضع أي درس في الدرس السادس يوم الخميس)
+        // Rule B: Physics, Chemistry, Biology, and single/dual-quota subjects (<= 2 كالأخلاقية والدروس الثنائية) CANNOT be placed in Lesson 6
+        if (slot.periodIndex === 5) {
+          if (slot.day === 'الخميس') {
+            penalty += 2000000; // Strictly forbidden: No curriculum lesson in Thursday Lesson 6!
+          }
+          const quota = subjectQuotas[item.subject] || 1;
+          if (isForbiddenInPeriod6(item.subject, quota)) {
+            penalty += 1000000; // Impossible / strictly forbidden in Lesson 6 (Science or Quota <= 2)!
+          } else {
+            // FAIR BALANCE IN LESSON 6 (توازن الدرس السادس بين المدرسين والمواد المسموحة):
+            // 1. Heavy penalty if this section ALREADY has this subject in Lesson 6 this week
+            const secSubjP6Count = secPeriod6SubjectCount.get(item.subject) || 0;
+            if (secSubjP6Count > 0) {
+              penalty += 7500 * secSubjP6Count;
+            }
+
+            // 2. Heavy penalty if this section ALREADY has this teacher in Lesson 6 this week
+            if (isTeacherSpecial) {
+              const secTeachP6Count = secPeriod6TeacherCount.get(item.teacher) || 0;
+              if (secTeachP6Count > 0) {
+                penalty += 8500 * secTeachP6Count;
+              }
+
+              // 3. School-wide balance: penalize loading the same teacher with multiple Lesson 6 slots across sections
+              const schoolWideP6Count = schoolWidePeriod6TeacherCount.get(item.teacher) || 0;
+              penalty += schoolWideP6Count * 1800;
+            }
+          }
+        }
+
+        // Critical Fairness Constraint 3: Rotation and dynamic balance across periods (Prevent fixing in Lesson 1!)
         if (prevPeriods.includes(slot.periodIndex)) {
           const samePeriodCount = prevPeriods.filter(p => p === slot.periodIndex).length;
-          penalty += 450 * samePeriodCount;
+          penalty += 850 * samePeriodCount; // Strongly penalize fixing the subject in the same period
+        }
+
+        // Dynamic Balance between beginning (lessons 1, 2, 3) and end (lessons 4, 5, 6) of the day:
+        if (prevPeriods.length > 0) {
+          const lastPeriod = prevPeriods[prevPeriods.length - 1];
+          const lastWasEarly = lastPeriod < 3;
+          const currentIsEarly = slot.periodIndex < 3;
+          if (lastWasEarly === currentIsEarly) {
+            penalty += 140; // Prefer alternating early and later
+          } else {
+            penalty -= 90; // Reward balance
+          }
         }
 
         // Constraint 4: Pedagogical slot preference with natural rotation
         if (item.priority <= 2) {
+          // Allow core subjects (Math, Arabic, English) to take their fair turn in Lesson 6 with slight nudge
           if (slot.periodIndex === 5) penalty += 50;
         } else if (item.priority >= 5) {
-          if (slot.periodIndex <= 1) penalty += 40;
+          if (slot.periodIndex <= 1) penalty += 60;
         }
 
         // Slight randomness to break ties
@@ -552,6 +726,39 @@ function buildCandidateSchedule(sections: SmartScheduleSection[], seed: number):
             subjectAssignedPeriods[item.subject] = [];
           }
           subjectAssignedPeriods[item.subject].push(chosenSlot.periodIndex);
+
+          // Track Lesson 6 assignments for section and school
+          if (chosenSlot.periodIndex === 5) {
+            secPeriod6SubjectCount.set(item.subject, (secPeriod6SubjectCount.get(item.subject) || 0) + 1);
+            if (isTeacherSpecial) {
+              secPeriod6TeacherCount.set(item.teacher, (secPeriod6TeacherCount.get(item.teacher) || 0) + 1);
+              schoolWidePeriod6TeacherCount.set(item.teacher, (schoolWidePeriod6TeacherCount.get(item.teacher) || 0) + 1);
+            }
+          }
+        }
+      } else {
+        // Fallback: If heuristic penalty rejected all slots, pick the first unoccupied slot in availableSlots
+        for (const slot of availableSlots) {
+          const row = sectionRowRefs[slot.day];
+          if (row && row.lessons[slot.lessonKey].subject === '') {
+            row.lessons[slot.lessonKey] = {
+              subject: item.subject,
+              teacherName: item.teacher,
+              isOff: false
+            };
+            if (isTeacherSpecial) {
+              teacherBusyMap[slot.day][slot.lessonKey].add(item.teacher);
+            }
+            daySubjectCounts[slot.day][item.subject] = (daySubjectCounts[slot.day][item.subject] || 0) + 1;
+            if (slot.periodIndex === 5) {
+              secPeriod6SubjectCount.set(item.subject, (secPeriod6SubjectCount.get(item.subject) || 0) + 1);
+              if (isTeacherSpecial) {
+                secPeriod6TeacherCount.set(item.teacher, (secPeriod6TeacherCount.get(item.teacher) || 0) + 1);
+                schoolWidePeriod6TeacherCount.set(item.teacher, (schoolWidePeriod6TeacherCount.get(item.teacher) || 0) + 1);
+              }
+            }
+            break;
+          }
         }
       }
     }
@@ -608,6 +815,23 @@ function resolveConflictsBySwapping(schedule: DayScheduleMap, sections: SmartSch
               if (otherLessonKey === lessonKey) continue;
               const otherCell = targetRow.lessons[otherLessonKey];
               
+              // STRICT RULE: Check Lesson 6 rule for Physics, Chemistry, Biology, Ethics, and Vacant slots
+              const currentSubject = targetRow.lessons[lessonKey]?.subject || '';
+              const otherSubject = otherCell?.subject || '';
+              
+              // Thursday Lesson 6 must never receive a real curriculum lesson
+              if (day === 'الخميس' && (lessonKey === 'lesson6' || otherLessonKey === 'lesson6')) {
+                if (lessonKey === 'lesson6' && otherSubject !== 'شاغر / نشاط حر') continue;
+                if (otherLessonKey === 'lesson6' && currentSubject !== 'شاغر / نشاط حر') continue;
+              }
+
+              if (otherLessonKey === 'lesson6' && isForbiddenInPeriod6(currentSubject, 2)) continue;
+              if (lessonKey === 'lesson6' && isForbiddenInPeriod6(otherSubject, 2)) continue;
+
+              // Do not swap vacant slot into lessons 1-5
+              if (currentSubject === 'شاغر / نشاط حر' && otherLessonKey !== 'lesson6') continue;
+              if (otherSubject === 'شاغر / نشاط حر' && lessonKey !== 'lesson6') continue;
+
               const isTeacherFreeInOther = !rows.some(r => r.lessons[otherLessonKey]?.teacherName === teacher);
               const isOtherTeacherFreeInCurrent = !otherCell.teacherName || otherCell.teacherName === 'شاغر' || 
                 !rows.some((r, idx) => idx !== rowIndexToSwap && r.lessons[lessonKey]?.teacherName === otherCell.teacherName);
@@ -675,6 +899,18 @@ export function repairDailySubjectDuplicates(schedule: DayScheduleMap): DaySched
               const cellB = rowB.lessons[slotB];
               if (!cellB || cellB.isOff) continue;
 
+              // STRICT RULE: Check Lesson 6 rule
+              // Thursday Lesson 6 must never receive a real curriculum lesson
+              if (dayB === 'الخميس' && slotB === 'lesson6' && cellA.subject !== 'شاغر / نشاط حر') continue;
+              if (dayA === 'الخميس' && slotToMoveA === 'lesson6' && cellB.subject !== 'شاغر / نشاط حر') continue;
+
+              if (slotB === 'lesson6' && isForbiddenInPeriod6(cellA.subject, 2)) continue;
+              if (slotToMoveA === 'lesson6' && isForbiddenInPeriod6(cellB.subject, 2)) continue;
+
+              // Vacant slot must remain in lesson6
+              if (cellA.subject === 'شاغر / نشاط حر' && slotB !== 'lesson6') continue;
+              if (cellB.subject === 'شاغر / نشاط حر' && slotToMoveA !== 'lesson6') continue;
+
               const hasSubjBInDayA = cellB.subject !== 'شاغر / نشاط حر' && LESSON_KEYS.some(k => k !== slotToMoveA && rowA.lessons[k]?.subject === cellB.subject);
               if (hasSubjBInDayA) continue; // swapping would create duplicate of subjB in dayA!
 
@@ -697,6 +933,106 @@ export function repairDailySubjectDuplicates(schedule: DayScheduleMap): DaySched
         }
       });
     }
+  });
+
+  return result;
+}
+
+/**
+ * Intra-section and school-wide balancing pass specifically for Lesson 6.
+ * Ensures Lesson 6 rotates equitably among permitted subjects and teachers without repeated clustering.
+ */
+export function balancePeriod6AcrossSchool(schedule: DayScheduleMap): DayScheduleMap {
+  const result: DayScheduleMap = JSON.parse(JSON.stringify(schedule));
+
+  const allSections: { grade: string; section: string }[] = [];
+  (result['الأحد'] || []).forEach(row => {
+    allSections.push({ grade: row.grade, section: row.section });
+  });
+
+  allSections.forEach(sec => {
+    // 1. Check Section-level Lesson 6 distribution across the 5 days
+    const p6Occurrences: { day: DayOfWeek; subject: string; teacher: string }[] = [];
+    DAYS_OF_WEEK.forEach(day => {
+      const row = (result[day] || []).find(r => r.grade === sec.grade && r.section === sec.section);
+      const c6 = row?.lessons.lesson6;
+      if (c6 && c6.subject && c6.subject !== 'شاغر / نشاط حر' && !c6.isOff) {
+        p6Occurrences.push({ day, subject: c6.subject.trim(), teacher: c6.teacherName?.trim() || '' });
+      }
+    });
+
+    // Find any repeated subject or teacher in Lesson 6 for this section
+    const subjectCounts = new Map<string, number>();
+    const teacherCounts = new Map<string, number>();
+    p6Occurrences.forEach(occ => {
+      subjectCounts.set(occ.subject, (subjectCounts.get(occ.subject) || 0) + 1);
+      if (occ.teacher && occ.teacher !== 'شاغر' && occ.teacher !== 'أ. أستاذ المادة') {
+        teacherCounts.set(occ.teacher, (teacherCounts.get(occ.teacher) || 0) + 1);
+      }
+    });
+
+    // Try to swap repeated Lesson 6 entries with compatible lessons in earlier periods of that same day (e.g. lesson4 or lesson5)
+    DAYS_OF_WEEK.forEach(day => {
+      // Thursday Lesson 6 is strictly vacant / activity; do not swap curriculum lessons into it
+      if (day === 'الخميس') return;
+
+      const row = (result[day] || []).find(r => r.grade === sec.grade && r.section === sec.section);
+      if (!row) return;
+
+      const c6 = row.lessons.lesson6;
+      if (!c6 || !c6.subject || c6.subject === 'شاغر / نشاط حر' || c6.isOff) return;
+
+      const currentSubj = c6.subject.trim();
+      const currentTeacher = c6.teacherName?.trim() || '';
+      const isSubjRepeated = (subjectCounts.get(currentSubj) || 0) > 1;
+      const isTeacherRepeated = currentTeacher && (teacherCounts.get(currentTeacher) || 0) > 1;
+
+      if (isSubjRepeated || isTeacherRepeated) {
+        // Look for candidate slots in the same day (prefer lesson5 or lesson4) whose subject is permitted in Lesson 6
+        const candidateKeys: (typeof LESSON_KEYS[number])[] = ['lesson5', 'lesson4', 'lesson3'];
+        for (const candKey of candidateKeys) {
+          const candCell = row.lessons[candKey];
+          if (!candCell || !candCell.subject || candCell.subject === 'شاغر / نشاط حر' || candCell.isOff) continue;
+
+          const candSubj = candCell.subject.trim();
+          const candTeacher = candCell.teacherName?.trim() || '';
+
+          // Must be permitted in Lesson 6
+          if (isForbiddenInPeriod6(candSubj, 2)) continue;
+
+          // Candidate subject/teacher should not already be heavily present in Lesson 6 for this section
+          if ((subjectCounts.get(candSubj) || 0) >= 1) continue;
+          if (candTeacher && (teacherCounts.get(candTeacher) || 0) >= 1) continue;
+
+          // Check collisions: If we swap current Lesson 6 and candKey in row on `day`
+          // Does currentTeacher clash with another section in candKey?
+          const currentTeacherCollides = currentTeacher && currentTeacher !== 'شاغر' &&
+            (result[day] || []).some(r => r.id !== row.id && r.lessons[candKey]?.teacherName === currentTeacher);
+
+          // Does candTeacher clash with another section in lesson6?
+          const candTeacherCollides = candTeacher && candTeacher !== 'شاغر' &&
+            (result[day] || []).some(r => r.id !== row.id && r.lessons.lesson6?.teacherName === candTeacher);
+
+          if (!currentTeacherCollides && !candTeacherCollides) {
+            // Swap safely!
+            const temp = { ...c6 };
+            row.lessons.lesson6 = { ...candCell };
+            row.lessons[candKey] = temp;
+
+            // Update local count trackers
+            subjectCounts.set(currentSubj, (subjectCounts.get(currentSubj) || 1) - 1);
+            subjectCounts.set(candSubj, (subjectCounts.get(candSubj) || 0) + 1);
+            if (currentTeacher) {
+              teacherCounts.set(currentTeacher, (teacherCounts.get(currentTeacher) || 1) - 1);
+            }
+            if (candTeacher) {
+              teacherCounts.set(candTeacher, (teacherCounts.get(candTeacher) || 0) + 1);
+            }
+            break;
+          }
+        }
+      }
+    });
   });
 
   return result;
