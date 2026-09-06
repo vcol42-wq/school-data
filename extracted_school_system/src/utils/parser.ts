@@ -1,6 +1,7 @@
 import { Student, StaffMember, SchoolStage } from '../types';
 import * as XLSX from 'xlsx';
 import { canonicalSubject, normalizeText } from './subjectHelper';
+import { standardizeSectionName } from './syncEngine';
 
 // List of Grades per School Stage
 export const STAGE_GRADES: Record<SchoolStage, string[]> = {
@@ -360,7 +361,7 @@ export async function parseExcelFileForStudents(file: File, startingSeq: number 
               : inferredGrade;
 
             const section = sectionColIndex >= 0 && row[sectionColIndex] 
-              ? String(row[sectionColIndex]).trim() 
+              ? standardizeSectionName(String(row[sectionColIndex])) 
               : 'أ';
 
             const motherName = motherColIndex >= 0 && row[motherColIndex] 

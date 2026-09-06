@@ -82,8 +82,11 @@ data class SupabaseGradeDto(
 data class SupabaseAttendanceDto(
     val school_id: String,
     val student_record_number: String,
-    val date: String,
-    val status: String
+    val date_string: String? = null,
+    val subject: String? = null,
+    val status: String = "absent",
+    val period_number: Int = 1,
+    val date: String? = null
 )
 
 data class SupabaseDailyAssignmentDto(
@@ -117,7 +120,8 @@ data class SupabaseSchoolDto(
     val id: String,
     val name: String,
     val pairing_code: String,
-    val admin_email: String
+    val admin_email: String,
+    val config: Map<String, Any>? = null
 )
 
 data class SupabaseScheduleDto(
@@ -198,6 +202,7 @@ interface SupabaseApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
+        @Query("on_conflict") onConflict: String = "school_id,student_record_number,subject",
         @Body grades: List<SupabaseGradeDto>
     ): Response<Void>
 
@@ -215,6 +220,7 @@ interface SupabaseApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
+        @Query("on_conflict") onConflict: String = "school_id,student_record_number,date_string,subject,period_number",
         @Body attendance: List<SupabaseAttendanceDto>
     ): Response<Void>
 
@@ -618,7 +624,7 @@ class SyncRepository @Inject constructor(
     }
 
     /**
-     * Standardizes Section (أ، ب، ج، ح، خ، أخرى)
+     * Standardizes Section (أ، ب، ج، د، هـ، و، ز، ح، ...)
      */
     fun standardizeSectionName(secStr: String?): String {
         if (secStr.isNullOrBlank()) return "أ"
@@ -627,11 +633,13 @@ class SyncRepository @Inject constructor(
         if (clean == "ا" || clean == "أ" || clean == "إ" || clean == "آ" || lower == "a" || lower == "1" || lower == "١") return "أ"
         if (clean == "ب" || lower == "b" || lower == "2" || lower == "٢") return "ب"
         if (clean == "ج" || lower == "c" || lower == "3" || lower == "٣") return "ج"
-        if (clean == "ح") return "ح"
-        if (clean == "خ") return "خ"
         if (clean == "د" || lower == "d" || lower == "4" || lower == "٤") return "د"
         if (clean == "ه" || clean == "هـ" || lower == "e" || lower == "5" || lower == "٥") return "هـ"
         if (clean == "و" || lower == "f" || lower == "6" || lower == "٦") return "و"
+        if (clean == "ز" || lower == "z" || lower == "7" || lower == "٧") return "ز"
+        if (clean == "ح" || lower == "h" || lower == "8" || lower == "٨") return "ح"
+        if (clean == "ط" || lower == "9" || lower == "٩") return "ط"
+        if (clean == "خ") return "خ"
         return clean.ifBlank { "أ" }
     }
 
@@ -1313,7 +1321,7 @@ class SyncRepository @Inject constructor(
                         grade = cleanGrd,
                         section = cleanSec,
                         marks = marksDto,
-                        teacher_id = teacherId
+                        teacher_id = null // Always null to avoid FK violation 23503 on teachers(id)
                     )
                 )
 
@@ -1324,8 +1332,11 @@ class SyncRepository @Inject constructor(
                         SupabaseAttendanceDto(
                             school_id = cleanSchoolId,
                             student_record_number = cleanRec,
-                            date = abs.dateString,
-                            status = "absent"
+                            date_string = abs.dateString,
+                            subject = cleanSubj,
+                            status = "absent",
+                            period_number = 1,
+                            date = abs.dateString
                         )
                     )
                 }
@@ -1333,7 +1344,7 @@ class SyncRepository @Inject constructor(
 
             // CRITICAL: Deduplicate batch payload to prevent duplicates
             val gradesPayload = rawGradesPayload.distinctBy { "${it.school_id}__${it.student_record_number}__${it.subject}" }
-            val attendancePayload = rawAttendancePayload.distinctBy { "${it.school_id}__${it.student_record_number}__${it.date}" }
+            val attendancePayload = rawAttendancePayload.distinctBy { "${it.school_id}__${it.student_record_number}__${it.date_string ?: it.date}__${it.subject ?: ""}" }
 
             // 1. Delete prior grades for subject(s) then insert new
             val uniqueSubjects = gradesPayload.map { it.subject }.distinct()
@@ -1358,6 +1369,7 @@ class SyncRepository @Inject constructor(
                         apiKey = apiKey,
                         auth = authHeader,
                         schoolId = cleanSchoolId,
+                        onConflict = "school_id,student_record_number,subject",
                         grades = chunk
                     )
                     if (!gradesResp.isSuccessful) {
@@ -1387,6 +1399,7 @@ class SyncRepository @Inject constructor(
                         apiKey = apiKey,
                         auth = authHeader,
                         schoolId = cleanSchoolId,
+                        onConflict = "school_id,student_record_number,date_string,subject,period_number",
                         attendance = chunk
                     )
                     if (!attResp.isSuccessful) {

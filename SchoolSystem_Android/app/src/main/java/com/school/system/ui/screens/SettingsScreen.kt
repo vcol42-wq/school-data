@@ -4,7 +4,10 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,6 +34,7 @@ import com.school.system.data.SyncManager
 import com.school.system.data.dao.ClassPackageDao
 import com.school.system.data.dao.ConfigDao
 import com.school.system.data.dao.StudentDao
+import com.school.system.data.local.SecureKeyStorage
 import com.school.system.data.model.ClassPackage
 import com.school.system.data.model.SchoolConfig
 import com.school.system.data.models.JoinRequest
@@ -54,7 +58,8 @@ class SettingsViewModel @Inject constructor(
     val studentDao: StudentDao,
     val syncManager: SyncManager,
     val authRepository: AuthRepository,
-    val schoolRepository: SchoolRepository
+    val schoolRepository: SchoolRepository,
+    val secureKeyStorage: SecureKeyStorage
 ) : ViewModel() {
     val config = configDao.getConfig()
         .map { it ?: SchoolConfig(isActivated = false) }
@@ -216,6 +221,54 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveTeacherProfileAndSubject(name: String, email: String, subject: String, gender: String) {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: SchoolConfig()
+            configDao.saveConfig(current.copy(
+                managerName = name.trim(),
+                userEmail = email.trim()
+            ))
+            if (subject.isNotBlank()) {
+                val existing = packageDao.getAllPackagesList()
+                val cleanSub = subject.trim()
+                if (existing.none { it.subject.trim().equals(cleanSub, ignoreCase = true) }) {
+                    packageDao.insertPackage(
+                        ClassPackage(
+                            grade = "الأول المتوسط",
+                            section = "أ",
+                            subject = cleanSub,
+                            iconName = ""
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    fun getSavedSupervisorCode(): String? = secureKeyStorage.getSupervisorCode()
+
+    fun setSupervisorMode(enabled: Boolean, code: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: SchoolConfig()
+            if (enabled) {
+                val cleanCode = code.trim()
+                if (cleanCode.isBlank()) {
+                    onResult(false, "يرجى إدخال رمز أو كود المشرف التربوي المعتمد")
+                    return@launch
+                }
+                secureKeyStorage.saveSupervisorCode(cleanCode)
+                configDao.saveConfig(current.copy(
+                    role = "supervisor",
+                    syncSealToken = if (current.syncSealToken.isNullOrEmpty()) "__supervisor__" else current.syncSealToken
+                ))
+                onResult(true, "تم تفعيل وضع المشرف التربوي بنجاح 🛡️")
+            } else {
+                configDao.saveConfig(current.copy(role = "teacher"))
+                onResult(true, "تم العودة إلى وضع الأستاذ التدريسي 👨‍🏫")
+            }
+        }
+    }
+
     fun activate(name: String, email: String, url: String, schoolId: String, onComplete: () -> Unit) {
         viewModelScope.launch {
             var formattedUrl = url.trim()
@@ -361,22 +414,38 @@ fun SettingsScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
 
-    var teacherName by remember { mutableStateOf("") }
+    val quickSubjects = listOf(
+        "اللغة العربية", "الرياضيات", "التربية الإسلامية", "اللغة الإنكليزية",
+        "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
+        "الحاسوب", "التربية الأخلاقية", "التربية الفنية", "التربية الرياضية", "النشيد والموسيقى", "الفرنسية"
+    )
+
+    val schoolGenders = listOf("بنين", "بنات", "مختلط")
+
+    var teacherName by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
     var teacherEmail by remember { mutableStateOf("") }
+    var teacherSubject by remember { mutableStateOf(prefs.getString("teacher_subject", "اللغة العربية") ?: "اللغة العربية") }
+    var schoolGender by remember { mutableStateOf(prefs.getString("school_gender", "بنين") ?: "بنين") }
+
+    var supervisorCodeInput by remember { mutableStateOf(viewModel.getSavedSupervisorCode() ?: "") }
+    var isSupervisorMode by remember { mutableStateOf(false) }
+
     var geminiApiKeyInput by remember { mutableStateOf("") }
     var isAiEnabled by remember { mutableStateOf(true) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showUnpairConfirmDialog by remember { mutableStateOf(false) }
+    var showConnectWarningDialog by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val isPaired = config?.isVerified == true && !config?.schoolId.isNullOrEmpty()
 
     LaunchedEffect(config) {
         config?.let { 
-            teacherName = if (it.managerName.isNotBlank()) it.managerName else prefs.getString("teacher_name", "") ?: ""
+            if (it.managerName.isNotBlank()) teacherName = it.managerName
             teacherEmail = it.userEmail
             geminiApiKeyInput = it.geminiApiKey
             isAiEnabled = it.isAiActivated
+            isSupervisorMode = (it.role == "supervisor")
         }
     }
 
@@ -490,11 +559,11 @@ fun SettingsScreen(
                             ) {
                                 Icon(Icons.Default.LinkOff, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("إلغاء الربط ✕", fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                Text("إلغاء الربط السحابي ✕", fontSize = 11.5.sp, fontWeight = FontWeight.Black)
                             }
 
                             OutlinedButton(
-                                onClick = onNavigateToQrScanner,
+                                onClick = { showConnectWarningDialog = true },
                                 modifier = Modifier.weight(1f).height(46.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
@@ -506,7 +575,7 @@ fun SettingsScreen(
                     } else {
                         // Unpaired State: Single Primary Button to Activate Pairing via Barcode
                         Button(
-                            onClick = onNavigateToQrScanner,
+                            onClick = { showConnectWarningDialog = true },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp),
@@ -517,9 +586,9 @@ fun SettingsScreen(
                             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "تفعيل الربط ومسح الباركود 📷", 
+                                text = "تفعيل الربط السحابي ومسح الباركود 📷", 
                                 fontWeight = FontWeight.Black, 
-                                fontSize = 14.sp
+                                fontSize = 13.5.sp
                             )
                         }
 
@@ -635,7 +704,7 @@ fun SettingsScreen(
                 }
             }
 
-            // CARD 3: بيانات الأستاذ الشخصية
+            // CARD 3: بيانات الأستاذ والمادة التدريسية
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = Color.White,
@@ -660,17 +729,128 @@ fun SettingsScreen(
                             }
                         }
                         Spacer(Modifier.width(10.dp))
-                        Text("الملف الشخصي للأستاذ 👨‍🏫", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
+                        Text("بيانات الأستاذ والمادة التدريسية 📝", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
                     }
 
                     OutlinedTextField(
                         value = teacherName,
-                        onValueChange = { teacherName = it },
+                        onValueChange = { 
+                            teacherName = it 
+                            prefs.edit().putString("teacher_name", it.trim()).apply()
+                        },
                         label = { Text("اسم الأستاذ الكامل") },
+                        placeholder = { Text("اكتب اسمك الثلاثي أو الكامل") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
                     )
+
+                    var settingSubExpanded by remember { mutableStateOf(false) }
+                    val filteredSettingSubjects = remember(teacherSubject) {
+                        if (teacherSubject.isBlank()) quickSubjects
+                        else quickSubjects.filter { it.contains(teacherSubject.trim(), ignoreCase = true) }
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = settingSubExpanded,
+                        onExpandedChange = { settingSubExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = teacherSubject,
+                            onValueChange = { 
+                                teacherSubject = it
+                                settingSubExpanded = true
+                            },
+                            label = { Text("المادة أو الاختصاص التدريسي 📚") },
+                            placeholder = { Text("اكتب اسم المادة أو اختر للسرعة...") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = settingSubExpanded)
+                            },
+                            singleLine = true,
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        if (filteredSettingSubjects.isNotEmpty()) {
+                            ExposedDropdownMenu(
+                                expanded = settingSubExpanded,
+                                onDismissRequest = { settingSubExpanded = false }
+                            ) {
+                                filteredSettingSubjects.forEach { s ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Text(
+                                                text = s, 
+                                                fontWeight = if (s == teacherSubject) FontWeight.Black else FontWeight.Medium,
+                                                color = if (s == teacherSubject) Color(0xFF2563EB) else Color(0xFF1E293B)
+                                            ) 
+                                        },
+                                        onClick = {
+                                            teacherSubject = s
+                                            settingSubExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // خيار جنس المدرسة
+                    var settingGenderExpanded by remember { mutableStateOf(false) }
+                    val filteredSettingGenders = remember(schoolGender) {
+                        if (schoolGender.isBlank()) schoolGenders
+                        else schoolGenders.filter { it.contains(schoolGender.trim(), ignoreCase = true) }
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = settingGenderExpanded,
+                        onExpandedChange = { settingGenderExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = schoolGender,
+                            onValueChange = { 
+                                schoolGender = it
+                                settingGenderExpanded = true
+                            },
+                            label = { Text("جنس المدرسة 🏛️") },
+                            placeholder = { Text("اختر أو اكتب: بنين، بنات، مختلط...") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = settingGenderExpanded)
+                            },
+                            singleLine = true,
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        if (filteredSettingGenders.isNotEmpty()) {
+                            ExposedDropdownMenu(
+                                expanded = settingGenderExpanded,
+                                onDismissRequest = { settingGenderExpanded = false }
+                            ) {
+                                filteredSettingGenders.forEach { g ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Text(
+                                                text = g, 
+                                                fontWeight = if (g == schoolGender) FontWeight.Black else FontWeight.Medium,
+                                                color = if (g == schoolGender) Color(0xFF2563EB) else Color(0xFF1E293B)
+                                            ) 
+                                        },
+                                        onClick = {
+                                            schoolGender = g
+                                            settingGenderExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     OutlinedTextField(
                         value = teacherEmail,
@@ -681,27 +861,151 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(10.dp)
                     )
 
-                    // Save Teacher Profile Button (Perfect Centering & Height)
+                    // Save Teacher Profile & Subject Button (Explicit Green Button)
                     Button(
                         onClick = {
-                            prefs.edit().putString("teacher_name", teacherName.trim()).apply()
-                            viewModel.updateTeacherProfile(teacherName, teacherEmail)
-                            Toast.makeText(context, "تم حفظ بيانات الأستاذ بنجاح ✓", Toast.LENGTH_SHORT).show()
+                            prefs.edit()
+                                .putString("teacher_name", teacherName.trim())
+                                .putString("teacher_subject", teacherSubject.trim())
+                                .putString("school_gender", schoolGender)
+                                .apply()
+                            viewModel.saveTeacherProfileAndSubject(teacherName, teacherEmail, teacherSubject, schoolGender)
+                            Toast.makeText(context, "تم حفظ بيانات الأستاذ والمادة وجنس المدرسة بنجاح ✓", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = 48.dp),
                         shape = RoundedCornerShape(12.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "حفظ بيانات الأستاذ والمادة ✓", 
+                                fontWeight = FontWeight.Black, 
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+
+            // CARD 4: وضع المشرف التربوي (Supervisor Mode)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = if (isSupervisorMode) Color(0xFFF59E0B).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.12f),
+                                shape = CircleShape,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.AdminPanelSettings,
+                                        contentDescription = null,
+                                        tint = if (isSupervisorMode) Color(0xFFD97706) else Color(0xFF475569),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text("وضع المشرف التربوي 🛡️", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                Text(
+                                    text = if (isSupervisorMode) "الوضع: إشرافي شامل (صلاحيات كاملة)" else "الوضع: أستاذ مادة (صلاحيات اعتيادية)",
+                                    fontSize = 11.sp,
+                                    color = if (isSupervisorMode) Color(0xFFD97706) else Color(0xFF64748B),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = isSupervisorMode,
+                            onCheckedChange = { enable ->
+                                viewModel.setSupervisorMode(enable, supervisorCodeInput) { success, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                    }
+
+                    Surface(
+                        color = if (isSupervisorMode) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            0.5.dp, 
+                            if (isSupervisorMode) Color(0xFFFDE68A) else Color(0xFFCBD5E1)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "حفظ بيانات الأستاذ ✓", 
-                            fontWeight = FontWeight.Black, 
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center,
-                            maxLines = 1
+                            text = if (isSupervisorMode) 
+                                "🛡️ وضع المشرف التربوي مفعّل: تملك صلاحية إشرافية كاملة لتفقد وتدقيق وتعديل كافة السجلات والصفوف وتجاوز القفل السحابي." 
+                            else 
+                                "💡 عند إدخال كود المشرف وتفعيل هذا الوضع، ستتاح لك صلاحيات المشرف التربوي للاطلاع على كافة الشعب والمواد الخاصة بالمدرسة.",
+                            color = if (isSupervisorMode) Color(0xFF92400E) else Color(0xFF475569),
+                            fontSize = 10.5.sp,
+                            lineHeight = 15.sp,
+                            modifier = Modifier.padding(8.dp)
                         )
+                    }
+
+                    OutlinedTextField(
+                        value = supervisorCodeInput,
+                        onValueChange = { supervisorCodeInput = it },
+                        label = { Text("رمز أو كود المشرف التربوي المعتمد") },
+                        placeholder = { Text("أدخل كود المشرف المعتمد...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.setSupervisorMode(!isSupervisorMode, supervisorCodeInput) { success, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isSupervisorMode) Color(0xFFDC2626) else Color(0xFFD97706)
+                        )
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (isSupervisorMode) Icons.Default.Close else Icons.Default.Security,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = if (isSupervisorMode) "إلغاء وضع المشرف والعودة لوضع الأستاذ ✕" else "تفعيل وضع المشرف التربوي 🛡️",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }
@@ -818,29 +1122,76 @@ fun SettingsScreen(
             }
         }
 
+        // Connect Cloud Warning Dialog
+        if (showConnectWarningDialog) {
+            AlertDialog(
+                onDismissRequest = { showConnectWarningDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF2563EB))
+                        Spacer(Modifier.width(8.dp))
+                        Text("تنبيه تفعيل الربط السحابي ☁️", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    }
+                },
+                text = {
+                    Text(
+                        "تنبيه: سيؤدي تفعيل الربط السحابي ومسح باركود المدرسة إلى مزامنة واستيراد الشعب والطلاب والدرجات المخصصة لك فوراً مع سحابة المدرسة. هل ترغب في المتابعة وتشغيل الكاميرا لمسح الرمز؟",
+                        fontSize = 13.sp,
+                        color = Color(0xFF334155)
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showConnectWarningDialog = false
+                            onNavigateToQrScanner()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("نعم، تشغيل الكاميرا ومسح الباركود", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showConnectWarningDialog = false }) {
+                        Text("إلغاء", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
         // Unpair Confirmation Dialog
         if (showUnpairConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showUnpairConfirmDialog = false },
-                title = { Text("تأكيد إلغاء اقتران المدرسة ⚠️", fontWeight = FontWeight.Black, color = Color(0xFFDC2626), fontSize = 16.sp) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(8.dp))
+                        Text("تأكيد إلغاء الربط السحابي ⚠️", fontWeight = FontWeight.Black, color = Color(0xFFDC2626), fontSize = 15.sp)
+                    }
+                },
                 text = {
-                    Text("هل أنت متأكد من رغبتك في إلغاء الاقتران بمدرستك؟ سيتحول التطبيق إلى الوضع المحلي المستقل مع الاحتفاظ بكافة السجلات والدرجات على هاتفك.")
+                    Text(
+                        "تحذير: سيؤدي إلغاء الربط إلى إيقاف المزامنة اللحظية مع سحابة المدرسة والتحول إلى الوضع المحلي المستقل (أوفلاين) مع الاحتفاظ بكافة سجلاتك ودرجاتك الحالية على هاتفك. هل أنت متأكد من المتابعة؟",
+                        fontSize = 13.sp,
+                        color = Color(0xFF334155)
+                    )
                 },
                 confirmButton = {
                     Button(
                         onClick = {
                             viewModel.unpairSchool()
                             showUnpairConfirmDialog = false
-                            Toast.makeText(context, "تم إلغاء الاقتران والتحويل للوضع المحلي 👤", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "تم إلغاء الربط السحابي والتحويل للوضع المحلي (أوفلاين) 👤", Toast.LENGTH_SHORT).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Text("تأكيد إلغاء الاقتران", fontWeight = FontWeight.Bold)
+                        Text("نعم، إلغاء الربط والعودة للأوفلاين", fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showUnpairConfirmDialog = false }) { Text("تراجع") }
+                    TextButton(onClick = { showUnpairConfirmDialog = false }) { Text("تراجع", color = Color(0xFF64748B), fontWeight = FontWeight.Bold) }
                 }
             )
         }

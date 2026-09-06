@@ -146,15 +146,16 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
           </div>
 
           <div>
-            <label className="block font-black text-slate-800 mb-1">الشعبة (أ، ب، ج، د...):</label>
-            <input
-              type="text"
-              required
+            <label className="block font-black text-slate-800 mb-1">الشعبة:</label>
+            <select
               value={newStudent.section || 'أ'}
               onChange={e => setNewStudent(p => ({ ...p, section: e.target.value }))}
-              placeholder="مثال: أ أو ب أو ج"
               className="w-full p-2.5 rounded-xl border-2 border-slate-300 bg-white text-slate-950 font-black focus:border-emerald-600 outline-none"
-            />
+            >
+              {['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح'].map(s => (
+                <option key={s} value={s}>شعبة ({s})</option>
+              ))}
+            </select>
           </div>
 
           <div>

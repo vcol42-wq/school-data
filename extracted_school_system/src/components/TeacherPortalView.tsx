@@ -389,7 +389,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     'الرابع', 'الخامس', 'السادس'
   ];
 
-  const availableSections = ['أ', 'ب', 'ج', 'د', 'هـ'];
+  const availableSections = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح'];
 
   // Maintain the unified school connection code
   const refreshOtpCode = () => {

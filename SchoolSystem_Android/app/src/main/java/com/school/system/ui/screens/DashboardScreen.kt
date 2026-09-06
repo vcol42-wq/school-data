@@ -695,8 +695,8 @@ fun SummonSectionDialog(
     var selectedStageType by remember { mutableStateOf("ابتدائي") }
     var customStageType by remember { mutableStateOf("") }
 
-    // 3. Section (أ، ب، ج، ح، خ، أخرى)
-    val sectionsList = listOf("أ", "ب", "ج", "ح", "خ", "أخرى")
+    // 3. Section (أ، ب، ج، د، هـ، و، ز، ح، أخرى)
+    val sectionsList = listOf("أ", "ب", "ج", "د", "هـ", "و", "ز", "ح", "أخرى")
     var selectedSection by remember { mutableStateOf("أ") }
     var customSection by remember { mutableStateOf("") }
 

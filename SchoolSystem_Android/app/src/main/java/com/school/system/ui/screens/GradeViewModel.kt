@@ -260,6 +260,8 @@ class GradeViewModel @Inject constructor(
         secureKeyStorage.clearSubjectPin(key)
     }
 
+    fun getSavedSupervisorCode(): String? = secureKeyStorage.getSupervisorCode()
+
     fun uploadGradesSecurely(
         grade: String,
         section: String,

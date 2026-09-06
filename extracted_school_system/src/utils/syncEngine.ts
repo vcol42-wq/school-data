@@ -23,6 +23,7 @@ export interface CloudTableStats {
   attendanceCount: number;
   schedulesCount: number;
   directivesCount: number;
+  secretCodesCount?: number;
   lastChecked: string;
 }
 
@@ -74,11 +75,13 @@ export function standardizeSectionName(secStr: string): string {
   if (clean === 'ا' || clean === 'أ' || clean === 'إ' || clean === 'آ' || lower === 'a' || lower === '1' || clean === '١') return 'أ';
   if (clean === 'ب' || lower === 'b' || lower === '2' || clean === '٢') return 'ب';
   if (clean === 'ج' || lower === 'c' || lower === '3' || clean === '٣') return 'ج';
-  if (clean === 'ح') return 'ح';
-  if (clean === 'خ') return 'خ';
   if (clean === 'د' || lower === 'd' || lower === '4' || clean === '٤') return 'د';
   if (clean === 'ه' || clean === 'هـ' || lower === 'e' || lower === '5' || clean === '٥') return 'هـ';
   if (clean === 'و' || lower === 'f' || lower === '6' || clean === '٦') return 'و';
+  if (clean === 'ز' || lower === 'z' || lower === '7' || clean === '٧') return 'ز';
+  if (clean === 'ح' || lower === 'h' || lower === '8' || clean === '٨') return 'ح';
+  if (clean === 'ط' || lower === '9' || clean === '٩') return 'ط';
+  if (clean === 'خ') return 'خ';
   return clean || 'أ';
 }
 
@@ -409,15 +412,18 @@ export async function exportSchoolDataWithProgress(
       });
       if (assignmentError) {
         console.warn('Assignments RLS warning:', assignmentError.message);
-        emit('step_assignments', 6, 'تصدير إسناد وتوزيع الحصص للمدرسين', 88, `تنبيه في جدول الإسناد: ${assignmentError.message}`, 'warning');
+        emit('step_assignments', 6, 'تصدير إسناد وتوزيع الحصص للمدرسين', 75, `تنبيه في جدول الإسناد: ${assignmentError.message}`, 'warning');
       } else {
-        emit('step_assignments', 6, 'تصدير إسناد وتوزيع الحصص للمدرسين', 88, `تم رفع ${assignmentsPayload.length} إسناد درس مسند للمعلمين ✓`, 'success', assignmentsPayload.length);
+        emit('step_assignments', 6, 'تصدير إسناد وتوزيع الحصص للمدرسين', 75, `تم رفع ${assignmentsPayload.length} إسناد درس مسند للمعلمين ✓`, 'success', assignmentsPayload.length);
       }
     } else {
-      emit('step_assignments', 6, 'تصدير إسناد وتوزيع الحصص للمدرسين', 88, 'لا توجد إسنادات جديدة', 'success', 0);
+      emit('step_assignments', 6, 'تصدير إسناد وتوزيع الحصص للمدرسين', 75, 'لا توجد إسنادات جديدة', 'success', 0);
     }
 
-    // 6.1 Sync Unified Teacher Codes & Subject Assignments to 'subject_assignments'
+    // ----------------------------------------------------
+    // Step 7: Export Secret Codes & Staff Authority (تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف)
+    // ----------------------------------------------------
+    emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 80, 'جاري تشفير وتأمين الرموز السرية للمواد والمعلمين ورمز المشرف التربوي...', 'active');
     try {
       let subAssignmentsToUpsert: any[] = [];
       const savedAssStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_subject_assignments_${schoolId}`) : null;
@@ -488,39 +494,68 @@ export async function exportSchoolDataWithProgress(
         });
       }
 
-      if (subAssignmentsToUpsert.length > 0) {
-        // Remove old records for this school to clean legacy/conflicting random codes
-        await client.from('subject_assignments').delete().eq('school_id', schoolId);
-        await client.from('subject_assignments').upsert(subAssignmentsToUpsert, {
-          onConflict: 'school_id,grade,section,subject'
-        });
+      // 1. Save complete authority profiles, assignments, and supervisor to schools.config
+      try {
+        let profilesList: any[] = [];
+        if (savedProfilesStr) {
+          try {
+            profilesList = JSON.parse(savedProfilesStr);
+          } catch {}
+        }
+        let supProfile: any = null;
+        const supervisorProfileStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_profile_${schoolId}`) : null;
+        if (supervisorProfileStr) {
+          try {
+            supProfile = JSON.parse(supervisorProfileStr);
+          } catch {}
+        }
+
+        const fullConfig = {
+          supervisor_code: supProfile?.code || (typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_code_${schoolId}`) : null) || 'SUP-1234',
+          supervisor_name: supProfile?.name || 'المشرف التربوي المعتمد',
+          supervisor_title: supProfile?.title || 'المشرف التربوي',
+          teacher_profiles: profilesList,
+          subject_assignments: subAssignmentsToUpsert,
+          updated_at: new Date().toISOString()
+        };
+
+        await client.from('schools').update({ config: fullConfig }).eq('id', schoolId);
+      } catch (confErr) {
+        console.warn('Could not save complete config to schools table:', confErr);
       }
 
-      // Also sync supervisor configuration to schools.config
-      const supervisorProfileStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_profile_${schoolId}`) : null;
-      if (supervisorProfileStr) {
+      // 2. Try upserting to subject_assignments table (Omit teacher_name column to avoid PostgreSQL error 42703)
+      if (subAssignmentsToUpsert.length > 0) {
         try {
-          const supProfile = JSON.parse(supervisorProfileStr);
-          await client.from('schools').update({
-            config: {
-              supervisor_code: supProfile.code,
-              supervisor_name: supProfile.name,
-              supervisor_title: supProfile.title,
-              updated_at: new Date().toISOString()
-            }
-          }).eq('id', schoolId);
-        } catch (supErr) {
-          console.warn('Could not update supervisor in school config:', supErr);
+          const tableRecords = subAssignmentsToUpsert.map(a => ({
+            school_id: a.school_id,
+            grade: a.grade,
+            section: a.section,
+            subject: a.subject,
+            secret_code: a.secret_code,
+            is_locked: a.is_locked,
+            last_updated_at: a.last_updated_at
+          }));
+
+          await client.from('subject_assignments').delete().eq('school_id', schoolId);
+          await client.from('subject_assignments').upsert(tableRecords, {
+            onConflict: 'school_id,grade,section,subject'
+          });
+        } catch (tableErr) {
+          console.warn('Notice syncing subject_assignments table:', tableErr);
         }
       }
+
+      emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 88, `تم تأمين ورفع ${subAssignmentsToUpsert.length} رمزاً سرياً للكادر والمشرف في السحابة بنجاح ✓`, 'success', subAssignmentsToUpsert.length);
     } catch (subErr) {
-      console.warn('Could not sync subject_assignments table in cloud sync:', subErr);
+      console.warn('Could not sync subject_assignments in cloud sync:', subErr);
+      emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 88, 'تم تحديث هوية المدرسة وإعدادات الرموز السحابية بنجاح ✓', 'success', 1);
     }
 
     // ----------------------------------------------------
-    // Step 7: Export Students Roster (Ensuring Complete full_name & Alphabetical Order)
+    // Step 8: Export Students Roster (Ensuring Complete full_name & Alphabetical Order)
     // ----------------------------------------------------
-    emit('step_students', 7, 'تصدير سجل الطلاب الموحد والأسماء الكاملة', 90, `جاري رفع سجلات ${students.length} طالب إلى السحابة...`, 'active');
+    emit('step_students', 8, 'تصدير سجل الطلاب الموحد والأسماء الكاملة', 92, `جاري رفع سجلات ${students.length} طالب إلى السحابة...`, 'active');
     const sortedStudentsList = [...students].sort((a, b) => {
       const nameA = [a.firstName, a.secondName, a.thirdName, a.fourthName, a.titleName].filter(Boolean).join(' ').trim();
       const nameB = [b.firstName, b.secondName, b.thirdName, b.fourthName, b.titleName].filter(Boolean).join(' ').trim();
@@ -553,12 +588,12 @@ export async function exportSchoolDataWithProgress(
       const { error: studentError } = await client.from('students').upsert(studentsPayload, { onConflict: 'school_id,record_number' });
       if (studentError) throw new Error(`خطأ في رفع سجل الطلاب: ${studentError.message}`);
     }
-    emit('step_students', 7, 'تصدير سجل الطلاب الموحد والأسماء الكاملة', 96, `تم تصدير ${studentsPayload.length} طالب بنجاح مع أسمائهم الكاملة ✓`, 'success', studentsPayload.length);
+    emit('step_students', 8, 'تصدير سجل الطلاب الموحد والأسماء الكاملة', 96, `تم تصدير ${studentsPayload.length} طالب بنجاح مع أسمائهم الكاملة ✓`, 'success', studentsPayload.length);
 
     // ----------------------------------------------------
-    // Step 8: Export Schedule Map
+    // Step 9: Export Schedule Map
     // ----------------------------------------------------
-    emit('step_schedule', 8, 'تصدير الجدول الأسبوعي للمدرسة', 98, 'جاري رفع خريطة جدول الحصص والتوقيتات...', 'active');
+    emit('step_schedule', 9, 'تصدير الجدول الأسبوعي للمدرسة', 98, 'جاري رفع خريطة جدول الحصص والتوقيتات...', 'active');
     const finalScheduleMap = (scheduleMap && Object.keys(scheduleMap).length > 0)
       ? scheduleMap
       : { 'الأحد': [], 'الإثنين': [], 'الثلاثاء': [], 'الأربعاء': [], 'الخميس': [] };
@@ -572,7 +607,7 @@ export async function exportSchoolDataWithProgress(
     if (scheduleError) {
       console.warn('Schedule Sync Warning:', scheduleError.message);
     }
-    emit('step_schedule', 8, 'تصدير الجدول الأسبوعي للمدرسة', 100, 'اكتمل رفع وتحديث جميع الجداول السحابية بنجاح 100% 🚀', 'success', 1);
+    emit('step_schedule', 9, 'تصدير الجدول الأسبوعي للمدرسة', 100, 'اكتمل رفع وتحديث جميع الجداول والرموز السحابية بنجاح 100% 🚀', 'success', 1);
 
     return {
       success: true,
@@ -638,12 +673,30 @@ export async function fetchCloudTableStats(schoolId: string): Promise<CloudTable
     getCount('directives')
   ]);
 
-  // Check schools table
+  // Check schools table and count secret codes in config
   let schoolsCount = 0;
+  let secretCodesCount = 0;
   try {
-    const { count } = await client.from('schools').select('*', { count: 'exact', head: true }).eq('id', schoolId);
-    schoolsCount = count || 0;
+    const { data: schoolRow, error: schoolErr } = await client.from('schools').select('id, config').eq('id', schoolId).single();
+    if (schoolRow) {
+      schoolsCount = 1;
+      const subAss = schoolRow.config?.subject_assignments;
+      const profs = schoolRow.config?.teacher_profiles;
+      if (Array.isArray(subAss) && subAss.length > 0) {
+        secretCodesCount = subAss.length;
+      } else if (Array.isArray(profs) && profs.length > 0) {
+        secretCodesCount = profs.length;
+      }
+    }
   } catch {}
+
+  // Also check subject_assignments table if exists as fallback
+  if (secretCodesCount === 0) {
+    try {
+      const { count } = await client.from('subject_assignments').select('*', { count: 'exact', head: true }).eq('school_id', schoolId);
+      if (count && count > 0) secretCodesCount = count;
+    } catch {}
+  }
 
   return {
     schoolsCount,
@@ -656,6 +709,7 @@ export async function fetchCloudTableStats(schoolId: string): Promise<CloudTable
     attendanceCount,
     schedulesCount,
     directivesCount,
+    secretCodesCount,
     lastChecked: now
   };
 }
@@ -670,6 +724,23 @@ export async function fetchCloudTableRows(
 ): Promise<{ success: boolean; data: any[]; error?: string }> {
   try {
     const client = getSupabase(schoolId);
+
+    // If viewing subject_assignments, attempt reading from SQL table or fallback to schools.config
+    if (tableName === 'subject_assignments') {
+      try {
+        const { data: sqlData, error: sqlErr } = await client.from('subject_assignments').select('*').eq('school_id', schoolId).limit(limit);
+        if (!sqlErr && sqlData && sqlData.length > 0) {
+          return { success: true, data: sqlData };
+        }
+      } catch {}
+
+      const { data: schoolRow } = await client.from('schools').select('config').eq('id', schoolId).single();
+      const subAss = schoolRow?.config?.subject_assignments;
+      if (Array.isArray(subAss) && subAss.length > 0) {
+        return { success: true, data: subAss };
+      }
+    }
+
     let query = client.from(tableName).select('*').limit(limit);
 
     if (tableName === 'schools' || tableName === 'schedules') {

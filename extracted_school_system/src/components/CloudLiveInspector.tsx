@@ -24,7 +24,8 @@ import {
   Trash2,
   Edit2,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  Key
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { Student, StaffMember, AppConfig, DayScheduleMap } from '../types';
@@ -286,6 +287,14 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
       icon: ClipboardList,
       color: 'from-pink-500 to-rose-600',
       tableName: 'teacher_assignments'
+    },
+    {
+      id: 'subject_assignments',
+      title: 'الرموز وتفويض الكادر',
+      count: cloudStats?.secretCodesCount ?? 0,
+      icon: Key,
+      color: 'from-amber-600 to-amber-800',
+      tableName: 'subject_assignments'
     },
     {
       id: 'grades',

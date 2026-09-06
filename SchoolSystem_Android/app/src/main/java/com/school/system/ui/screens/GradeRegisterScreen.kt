@@ -860,7 +860,7 @@ fun GradeRegisterScreen(
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            "أدخل الرمز السري المحدد لهذه المادة والشعبة من قبل إدارة المدرسة.\nسيتم ربطه بالبصمة وحفظه مشفراً في عتاد الجهاز لنظام Zero-Trust.",
+                            "أدخل الرمز السري للمادة والشعبة، أو كود المشرف العام المعتمد من الإدارة.\nسيتم ربطه بالبصمة وحفظه مشفراً في عتاد الجهاز لنظام Zero-Trust.",
                             fontSize = 12.5.sp,
                             color = currentTheme.textSecondaryColor,
                             lineHeight = 18.sp
@@ -868,13 +868,39 @@ fun GradeRegisterScreen(
                         OutlinedTextField(
                             value = inputPin,
                             onValueChange = { inputPin = it },
-                            label = { Text("الرمز السري للمادة") },
+                            label = { Text("الرمز السري للمادة أو رمز المشرف") },
+                            placeholder = { Text("أدخل رمز المادة أو SUP-xxxx...") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                             visualTransformation = PasswordVisualTransformation(),
                             shape = RoundedCornerShape(10.dp)
                         )
+
+                        val savedSup = remember { viewModel.getSavedSupervisorCode() }
+                        if (!savedSup.isNullOrBlank()) {
+                            Surface(
+                                color = Color(0xFFFFFBEB),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                onClick = { inputPin = savedSup },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "اضغط هنا لاستخدام كود المشرف المحفوظ ($savedSup) 🔑",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF92400E)
+                                    )
+                                }
+                            }
+                        }
                     }
                 },
                 confirmButton = {

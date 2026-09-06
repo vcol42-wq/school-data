@@ -95,7 +95,28 @@ class SecureKeyStorage @Inject constructor(
         return key.trim().replace(Regex("[^a-zA-Z0-9_\\u0600-\\u06FF]"), "_")
     }
 
+    /**
+     * حفظ واسترجاع كود المشرف التربوي العام مشفراً في عتاد الجهاز.
+     */
+    fun saveSupervisorCode(code: String) {
+        val clean = code.trim()
+        sharedPreferences.edit()
+            .putString(KEY_SUPERVISOR_CODE, clean)
+            .apply()
+        Log.d(tag, "Supervisor code securely saved")
+    }
+
+    fun getSupervisorCode(): String? {
+        val code = sharedPreferences.getString(KEY_SUPERVISOR_CODE, null)
+        return if (code.isNullOrBlank()) null else code.trim()
+    }
+
+    fun clearSupervisorCode() {
+        sharedPreferences.edit().remove(KEY_SUPERVISOR_CODE).apply()
+    }
+
     companion object {
         private const val SECURE_PREFS_FILE = "secure_subject_keys_vault"
+        private const val KEY_SUPERVISOR_CODE = "secure_supervisor_code"
     }
 }

@@ -218,7 +218,7 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
             </label>
 
             <div className="flex flex-wrap items-center gap-2">
-              {['أ', 'ب', 'ج', 'د', 'هـ', 'و'].map(sec => {
+              {['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح'].map(sec => {
                 const isSelected = selectedSections.includes(sec);
                 return (
                   <button

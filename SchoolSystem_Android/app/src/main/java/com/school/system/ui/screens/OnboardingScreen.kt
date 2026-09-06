@@ -39,7 +39,10 @@ fun OnboardingScreen(
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
 
     var teacherNameInput by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
-    var teacherSubjectInput by remember { mutableStateOf("اللغة العربية") }
+    var teacherSubjectInput by remember { mutableStateOf(prefs.getString("teacher_subject", "اللغة العربية") ?: "اللغة العربية") }
+    var selectedGender by remember { mutableStateOf(prefs.getString("school_gender", "بنين") ?: "بنين") }
+    var selectedGrade by remember { mutableStateOf(prefs.getString("teacher_grade", "الأول المتوسط") ?: "الأول المتوسط") }
+    var selectedSection by remember { mutableStateOf(prefs.getString("teacher_section", "أ") ?: "أ") }
     var teacherEmailInput by remember { mutableStateOf("") }
     var pairingCodeInput by remember { mutableStateOf("112233") }
     
@@ -47,12 +50,35 @@ fun OnboardingScreen(
     var statusText by remember { mutableStateOf<String?>(null) }
     var showManualFields by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
+    var showPairWarningDialog by remember { mutableStateOf(false) }
 
     val quickSubjects = listOf(
         "اللغة العربية", "الرياضيات", "التربية الإسلامية", "اللغة الإنكليزية",
-        "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
-        "الحاسوب", "التربية الفنية", "التربية الرياضية", "النشيد والموسيقى", "الفرنسية"
+        "العلوم", "الاجتماعيات", "الأحياء", "الكيمياء", "الفيزياء",
+        "الحاسوب", "التربية الأخلاقية", "التربية الفنية", "التربية الرياضية", "النشيد والموسيقى", "اللغة الفرنسية",
+        "قراءة وكتابة", "علم الأرض"
     )
+
+    val schoolGenders = listOf("بنين", "بنات", "مختلط")
+
+    val gradesList = listOf(
+        // المرحلة الابتدائية (من الأول إلى السادس)
+        "الأول الابتدائي", "الثاني الابتدائي", "الثالث الابتدائي",
+        "الرابع الابتدائي", "الخامس الابتدائي", "السادس الابتدائي",
+        // المرحلة المتوسطة
+        "الأول المتوسط", "الثاني المتوسط", "الثالث المتوسط",
+        // المرحلة الإعدادية
+        "الرابع العلمي", "الرابع الأدبي",
+        "الخامس العلمي", "الخامس الأدبي",
+        "السادس العلمي", "السادس الأدبي"
+    )
+
+    val sectionsList = listOf("أ", "ب", "ج", "د", "هـ", "و", "ز", "ح", "ط", "ي")
+    
+    var subjectExpanded by remember { mutableStateOf(false) }
+    var gradeExpanded by remember { mutableStateOf(false) }
+    var genderExpanded by remember { mutableStateOf(false) }
+    var sectionExpanded by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -173,44 +199,206 @@ fun OnboardingScreen(
                         singleLine = true
                     )
 
-                    OutlinedTextField(
-                        value = teacherSubjectInput,
-                        onValueChange = { teacherSubjectInput = it },
-                        label = { Text("المادة أو الاختصاص التدريسي") },
-                        placeholder = { Text("مثال: الرياضيات، اللغة العربية...") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
+                    // 1. اختيار المادة الدراسية (قائمة منسدلة ذكية عند الكتابة وتسمح بإكمال الاسم)
+                    val filteredSubjects = remember(teacherSubjectInput) {
+                        if (teacherSubjectInput.isBlank()) quickSubjects
+                        else quickSubjects.filter { it.contains(teacherSubjectInput.trim(), ignoreCase = true) }
+                    }
 
-                    Text(
-                        text = "اختيار سريع للمادة / الاختصاص:",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF475569)
-                    )
-
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ExposedDropdownMenuBox(
+                        expanded = subjectExpanded,
+                        onExpandedChange = { subjectExpanded = it },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(quickSubjects) { s ->
-                            val isSelected = teacherSubjectInput == s
-                            Surface(
-                                color = if (isSelected) Color(0xFF2563EB) else Color(0xFFF1F5F9),
-                                shape = RoundedCornerShape(8.dp),
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (isSelected) Color(0xFF1D4ED8) else Color(0xFFCBD5E1)
-                                ),
-                                modifier = Modifier.clickable { teacherSubjectInput = s }
+                        OutlinedTextField(
+                            value = teacherSubjectInput,
+                            onValueChange = { 
+                                teacherSubjectInput = it
+                                subjectExpanded = true
+                            },
+                            label = { Text("1. المادة أو الاختصاص التدريسي 📚", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                            placeholder = { Text("اكتب اسم المادة أو اختر للسرعة...") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = subjectExpanded)
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        if (filteredSubjects.isNotEmpty()) {
+                            ExposedDropdownMenu(
+                                expanded = subjectExpanded,
+                                onDismissRequest = { subjectExpanded = false }
                             ) {
-                                Text(
-                                    text = s,
-                                    color = if (isSelected) Color.White else Color(0xFF1E293B),
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Medium,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                filteredSubjects.forEach { s ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Text(
+                                                text = s, 
+                                                fontWeight = if (s == teacherSubjectInput) FontWeight.Black else FontWeight.Medium,
+                                                color = if (s == teacherSubjectInput) Color(0xFF2563EB) else Color(0xFF1E293B)
+                                            ) 
+                                        },
+                                        onClick = {
+                                            teacherSubjectInput = s
+                                            subjectExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. اختيار الصف الدراسي (من الأول إلى السادس - يشمل الابتدائي والمتوسط والإعدادي)
+                    val filteredGrades = remember(selectedGrade) {
+                        if (selectedGrade.isBlank()) gradesList
+                        else gradesList.filter { it.contains(selectedGrade.trim(), ignoreCase = true) }
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = gradeExpanded,
+                        onExpandedChange = { gradeExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = selectedGrade,
+                            onValueChange = { 
+                                selectedGrade = it
+                                gradeExpanded = true
+                            },
+                            label = { Text("2. الصف الدراسي (من الأول إلى السادس) 🏫", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                            placeholder = { Text("اختر الصف أو ابدأ بالكتابة...") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = gradeExpanded)
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        if (filteredGrades.isNotEmpty()) {
+                            ExposedDropdownMenu(
+                                expanded = gradeExpanded,
+                                onDismissRequest = { gradeExpanded = false }
+                            ) {
+                                filteredGrades.forEach { gr ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Text(
+                                                text = gr, 
+                                                fontWeight = if (gr == selectedGrade) FontWeight.Black else FontWeight.Medium,
+                                                color = if (gr == selectedGrade) Color(0xFF2563EB) else Color(0xFF1E293B)
+                                            ) 
+                                        },
+                                        onClick = {
+                                            selectedGrade = gr
+                                            gradeExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. اختيار جنس المدرسة (قائمة منسدلة ويمكن كتابة الاسم إذا لم يوجد)
+                    val filteredGenders = remember(selectedGender) {
+                        if (selectedGender.isBlank()) schoolGenders
+                        else schoolGenders.filter { it.contains(selectedGender.trim(), ignoreCase = true) }
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = genderExpanded,
+                        onExpandedChange = { genderExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = selectedGender,
+                            onValueChange = { 
+                                selectedGender = it
+                                genderExpanded = true
+                            },
+                            label = { Text("3. جنس المدرسة 🏛️", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                            placeholder = { Text("اختر أو اكتب: بنين، بنات، مختلط...") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = genderExpanded)
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        if (filteredGenders.isNotEmpty()) {
+                            ExposedDropdownMenu(
+                                expanded = genderExpanded,
+                                onDismissRequest = { genderExpanded = false }
+                            ) {
+                                filteredGenders.forEach { g ->
+                                    DropdownMenuItem(
+                                        text = { 
+                                            Text(
+                                                text = g, 
+                                                fontWeight = if (g == selectedGender) FontWeight.Black else FontWeight.Medium,
+                                                color = if (g == selectedGender) Color(0xFF2563EB) else Color(0xFF1E293B)
+                                            ) 
+                                        },
+                                        onClick = {
+                                            selectedGender = g
+                                            genderExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 4. اختيار الشعبة (قائمة منسدلة)
+                    ExposedDropdownMenuBox(
+                        expanded = sectionExpanded,
+                        onExpandedChange = { sectionExpanded = it },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = selectedSection,
+                            onValueChange = { 
+                                selectedSection = it
+                                sectionExpanded = true
+                            },
+                            label = { Text("4. الشعبة الأساسية 🔤", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                            placeholder = { Text("اختر الشعبة...") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = sectionExpanded)
+                            },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            singleLine = true
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = sectionExpanded,
+                            onDismissRequest = { sectionExpanded = false }
+                        ) {
+                            sectionsList.forEach { sec ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Text(
+                                            text = "الشعبة ($sec)", 
+                                            fontWeight = if (sec == selectedSection) FontWeight.Black else FontWeight.Medium,
+                                            color = if (sec == selectedSection) Color(0xFF059669) else Color(0xFF1E293B)
+                                        ) 
+                                    },
+                                    onClick = {
+                                        selectedSection = sec
+                                        sectionExpanded = false
+                                    }
                                 )
                             }
                         }
@@ -225,50 +413,27 @@ fun OnboardingScreen(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true
                     )
-                }
-            }
 
-            // Standalone Offline Access Button (Primary & Easiest Option)
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFFECFDF5),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFA7F3D0)),
-                shadowElevation = 4.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "الاستخدام كسجل مستقل أوفلاين (بدون ربط مدرسة) 👤",
-                            color = Color(0xFF065F46),
-                            fontWeight = FontWeight.Black,
-                            fontSize = 13.sp
-                        )
-                    }
-                    Text(
-                        text = "يتيح لك إنشاء الشعب وإدخال الدرجات والغيابات والطباعة فوراً، مع ربط إيميلك للنسخ في Google Drive.",
-                        color = Color(0xFF047857),
-                        fontSize = 11.sp,
-                        textAlign = TextAlign.Center
-                    )
+                    // زر حفظ بيانات الأستاذ والمادة وبدء الاستخدام المباشر
                     Button(
                         onClick = {
                             scope.launch {
-                                prefs.edit().putString("teacher_name", teacherNameInput.trim()).apply()
+                                prefs.edit()
+                                    .putString("teacher_name", teacherNameInput.trim())
+                                    .putString("teacher_subject", teacherSubjectInput.trim())
+                                    .putString("school_gender", selectedGender)
+                                    .putString("teacher_grade", selectedGrade)
+                                    .putString("teacher_section", selectedSection)
+                                    .apply()
+
                                 viewModel.activateStandaloneWithSubject(
                                     name = teacherNameInput.ifBlank { "أستاذ المادة" },
                                     email = teacherEmailInput.ifBlank { "teacher@local.edu" },
                                     subject = teacherSubjectInput.ifBlank { "اللغة العربية" },
-                                    grade = "الأول",
-                                    section = "أ"
+                                    grade = selectedGrade,
+                                    section = selectedSection
                                 ) {
-                                    Toast.makeText(context, "تم بدء السجل المستقل بنجاح 👤✓", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "تم حفظ بيانات الأستاذ والمادة بنجاح 👤✓", Toast.LENGTH_SHORT).show()
                                     onActivationComplete()
                                 }
                             }
@@ -279,7 +444,11 @@ fun OnboardingScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("بدء الاستخدام المستقل الآن 🚀", fontWeight = FontWeight.Black, fontSize = 13.5.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("حفظ بيانات الأستاذ والمادة وبدء السجل ✓", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
                     }
                 }
             }
@@ -301,29 +470,29 @@ fun OnboardingScreen(
                         Text("أو الاقتران مع سحابة المدرسة ☁️", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color(0xFF1E3A8A))
                     }
 
-                    OutlinedButton(
-                        onClick = onNavigateToQrScanner,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF2563EB)),
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF3B82F6)),
-                        enabled = !isLoading
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("مسح باركود شاشة الكمبيوتر (QR) 📷", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
                     Text(
                         text = "يتم الربط التلقائي عبر مسح رمز الباركود المعروض على شاشة حاسبة إدارة المدرسة",
                         color = Color(0xFF64748B),
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center
                     )
+
+                    // زر تحت الباركود لتفعيل الربط مع رسالة تحذير
+                    Button(
+                        onClick = { showPairWarningDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        enabled = !isLoading
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("تفعيل الربط السحابي ومسح الباركود 📷", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
 
                     if (statusText != null) {
                         Surface(
@@ -353,6 +522,42 @@ fun OnboardingScreen(
                 Spacer(Modifier.width(6.dp))
                 Text("دليل الاستخدام والتعليمات 📖", color = Color(0xFF2563EB), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
+        }
+
+        if (showPairWarningDialog) {
+            AlertDialog(
+                onDismissRequest = { showPairWarningDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD97706))
+                        Spacer(Modifier.width(8.dp))
+                        Text("تنبيه تفعيل الربط السحابي", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    }
+                },
+                text = {
+                    Text(
+                        "تنبيه: سيؤدي مسح باركود المدرسة إلى تفعيل الربط المباشر مع سحابة المدرسة واستيراد الشعب والطلاب المخصصين لحسابك. هل ترغب في المتابعة وتشغيل الكاميرا؟",
+                        fontSize = 13.sp,
+                        color = Color(0xFF334155)
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showPairWarningDialog = false
+                            onNavigateToQrScanner()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("نعم، فتح الكاميرا ومسح الرمز", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPairWarningDialog = false }) {
+                        Text("إلغاء", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
         }
 
         if (showHelpGuideDialog) {

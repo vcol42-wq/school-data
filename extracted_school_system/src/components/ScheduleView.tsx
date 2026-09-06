@@ -1116,62 +1116,77 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
       {/* Modal: Schedule Settings Modal (ضبط وتعديل أسماء الدروس والأساتذة) */}
       {showSettingsModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--theme-card)] border border-[var(--theme-card-border)] rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 dir-rtl">
+          <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-slate-900 dark:text-white">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <SlidersHorizontal className="w-5 h-5 text-amber-500" />
-                <h3 className="text-base font-bold text-[var(--theme-text-main)]">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <SlidersHorizontal className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">
                   إعدادات وضبط أسماء الدروس والأساتذة بالجدول
                 </h3>
               </div>
-              <button onClick={() => setShowSettingsModal(false)} className="p-1 rounded-lg hover:bg-slate-100">
+              <button 
+                onClick={() => setShowSettingsModal(false)} 
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <p className="font-bold text-slate-700 dark:text-slate-300">
-                1. تخصيص أسماء وألقاب الحصص والدروس:
-              </p>
+            <div className="space-y-4 text-xs">
+              <div>
+                <p className="font-black text-sm text-slate-900 dark:text-slate-100 mb-2.5 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                  1. تخصيص أسماء وألقاب الحصص والدروس:
+                </p>
 
-              <div className="grid grid-cols-2 gap-2">
-                {Object.keys(customLessonNames).map((key, idx) => (
-                  <div key={key}>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-1">الدرس {idx + 1}:</label>
-                    <input
-                      type="text"
-                      value={customLessonNames[key]}
-                      onChange={e => setCustomLessonNames(prev => ({ ...prev, [key]: e.target.value }))}
-                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold"
-                    />
-                  </div>
-                ))}
+                <div className="grid grid-cols-2 gap-2.5">
+                  {Object.keys(customLessonNames).map((key, idx) => (
+                    <div key={key}>
+                      <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
+                        الدرس {idx + 1}:
+                      </label>
+                      <input
+                        type="text"
+                        value={customLessonNames[key]}
+                        onChange={e => setCustomLessonNames(prev => ({ ...prev, [key]: e.target.value }))}
+                        className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="pt-3 border-t space-y-3">
-                <p className="font-bold text-slate-700 dark:text-slate-300">
+              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                <p className="font-black text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
                   2. إعادة تخصيص واستبدال الأستاذ في جدول اليوم ({selectedDay}):
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-1">اسم الأستاذ الحالي للبحث عنه:</label>
+                    <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
+                      اسم الأستاذ الحالي للبحث عنه:
+                    </label>
                     <input
                       type="text"
                       placeholder="مثال: أ. أحمد"
                       value={replaceOldTeacher}
                       onChange={e => setReplaceOldTeacher(e.target.value)}
-                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-xs"
+                      className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-500 mb-1">اسم الأستاذ البديل الجديد:</label>
+                    <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
+                      اسم الأستاذ البديل الجديد:
+                    </label>
                     <input
                       type="text"
                       placeholder="مثال: أ. حيدر"
                       value={replaceNewTeacher}
                       onChange={e => setReplaceNewTeacher(e.target.value)}
-                      className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-bold text-xs"
+                      className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
                     />
                   </div>
                 </div>
@@ -1204,23 +1219,23 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     setReplaceNewTeacher('');
                     setTimeout(() => setReplaceStatus(''), 3500);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black transition-all shadow cursor-pointer text-xs"
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black transition-all shadow-md cursor-pointer text-xs"
                 >
                   استبدال الأستاذ في جدول اليوم الحالي ✓
                 </button>
 
                 {replaceStatus && (
-                  <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold rounded-lg text-center">
+                  <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-black rounded-xl text-center">
                     {replaceStatus}
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t">
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="px-5 py-2 rounded-xl bg-slate-800 text-white text-xs font-bold shadow"
+                className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black shadow-md transition-all cursor-pointer"
               >
                 حفظ وإغلاق الضبط
               </button>
