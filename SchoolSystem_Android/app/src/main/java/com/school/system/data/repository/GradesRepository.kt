@@ -236,6 +236,8 @@ class GradesRepository @Inject constructor(
                         }
                     }
 
+                    Log.d(tag, "Upload PIN verification result -> authorized: $isAuthorized, locked: $isLocked, target: $grade / $section / $subject")
+
                     // الحسم الأمني
                     if (isLocked) {
                         return@withContext SecureUploadResult.ClassLocked(
@@ -246,7 +248,11 @@ class GradesRepository @Inject constructor(
                     if (!isAuthorized) {
                         secureKeyStorage.clearSubjectPin(subjectKey)
                         return@withContext SecureUploadResult.InvalidPin(
-                            "رمز اعتماد المادة المدخل غير مطابق للرمز المعتمد في جدول الإدارة."
+                            "رمز اعتماد المادة المدخل غير مطابق للرمز المعتمد في جدول الإدارة.\n\n" +
+                            "يرجى التحقق من:\n" +
+                            "1. إدخال الرمز المعتمد للمادة أو كود المدرسة بدقة وبدون مسافات.\n" +
+                            "2. مطابقة الصف والشعبة والمادة مع جدول التخويل المعتمد من الإدارة.\n" +
+                            "3. مسح باركود التخويل أو طلب كود جديد من مدير المدرسة."
                         )
                     }
                 } catch (e: Exception) {

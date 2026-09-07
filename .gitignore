@@ -49,6 +49,7 @@ The_Principal_Portable/
 apk_release/
 .max/
 .windsurf/
+.copilot/
 extracted_school_system/.max/
 extracted_school_system/.windsurf/
 jdk-*/

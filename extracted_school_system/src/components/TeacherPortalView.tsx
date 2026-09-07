@@ -37,8 +37,9 @@ import {
   Wifi,
   WifiOff
 } from 'lucide-react';
-import { isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
+import { isSupabaseConfigured, getSupabaseKey, supabase } from '../utils/supabaseClient';
 import { sendPairingRequest } from '../utils/syncService';
+import { generateSecureOtp } from '../utils/uploadTokens';
 
 // Barcode SVG Generator Component
 const BarcodeSvg: React.FC<{ value: string; height?: number; className?: string }> = ({ value, height = 48, className = "" }) => {
@@ -307,8 +308,8 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     }
   };
 
-  // OTP Verification System
-  const [generatedOtpCode, setGeneratedOtpCode] = useState<string>('999888');
+  // OTP Verification System - Dynamic & Secure
+  const [generatedOtpCode, setGeneratedOtpCode] = useState<string>(() => generateSecureOtp());
   const [inputOtpCode, setInputOtpCode] = useState<string>('');
   const [isVerifiedByPrincipal, setIsVerifiedByPrincipal] = useState<boolean>(false);
   const [showOtpModal, setShowOtpModal] = useState<boolean>(false);
@@ -391,17 +392,19 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
 
   const availableSections = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح'];
 
-  // Maintain the unified school connection code
+  // Refresh and generate a new dynamic secure OTP
   const refreshOtpCode = () => {
-    setGeneratedOtpCode('999888');
+    const newOtp = generateSecureOtp();
+    setGeneratedOtpCode(newOtp);
     setInputOtpCode('');
   };
 
   const registerSessionOnServer = async (code: string, tName: string, subjs: string[], grds: string[], scts: string[]) => {
+    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+
     // 1. Try Supabase Cloud Pairing if configured
     if (isSupabaseConfigured()) {
       try {
-        const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
         await sendPairingRequest({
           schoolId,
           fullName: tName,
@@ -412,6 +415,21 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
           pairingCode: code
         });
         console.log('[Sync] Cloud pairing request sent to Supabase');
+
+        // Also record in session_upload_tokens if table exists
+        try {
+          await supabase.from('session_upload_tokens').upsert({
+            school_id: schoolId,
+            grade: grds[0] || 'الكل',
+            section: scts[0] || 'الكل',
+            subject: subjs[0] || 'عام',
+            token_code: code,
+            expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+            is_valid: true
+          }, { onConflict: 'school_id,token_code' });
+        } catch (tokErr) {
+          console.warn('[Sync] Optional session_upload_tokens notice:', tokErr);
+        }
       } catch (e) {
         console.error('[Sync] Cloud pairing failed:', e);
       }
