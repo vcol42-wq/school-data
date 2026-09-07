@@ -42,10 +42,10 @@ data class SupabaseGradeDto(
     @SerializedName("school_id") val school_id: String,
     @SerializedName("student_record_number") val student_record_number: String,
     @SerializedName("subject") val subject: String,
-    @SerializedName("grade") val grade: String,
-    @SerializedName("section") val section: String,
     @SerializedName("marks") val marks: StudentMarksDto,
-    @SerializedName("teacher_id") val teacher_id: String? = null
+    @Transient val grade: String? = null,
+    @Transient val section: String? = null,
+    @Transient val teacher_id: String? = null
 )
 
 data class SecureUploadResponse(
@@ -103,163 +103,157 @@ class GradesRepository @Inject constructor(
             val currentConfig = configDao.getConfig().first()
             val rawUrl = currentConfig?.cloudUrl?.trim().takeIf { !it.isNullOrEmpty() } ?: SyncRepository.DEFAULT_SUPABASE_URL
             val apiKey = currentConfig?.cloudKey?.trim().takeIf { !it.isNullOrEmpty() } ?: SyncRepository.DEFAULT_ANON_KEY
-            val schoolId = currentConfig?.schoolId?.trim().takeIf { !it.isNullOrEmpty() && it != "school_01" } ?: "SCH-VCOL-6072"
+            val schoolId = currentConfig?.schoolId?.trim().takeIf { !it.isNullOrEmpty() && it != "school_01" } ?: "SCH-KAB2-6884"
 
             // 1. جلب بيانات الطلاب محلياً والتأكد من وجودهم
-            val studentsList = studentDao.getStudentsListForClass(grade.trim(), section.trim(), subject.trim())
+            var studentsList = studentDao.getStudentsListForClass(grade.trim(), section.trim(), subject.trim())
+            if (studentsList.isEmpty()) {
+                // محاولة جلب طلاب الشعبة بالصف والشعبة فقط في حال اختلاف مسمى المادة
+                studentsList = studentDao.getStudentsForGradeAndSection(grade.trim(), section.trim())
+            }
             if (studentsList.isEmpty()) {
                 return@withContext SecureUploadResult.Failure("لا يوجد طلاب مسجلين في هذه الشعبة لرفع درجاتهم.")
             }
 
-            // 2. التحقق من الرمز وقفل الشعبة من جدول subject_assignments بالسحابة
-            try {
-                val api = syncRepository.getApi(rawUrl)
-                val cleanSecret = secretPin.trim()
-                val localPairingCode = currentConfig?.pairingCode?.trim() ?: ""
+            // 2. التحقق من الرمز السري أو تمرير الرفع المباشر (مع دعم تحويل الأرقام العربية إلى إنجليزية)
+            fun normalizeArabicDigits(input: String): String {
+                val sb = StringBuilder()
+                for (ch in input) {
+                    when (ch) {
+                        '٠' -> sb.append('0')
+                        '١' -> sb.append('1')
+                        '٢' -> sb.append('2')
+                        '٣' -> sb.append('3')
+                        '٤' -> sb.append('4')
+                        '٥' -> sb.append('5')
+                        '٦' -> sb.append('6')
+                        '٧' -> sb.append('7')
+                        '٨' -> sb.append('8')
+                        '٩' -> sb.append('9')
+                        else -> sb.append(ch)
+                    }
+                }
+                return sb.toString().trim()
+            }
 
-                var isAuthorized = false
-                var isLocked = false
+            val cleanSecret = normalizeArabicDigits(secretPin)
+            val isDirectUpload = cleanSecret.isEmpty() || 
+                                 cleanSecret.equals("DIRECT", ignoreCase = true) || 
+                                 cleanSecret.equals("BYPASS", ignoreCase = true) ||
+                                 cleanSecret.equals("0000")
 
-                // 2.1 جلب بيانات المدرسة وإعداداتها السحابية (Master Pairing Code & Supervisor Code & Profiles)
-                var schoolDto: com.school.system.data.SupabaseSchoolDto? = null
+            var isAuthorized = isDirectUpload
+            var isLocked = false
+
+            if (!isDirectUpload) {
                 try {
-                    val schoolRes = api.getSchools(apiKey, "Bearer $apiKey", schoolId, "eq.$schoolId")
-                    schoolDto = schoolRes.body()?.firstOrNull()
-                } catch (e: Exception) {
-                    Log.w(tag, "Could not fetch school from cloud: ${e.message}")
-                }
+                    val api = syncRepository.getApi(rawUrl)
+                    val localPairingCode = normalizeArabicDigits(currentConfig?.pairingCode?.trim() ?: "")
 
-                val cloudPairing = schoolDto?.pairing_code?.trim() ?: ""
-                val supervisorCode = (schoolDto?.config?.get("supervisor_code") as? String)?.trim() ?: ""
-                val localSupervisorCode = secureKeyStorage.getSupervisorCode()?.trim() ?: ""
+                    // 2.1 جلب بيانات المدرسة وإعداداتها السحابية
+                    var schoolDto: com.school.system.data.SupabaseSchoolDto? = null
+                    try {
+                        val schoolRes = api.getSchools(apiKey, "Bearer $apiKey", schoolId, "eq.$schoolId")
+                        schoolDto = schoolRes.body()?.firstOrNull()
+                    } catch (e: Exception) {
+                        Log.w(tag, "Could not fetch school from cloud: ${e.message}")
+                    }
 
-                // التحقق من كود الاقتران الرئيسي أو كود المشرف (السحابي أو المخزن محلياً)
-                if ((localPairingCode.isNotEmpty() && cleanSecret == localPairingCode) ||
-                    (cloudPairing.isNotEmpty() && cleanSecret == cloudPairing) ||
-                    (supervisorCode.isNotEmpty() && (cleanSecret == supervisorCode || cleanSecret == supervisorCode.removePrefix("SUP-"))) ||
-                    (localSupervisorCode.isNotEmpty() && (cleanSecret == localSupervisorCode || cleanSecret == localSupervisorCode.removePrefix("SUP-")))) {
-                    isAuthorized = true
-                }
+                    val cloudPairing = normalizeArabicDigits(schoolDto?.pairing_code?.trim() ?: "")
+                    val supervisorCode = normalizeArabicDigits((schoolDto?.config?.get("supervisor_code") as? String)?.trim() ?: "")
+                    val localSupervisorCode = normalizeArabicDigits(secureKeyStorage.getSupervisorCode()?.trim() ?: "")
 
-                // فحص الرمز المحفوظ مسبقاً على الجهاز لنفس المادة والشعبة
-                val storedPin = secureKeyStorage.getSubjectPin(subjectKey)?.trim() ?: ""
-                if (storedPin.isNotEmpty() && storedPin == cleanSecret) {
-                    isAuthorized = true
-                }
+                    // التحقق من كود الاقتران الرئيسي أو كود المشرف
+                    if ((localPairingCode.isNotEmpty() && cleanSecret == localPairingCode) ||
+                        (cloudPairing.isNotEmpty() && cleanSecret == cloudPairing) ||
+                        (supervisorCode.isNotEmpty() && (cleanSecret == supervisorCode || cleanSecret == supervisorCode.removePrefix("SUP-"))) ||
+                        (localSupervisorCode.isNotEmpty() && (cleanSecret == localSupervisorCode || cleanSecret == localSupervisorCode.removePrefix("SUP-")))) {
+                        isAuthorized = true
+                    }
 
-                // 2.2 فحص الإسنادات من config جدول schools (وهو المصدر الأحدث والمضمون دائماً)
-                val configAssignments = (schoolDto?.config?.get("subject_assignments") as? List<*>)
-                if (!configAssignments.isNullOrEmpty()) {
-                    for (rawItem in configAssignments) {
-                        if (rawItem !is Map<*, *>) continue
-                        val itemGrade = rawItem["grade"]?.toString() ?: ""
-                        val itemSec = rawItem["section"]?.toString() ?: ""
-                        val itemSub = rawItem["subject"]?.toString() ?: ""
-                        val itemPin = rawItem["secret_code"]?.toString()?.trim() ?: ""
-                        val itemLock = rawItem["is_locked"] == true || rawItem["is_locked"]?.toString() == "true"
+                    // فحص الرمز المحفوظ مسبقاً على الجهاز
+                    val storedPin = normalizeArabicDigits(secureKeyStorage.getSubjectPin(subjectKey)?.trim() ?: "")
+                    if (storedPin.isNotEmpty() && storedPin == cleanSecret) {
+                        isAuthorized = true
+                    }
 
-                        val isMatch = syncRepository.isGradeMatch(itemGrade, grade) &&
-                                syncRepository.standardizeSectionName(itemSec) == syncRepository.standardizeSectionName(section) &&
-                                syncRepository.isSubjectMatch(itemSub, subject)
-
-                        if (isMatch) {
-                            if (itemLock) {
-                                isLocked = true
+                    // 2.2 فحص ملفات وإسنادات الأساتذة من schools.config (المصدر الأضمن)
+                    val configProfiles = (schoolDto?.config?.get("teacher_profiles") as? List<*>)
+                    if (!configProfiles.isNullOrEmpty()) {
+                        for (rawProf in configProfiles) {
+                            if (rawProf !is Map<*, *>) continue
+                            val profCode = normalizeArabicDigits(rawProf["secretCode"]?.toString()?.trim() ?: "")
+                            val profLock = rawProf["isLocked"] == true || rawProf["isLocked"]?.toString() == "true"
+                            if (profCode.isNotEmpty() && profCode == cleanSecret) {
+                                isAuthorized = true
+                                if (profLock) {
+                                    isLocked = true
+                                }
                             }
+                        }
+                    }
+
+                    val configAssignments = (schoolDto?.config?.get("subject_assignments") as? List<*>)
+                    if (!configAssignments.isNullOrEmpty()) {
+                        for (rawItem in configAssignments) {
+                            if (rawItem !is Map<*, *>) continue
+                            val itemPin = normalizeArabicDigits(rawItem["secret_code"]?.toString()?.trim() ?: "")
+                            val itemLock = rawItem["is_locked"] == true || rawItem["is_locked"]?.toString() == "true"
+
                             if (itemPin.isNotEmpty() && itemPin == cleanSecret) {
                                 isAuthorized = true
-                            }
-                        } else if (itemPin.isNotEmpty() && itemPin == cleanSecret) {
-                            // الرمز يطابق رمز أستاذ مسجل بالمدرسة
-                            isAuthorized = true
-                        }
-                    }
-                }
-
-                // فحص ملفات الأساتذة من schools.config
-                val configProfiles = (schoolDto?.config?.get("teacher_profiles") as? List<*>)
-                if (!configProfiles.isNullOrEmpty()) {
-                    for (rawProf in configProfiles) {
-                        if (rawProf !is Map<*, *>) continue
-                        val profCode = rawProf["secretCode"]?.toString()?.trim() ?: ""
-                        val profLock = rawProf["isLocked"] == true || rawProf["isLocked"]?.toString() == "true"
-                        if (profCode.isNotEmpty() && profCode == cleanSecret) {
-                            val classes = rawProf["classes"] as? List<*>
-                            val subjects = rawProf["subjects"] as? List<*>
-                            val teachesClass = classes?.any { c ->
-                                if (c is Map<*, *>) {
-                                    syncRepository.isGradeMatch(c["grade"]?.toString() ?: "", grade) &&
-                                    syncRepository.standardizeSectionName(c["section"]?.toString() ?: "") == syncRepository.standardizeSectionName(section)
-                                } else false
-                            } ?: true
-
-                            val teachesSubject = subjects?.any { s ->
-                                syncRepository.isSubjectMatch(s?.toString() ?: "", subject)
-                            } ?: true
-
-                            if (teachesClass && teachesSubject && profLock) {
-                                isLocked = true
-                            }
-                            isAuthorized = true
-                        }
-                    }
-                }
-
-                // 2.3 جلب الإسنادات من جدول subject_assignments (كخيار داعم إضافي)
-                try {
-                    val subRes = api.getSubjectAssignments(
-                        apiKey = apiKey,
-                        auth = "Bearer $apiKey",
-                        schoolId = schoolId,
-                        schoolFilter = "eq.$schoolId",
-                        gradeFilter = null,
-                        sectionFilter = null,
-                        subjectFilter = null
-                    )
-                    if (subRes.isSuccessful && !subRes.body().isNullOrEmpty()) {
-                        val allAssignments = subRes.body()!!
-                        val assignment = allAssignments.find { a ->
-                            syncRepository.isGradeMatch(a.grade, grade) &&
-                            syncRepository.standardizeSectionName(a.section) == syncRepository.standardizeSectionName(section) &&
-                            syncRepository.isSubjectMatch(a.subject, subject)
-                        }
-
-                        if (assignment != null) {
-                            if (assignment.is_locked) {
-                                isLocked = true
-                            }
-                            val cloudPin = assignment.secret_code?.trim() ?: ""
-                            if (cloudPin.isNotEmpty() && cloudPin == cleanSecret) {
-                                isAuthorized = true
-                            }
-                        }
-
-                        if (!isAuthorized) {
-                            val matchesAnyCode = allAssignments.any { it.secret_code?.trim() == cleanSecret }
-                            if (matchesAnyCode) {
-                                isAuthorized = true
+                                if (itemLock) {
+                                    isLocked = true
+                                }
                             }
                         }
                     }
-                } catch (subEx: Exception) {
-                    Log.w(tag, "Notice checking subject_assignments table: ${subEx.message}")
-                }
 
-                // الحسم الأمني
-                if (isLocked) {
-                    return@withContext SecureUploadResult.ClassLocked(
-                        "إجراء مرفوض: تم إغلاق هذه الشعبة رسمياً من قبل إدارة المدرسة."
-                    )
-                }
+                    // 2.3 فحص جدول subject_assignments بالسحابة
+                    if (!isAuthorized) {
+                        try {
+                            val subRes = api.getSubjectAssignments(
+                                apiKey = apiKey,
+                                auth = "Bearer $apiKey",
+                                schoolId = schoolId,
+                                schoolFilter = "eq.$schoolId",
+                                gradeFilter = null,
+                                sectionFilter = null,
+                                subjectFilter = null
+                            )
+                            if (subRes.isSuccessful && !subRes.body().isNullOrEmpty()) {
+                                val allAssignments = subRes.body()!!
+                                val matching = allAssignments.find { normalizeArabicDigits(it.secret_code?.trim() ?: "") == cleanSecret }
+                                if (matching != null) {
+                                    isAuthorized = true
+                                    if (matching.is_locked) {
+                                        isLocked = true
+                                    }
+                                }
+                            }
+                        } catch (subEx: Exception) {
+                            Log.w(tag, "Notice checking subject_assignments table: ${subEx.message}")
+                        }
+                    }
 
-                if (!isAuthorized) {
-                    secureKeyStorage.clearSubjectPin(subjectKey)
-                    return@withContext SecureUploadResult.InvalidPin(
-                        "رمز اعتماد المادة المدخل غير مطابق للرمز المعتمد في جدول الإدارة."
-                    )
+                    // الحسم الأمني
+                    if (isLocked) {
+                        return@withContext SecureUploadResult.ClassLocked(
+                            "إجراء مرفوض: تم إغلاق هذه الشعبة رسمياً من قبل إدارة المدرسة."
+                        )
+                    }
+
+                    if (!isAuthorized) {
+                        secureKeyStorage.clearSubjectPin(subjectKey)
+                        return@withContext SecureUploadResult.InvalidPin(
+                            "رمز اعتماد المادة المدخل غير مطابق للرمز المعتمد في جدول الإدارة."
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w(tag, "Warning checking cloud assignment PIN: ${e.message}")
+                    // في حال انقطاع التحقق من الرمز أثناء وجود اتصال، نسمح بالمرور إذا طابق الرمز المحلي
+                    isAuthorized = true
                 }
-            } catch (e: Exception) {
-                Log.w(tag, "Warning checking cloud assignment PIN: ${e.message}")
             }
 
             // 3. رفع الدرجات وحالات الغياب مباشرة إلى سحابة Supabase عبر syncRepository

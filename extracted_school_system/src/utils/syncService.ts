@@ -1,6 +1,13 @@
 import { getSupabase } from './supabaseClient';
 import { Student, StaffMember, StudentMark, DayScheduleMap } from '../types';
-import { standardizeGradeName, standardizeSectionName } from './syncEngine';
+import { 
+  standardizeGradeName, 
+  standardizeSectionName, 
+  standardizeSubjectName, 
+  isValidSubjectName, 
+  isExemptStaff, 
+  parseClassTaught 
+} from './syncEngine';
 
 // Helper to normalize Arabic characters for comparison
 export function normalizeArabic(str: string): string {
@@ -13,32 +20,6 @@ export function normalizeArabic(str: string): string {
     .replace(/^(الصف|صف)\s+/g, '')
     .replace(/(^|\s)ال/g, '$1')
     .replace(/\s+/g, '');
-}
-
-// Helper to parse the assigned classes taught by teachers
-function parseClassTaught(classStr: string, defaultSubject: string) {
-  let cleaned = classStr.replace(/^(الصف|صف)\s+/g, '').trim();
-  let explicitSubject = '';
-
-  // 1. Check for parenthesis containing subject: e.g. "الأول متوسط - أ (التربية الأخلاقية)"
-  const parenMatch = cleaned.match(/\((.*?)\)/);
-  if (parenMatch) {
-    explicitSubject = parenMatch[1].trim();
-    cleaned = cleaned.replace(/\(.*?\)/, '').trim();
-  }
-
-  // 2. Split by dash or spaces to extract grade and section
-  const parts = cleaned.split(/[-–—\s]+/).filter(Boolean);
-  if (parts.length >= 2) {
-    const section = standardizeSectionName(parts[parts.length - 1]);
-    const grade = standardizeGradeName(parts.slice(0, parts.length - 1).join(' '));
-    const subject = explicitSubject || defaultSubject || 'عام';
-    return { grade, section, subject };
-  } else if (parts.length === 1) {
-    return { grade: standardizeGradeName(parts[0]), section: 'أ', subject: explicitSubject || defaultSubject || 'عام' };
-  } else {
-    return { grade: 'الأول', section: 'أ', subject: explicitSubject || defaultSubject || 'عام' };
-  }
 }
 
 /**
@@ -117,21 +98,54 @@ export async function exportSchoolData(
       if (teacherError) throw new Error(`Teachers Sync Error: ${teacherError.message}`);
     }
 
-    // 3. Extract and Export unique Classes
+    // 3. Extract and Export unique Classes (from BOTH students AND scheduleMap with strict standardization)
     const uniqueClassesMap = new Map<string, { school_id: string; name: string; section: string }>();
+
+    // 3.1 From Students Roster
     students.forEach(std => {
-      const key = `${normalizeArabic(std.currentGrade)}-${normalizeArabic(std.section)}`;
-      if (!uniqueClassesMap.has(key)) {
-        uniqueClassesMap.set(key, {
-          school_id: schoolId,
-          name: std.currentGrade,
-          section: std.section
-        });
+      if (std.currentGrade && std.section) {
+        const stdGrade = standardizeGradeName(std.currentGrade);
+        const stdSection = standardizeSectionName(std.section);
+        const key = `${stdGrade}-${stdSection}`;
+        if (!uniqueClassesMap.has(key)) {
+          uniqueClassesMap.set(key, {
+            school_id: schoolId,
+            name: stdGrade,
+            section: stdSection
+          });
+        }
       }
     });
 
+    // 3.2 From Weekly Schedule
+    if (scheduleMap) {
+      Object.keys(scheduleMap).forEach(day => {
+        (scheduleMap[day] || []).forEach(row => {
+          if (row.grade && row.section) {
+            const stdGrade = standardizeGradeName(row.grade);
+            const stdSection = standardizeSectionName(row.section);
+            const key = `${stdGrade}-${stdSection}`;
+            if (!uniqueClassesMap.has(key)) {
+              uniqueClassesMap.set(key, {
+                school_id: schoolId,
+                name: stdGrade,
+                section: stdSection
+              });
+            }
+          }
+        });
+      });
+    }
+
     const classesPayload = Array.from(uniqueClassesMap.values());
     if (classesPayload.length > 0) {
+      // Purge old classes before upserting clean standardized classes
+      try {
+        await client.from('classes').delete().eq('school_id', schoolId);
+      } catch (delErr) {
+        console.warn('Notice clearing previous classes:', delErr);
+      }
+
       const { error: classError } = await client
         .from('classes')
         .upsert(classesPayload, { onConflict: 'school_id,name,section', ignoreDuplicates: false });
@@ -188,10 +202,12 @@ export async function exportSchoolData(
             lessonSlots.forEach(slot => {
               if (!slot.isOff && slot.subject && slot.teacherName) {
                 const stdSubject = standardizeSubjectName(slot.subject);
+                if (!isValidSubjectName(stdSubject)) return;
+
                 uniqueSubjects.add(stdSubject);
 
                 const matchedTeacher = findStaff(slot.teacherName);
-                if (matchedTeacher) {
+                if (matchedTeacher && !isExemptStaff(matchedTeacher)) {
                   const teacherIdx = staff.indexOf(matchedTeacher);
                   const teacherId = getStaffStableId(matchedTeacher, teacherIdx);
                   const key = `${teacherId}_${stdGrade}_${stdSection}_${stdSubject}`;
@@ -213,40 +229,55 @@ export async function exportSchoolData(
       });
     }
 
-    // 2. SECONDARY SOURCE: classesTaught and actualSubjectTaught
+    // 2. SECONDARY SOURCE: classesTaught and actualSubjectTaught (Only for active teaching staff)
     staff.forEach((member, idx) => {
+      if (isExemptStaff(member)) return; // استبعاد المفرغين إدارياً تماماً من أنصبة ومواد التدريس
+
       const stableId = getStaffStableId(member, idx);
       const defaultSubject = member.actualSubjectTaught || member.specialization || 'عام';
-      if (defaultSubject) uniqueSubjects.add(standardizeSubjectName(defaultSubject));
+      const cleanDefSubj = standardizeSubjectName(defaultSubject);
+      if (isValidSubjectName(cleanDefSubj)) {
+        uniqueSubjects.add(cleanDefSubj);
+      }
 
       if (member.classesTaught && member.classesTaught.length > 0) {
         member.classesTaught.forEach(classStr => {
-          const parsed = parseClassTaught(classStr, defaultSubject);
+          const parsed = parseClassTaught(classStr, cleanDefSubj);
           const stdGrade = standardizeGradeName(parsed.grade);
           const stdSection = standardizeSectionName(parsed.section);
           const stdSubject = standardizeSubjectName(parsed.subject);
           
-          if (stdSubject) uniqueSubjects.add(stdSubject);
-          const key = `${stableId}_${stdGrade}_${stdSection}_${stdSubject}`;
-          if (!assignmentMap.has(key)) {
-            assignmentMap.set(key, {
-              school_id: schoolId,
-              teacher_id: stableId,
-              class_name: stdGrade,
-              section: stdSection,
-              subject_name: stdSubject
-            });
+          if (isValidSubjectName(stdSubject)) {
+            uniqueSubjects.add(stdSubject);
+            const key = `${stableId}_${stdGrade}_${stdSection}_${stdSubject}`;
+            if (!assignmentMap.has(key)) {
+              assignmentMap.set(key, {
+                school_id: schoolId,
+                teacher_id: stableId,
+                class_name: stdGrade,
+                section: stdSection,
+                subject_name: stdSubject
+              });
+            }
           }
         });
       }
     });
 
-    const subjectsPayload = Array.from(uniqueSubjects).map(sub => ({
-      school_id: schoolId,
-      name: sub
-    }));
+    const subjectsPayload = Array.from(uniqueSubjects)
+      .filter(s => isValidSubjectName(s))
+      .map(sub => ({
+        school_id: schoolId,
+        name: sub
+      }));
 
     if (subjectsPayload.length > 0) {
+      try {
+        await client.from('subjects').delete().eq('school_id', schoolId);
+      } catch (delSubErr) {
+        console.warn('Notice clearing previous subjects:', delSubErr);
+      }
+
       const { error: subjectError } = await client
         .from('subjects')
         .upsert(subjectsPayload, { onConflict: 'school_id,name', ignoreDuplicates: false });

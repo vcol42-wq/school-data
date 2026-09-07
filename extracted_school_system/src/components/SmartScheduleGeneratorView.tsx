@@ -46,6 +46,7 @@ import {
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { getSupabase } from '../utils/supabaseClient';
 import { canonicalSubject, MASTER_SUBJECTS_LIST, matchStaffWithScheduleCell } from '../utils/subjectHelper';
+import { standardizeGradeName, standardizeSectionName, standardizeSubjectName } from '../utils/syncEngine';
 import { Student } from '../types';
 
 interface SmartScheduleGeneratorViewProps {
@@ -259,9 +260,8 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
     if (students && students.length > 0) {
       students.forEach(s => {
         if (s.currentGrade && s.section) {
-          const rawGrade = s.currentGrade.trim();
-          const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
-          const cleanSec = s.section.trim();
+          const cleanGrade = standardizeGradeName(s.currentGrade);
+          const cleanSec = standardizeSectionName(s.section);
           const key = `${cleanGrade}_${cleanSec}`;
           const cur = secMap.get(key);
           if (cur) cur.count++;
@@ -288,9 +288,8 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
     if (students && students.length > 0) {
       students.forEach(s => {
         if (s.currentGrade && s.section) {
-          const rawGrade = s.currentGrade.trim();
-          const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
-          const cleanSec = s.section.trim();
+          const cleanGrade = standardizeGradeName(s.currentGrade);
+          const cleanSec = standardizeSectionName(s.section);
           const key = `${cleanGrade}_${cleanSec}`;
           const existing = studentSectionMap.get(key);
           if (existing) {
@@ -307,9 +306,8 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
       DAYS_OF_WEEK.forEach(day => {
         (scheduleMap[day] || []).forEach(row => {
           if (row.grade && row.section) {
-            const rawGrade = row.grade.trim();
-            const cleanGrade = rawGrade.startsWith('الصف') ? rawGrade : `الصف ${rawGrade}`;
-            const cleanSec = row.section.trim();
+            const cleanGrade = standardizeGradeName(row.grade);
+            const cleanSec = standardizeSectionName(row.section);
             const key = `${cleanGrade}_${cleanSec}`;
             if (!studentSectionMap.has(key)) {
               studentSectionMap.set(key, { grade: cleanGrade, section: cleanSec, studentCount: 0 });
@@ -915,8 +913,9 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                 const isMatch = matchStaffWithScheduleCell(staff, cell.teacherName, cell.subject);
                 if (isMatch) {
                   totalLessons++;
-                  classesSet.add(`${row.grade} (${row.section})`);
-                  if (cell.subject) subjectsSet.add(cell.subject);
+                  classesSet.add(`${standardizeGradeName(row.grade)} - شعبة ${standardizeSectionName(row.section)}`);
+                  const validSub = standardizeSubjectName(cell.subject);
+                  if (validSub) subjectsSet.add(validSub);
                 }
               }
             });
@@ -1675,6 +1674,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                     <label className="block font-black text-slate-800 mb-1">اسم المادة:</label>
                     <input
                       type="text"
+                      list="master-subjects-datalist"
                       value={editSubjectInput}
                       onChange={e => setEditSubjectInput(e.target.value)}
                       placeholder="مثلاً: الرياضيات، الكيمياء، شاغر..."
@@ -1833,8 +1833,12 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
                         return (
                           <React.Fragment key={lKey}>
-                            <td className="p-0.5 align-middle bg-[#e6f4f1]">
-                              <div className={`px-1.5 py-1 rounded-xl border-2 text-center min-h-[54px] flex flex-col justify-center items-center shadow-2xs ${
+                            <td 
+                              className="p-0.5 align-middle bg-[#e6f4f1] cursor-pointer"
+                              onClick={() => handleOpenCellEditor(selectedPreviewDay, row, lKey)}
+                              title="اضغط لتعديل مادة هذه الحصة أو أستاذها"
+                            >
+                              <div className={`px-1.5 py-1 rounded-xl border-2 text-center min-h-[54px] flex flex-col justify-center items-center shadow-2xs hover:scale-[1.02] hover:border-indigo-400 transition-all ${
                                 cell?.isOff 
                                   ? 'bg-rose-50 text-rose-900 border-rose-300 font-bold' 
                                   : isVacant

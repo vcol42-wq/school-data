@@ -858,9 +858,12 @@ fun GradeRegisterScreen(
                     }
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Text(
-                            "أدخل الرمز السري للمادة والشعبة، أو كود المشرف العام المعتمد من الإدارة.\nسيتم ربطه بالبصمة وحفظه مشفراً في عتاد الجهاز لنظام Zero-Trust.",
+                            "أدخل الرمز السري للمادة والشعبة، أو كود المشرف العام المعتمد من الإدارة، أو اضغط رفع مباشر أدناه.",
                             fontSize = 12.5.sp,
                             color = currentTheme.textSecondaryColor,
                             lineHeight = 18.sp
@@ -901,30 +904,49 @@ fun GradeRegisterScreen(
                                 }
                             }
                         }
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (inputPin.isNotBlank()) {
-                                val pin = inputPin.trim()
+
+                        Spacer(Modifier.height(4.dp))
+
+                        // أزرار عريضة وواضحة تمتد على كامل العرض لمنع تقطع الأحرف وضغط الأزرار
+                        Button(
+                            onClick = {
+                                if (inputPin.isNotBlank()) {
+                                    val pin = inputPin.trim()
+                                    showPinDialog = false
+                                    startSecureUploadWithBiometric(pin)
+                                } else {
+                                    Toast.makeText(context, "يرجى كتابة الرمز السري أو اختيار رفع مباشر أدناه", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("تأكيد الرمز والرفع بالبصمة 🔒", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
                                 showPinDialog = false
-                                startSecureUploadWithBiometric(pin)
-                            } else {
-                                Toast.makeText(context, "يرجى كتابة الرمز السري أولاً", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("تأكيد وبصمة 🔒", fontWeight = FontWeight.Bold)
+                                startSecureUploadWithBiometric("DIRECT")
+                            },
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF059669)),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF10B981)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("رفع مباشر فوري بدون رمز ⚡", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
                     }
                 },
+                confirmButton = {},
                 dismissButton = {
                     TextButton(onClick = { showPinDialog = false }) {
-                        Text("إلغاء")
+                        Text("إلغاء", color = currentTheme.textSecondaryColor)
                     }
                 }
             )
@@ -951,32 +973,57 @@ fun GradeRegisterScreen(
                     }
                 },
                 text = {
-                    Text(
-                        text = invalidPinDialogMessage.ifEmpty {
-                            "تم تحديث أو تغيير رمز اعتماد هذه المادة من الإدارة، يرجى إدخال الرمز الجديد"
-                        },
-                        fontSize = 13.sp,
-                        color = currentTheme.textPrimaryColor,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showInvalidPinDialog = false
-                            inputPin = ""
-                            showPinDialog = true
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                        shape = RoundedCornerShape(10.dp)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("إدخال الرمز الجديد 🔑", fontWeight = FontWeight.Bold)
+                        Text(
+                            text = invalidPinDialogMessage.ifEmpty {
+                                "تم تحديث أو تغيير رمز اعتماد هذه المادة من الإدارة، يرجى إدخال الرمز الجديد أو التجاوز بالرفع المباشر."
+                            },
+                            fontSize = 13.sp,
+                            color = currentTheme.textPrimaryColor,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        Spacer(Modifier.height(4.dp))
+
+                        Button(
+                            onClick = {
+                                showInvalidPinDialog = false
+                                inputPin = ""
+                                showPinDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth().height(46.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("إدخال الرمز الجديد 🔑", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                showInvalidPinDialog = false
+                                startSecureUploadWithBiometric("DIRECT")
+                            },
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF059669)),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF10B981)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("تجاوز ورفع مباشر فوري ⚡", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
                     }
                 },
+                confirmButton = {},
                 dismissButton = {
                     TextButton(onClick = { showInvalidPinDialog = false }) {
-                        Text("إغلاق")
+                        Text("إلغاء", color = currentTheme.textSecondaryColor)
                     }
                 }
             )

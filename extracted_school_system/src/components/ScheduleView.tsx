@@ -21,8 +21,25 @@ import {
 } from 'lucide-react';
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { getSupabase } from '../utils/supabaseClient';
-import { generateSmartFairSchedule, sanitizeAndRepairSections, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS } from '../utils/scheduleSolver';
+import { generateSmartFairSchedule, sanitizeAndRepairSections, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS, LESSON_LABELS } from '../utils/scheduleSolver';
 import { SmartScheduleSection, SectionSubjectAssignment, StaffMember, Student } from '../types';
+
+export const COMMON_SCHEDULE_SUBJECTS = [
+  'التربية الإسلامية',
+  'اللغة العربية',
+  'اللغة الانكليزية',
+  'الرياضيات',
+  'الكيمياء',
+  'الفيزياء',
+  'الأحياء',
+  'الاجتماعيات',
+  'التربية الأخلاقية',
+  'التربية الرياضية',
+  'التربية الفنية',
+  'العلوم',
+  'الحاسوب',
+  'شاغر / نشاط حر'
+];
 
 interface ScheduleViewProps {
   scheduleMap: DayScheduleMap;
@@ -171,19 +188,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           return;
         }
 
-        // Standard Ministry Template for secondary / intermediate schools
+        // Standard Ministry Template for intermediate schools (أنصبة مرحلة المتوسطة المعتمدة رسمياً)
         const STANDARD_TEMPLATE = [
           { name: 'التربية الإسلامية', quota: 2 },
           { name: 'اللغة العربية', quota: 5 },
-          { name: 'اللغة الانكليزية', quota: 4 },
+          { name: 'اللغة الانكليزية', quota: 5 },
           { name: 'الرياضيات', quota: 5 },
           { name: 'الكيمياء', quota: 2 },
-          { name: 'الفيزياء', quota: 3 },
+          { name: 'الفيزياء', quota: 2 },
           { name: 'الأحياء', quota: 2 },
-          { name: 'الاجتماعيات', quota: 3 },
-          { name: 'التربية الرياضية', quota: 2 },
-          { name: 'التربية الفنية', quota: 1 },
+          { name: 'الاجتماعيات', quota: 4 },
           { name: 'التربية الأخلاقية', quota: 1 },
+          { name: 'التربية الرياضية', quota: 1 },
+          { name: 'التربية الفنية', quota: 1 },
         ];
 
         candidateSections = discovered.map((item, idx) => ({
@@ -374,31 +391,95 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   };
 
   // Save Cell Edit
-  const handleSaveCell = () => {
+  const handleSaveCell = async () => {
     if (!editingCell) return;
 
-    setScheduleMap(prev => {
-      const dayRows = prev[selectedDay] ? [...prev[selectedDay]] : [];
-      const updatedRows = dayRows.map(row => {
-        if (row.id === editingCell.rowId) {
-          return {
-            ...row,
-            lessons: {
-              ...row.lessons,
-              [editingCell.lessonKey]: { ...cellForm }
+    const currentDayKey = selectedDay;
+    const dayRows = scheduleMap[currentDayKey] ? [...scheduleMap[currentDayKey]] : [];
+    const updatedRows = dayRows.map(row => {
+      if (row.id === editingCell.rowId) {
+        const isVacant = Boolean(cellForm.isOff || !cellForm.subject.trim() || cellForm.subject.includes('شاغر') || cellForm.teacherName === 'شاغر');
+        return {
+          ...row,
+          lessons: {
+            ...row.lessons,
+            [editingCell.lessonKey]: {
+              subject: cellForm.subject.trim(),
+              teacherName: isVacant ? 'شاغر' : cellForm.teacherName.trim(),
+              isOff: isVacant
             }
-          };
-        }
-        return row;
-      });
-
-      return {
-        ...prev,
-        [selectedDay]: updatedRows
-      };
+          }
+        };
+      }
+      return row;
     });
 
+    const updatedScheduleMap: DayScheduleMap = {
+      ...scheduleMap,
+      [currentDayKey]: updatedRows
+    };
+
+    // 1. Update State
+    setScheduleMap(updatedScheduleMap);
+
+    // 2. Persist IMMEDIATELY to localStorage
+    localStorage.setItem('diyala_school_schedule', JSON.stringify(updatedScheduleMap));
+
+    // 3. Recalculate and update Staff Quotas & Assignments
+    if (staffList && staffList.length > 0 && setStaffList) {
+      const updatedStaffList = staffList.map(staff => {
+        let totalLessons = 0;
+        const classesSet = new Set<string>();
+        const subjectsSet = new Set<string>();
+
+        DAYS_OF_WEEK.forEach(day => {
+          const rows = updatedScheduleMap[day] || [];
+          rows.forEach(row => {
+            LESSON_KEYS.forEach(lk => {
+              const cell = row.lessons[lk];
+              if (cell && !cell.isOff && cell.teacherName) {
+                const sName = (staff.fullName || `${staff.firstName} ${staff.secondName}`).trim().toLowerCase();
+                const cName = cell.teacherName.trim().toLowerCase();
+                if (cName.includes(sName) || sName.includes(cName)) {
+                  totalLessons++;
+                  classesSet.add(`${row.grade} (${row.section})`);
+                  if (cell.subject) subjectsSet.add(cell.subject);
+                }
+              }
+            });
+          });
+        });
+
+        if (totalLessons > 0 || classesSet.size > 0) {
+          return {
+            ...staff,
+            teachingQuota: totalLessons,
+            classesTaught: Array.from(classesSet),
+            actualSubjectTaught: Array.from(subjectsSet)[0] || staff.actualSubjectTaught || staff.specialization
+          };
+        }
+        return staff;
+      });
+
+      setStaffList(updatedStaffList);
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updatedStaffList));
+    }
+
+    // 4. Background Cloud Sync to Supabase
+    try {
+      const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+      const client = getSupabase(schoolId);
+      await client.from('schedules').upsert({
+        id: schoolId,
+        schedule_map: updatedScheduleMap
+      }, { onConflict: 'id', ignoreDuplicates: false });
+    } catch (err) {
+      console.warn('Could not sync cell edit to cloud:', err);
+    }
+
     setEditingCell(null);
+    setUploadSuccessMsg('تم حفظ وتثبيت تعديل الحصة وتحديث أنصبة الكادر بنجاح! 💾');
+    setTimeout(() => setUploadSuccessMsg(''), 4000);
   };
 
   // Add new Class Row
@@ -963,70 +1044,211 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       </div>
 
       {/* Modal: Edit Schedule Cell */}
-      {editingCell && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-sky-300 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-base font-black text-slate-900">تعديل مادة الحصة والأستاذ</h3>
-              <button onClick={() => setEditingCell(null)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-black mb-1 text-slate-900">اسم المادة الدراسية:</label>
-                <input
-                  type="text"
-                  value={cellForm.subject}
-                  onChange={e => setCellForm(prev => ({ ...prev, subject: e.target.value }))}
-                  placeholder="مثال: جغرافية، رياضيات..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-sm"
-                />
+      {editingCell && (() => {
+        const editingRow = currentDayRows.find(r => r.id === editingCell.rowId);
+        return (
+          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white border-2 border-sky-400 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto dir-rtl">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">تعديل مادة الحصة والأستاذ</h3>
+                  <p className="text-[11px] font-bold text-sky-700 mt-0.5">
+                    {editingRow ? `${editingRow.grade} (${editingRow.section})` : ''} | {LESSON_LABELS[editingCell.lessonKey] || editingCell.lessonKey} - يوم ({selectedDay})
+                  </p>
+                </div>
+                <button onClick={() => setEditingCell(null)} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-600 transition cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <div>
-                <label className="block font-black mb-1 text-slate-900">اسم المدرس / المعلم:</label>
-                <input
-                  type="text"
-                  value={cellForm.teacherName}
-                  onChange={e => setCellForm(prev => ({ ...prev, teacherName: e.target.value }))}
-                  placeholder="مثال: أ. محمد الجبوري..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-sm"
-                />
+              <div className="space-y-4 text-xs">
+                {/* Teacher Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="font-black text-slate-900">أستاذ / معلم الحصة:</label>
+                    <span className="text-[10px] text-slate-500 font-bold">اختر من الكادر أو اكتب باليد</span>
+                  </div>
+                  
+                  {/* Quick Teacher Dropdown / Select */}
+                  <select
+                    value={cellForm.teacherName}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const selectedStaff = staffList.find(s => (s.fullName || `${s.firstName} ${s.secondName}`).trim() === val);
+                      setCellForm(prev => ({
+                        ...prev,
+                        teacherName: val,
+                        isOff: val === 'شاغر',
+                        subject: selectedStaff?.actualSubjectTaught || selectedStaff?.specialization || prev.subject
+                      }));
+                    }}
+                    className="w-full mb-2 px-3 py-2.5 rounded-xl border-2 border-sky-200 bg-sky-50 text-slate-900 font-bold focus:outline-none focus:border-sky-500 cursor-pointer shadow-xs"
+                  >
+                    <option value="">-- اضغط لاختيار أستاذ من كادر المدرسة --</option>
+                    {staffList.map(stf => {
+                      const name = (stf.fullName || `${stf.firstName} ${stf.secondName}`).trim();
+                      const spec = stf.specialization ? ` (${stf.specialization})` : '';
+                      return <option key={stf.id} value={name}>{name}{spec}</option>;
+                    })}
+                    <option value="شاغر">شاغر (بدون أستاذ)</option>
+                  </select>
+
+                  <input
+                    type="text"
+                    list="schedule-teachers-list"
+                    value={cellForm.teacherName}
+                    onChange={e => {
+                      const val = e.target.value;
+                      const matchedStaff = staffList.find(s => (s.fullName || `${s.firstName} ${s.secondName}`).trim() === val.trim());
+                      setCellForm(prev => ({
+                        ...prev,
+                        teacherName: val,
+                        isOff: val === 'شاغر',
+                        subject: matchedStaff?.actualSubjectTaught || matchedStaff?.specialization || prev.subject
+                      }));
+                    }}
+                    placeholder="أو اكتب اسم الأستاذ مباشرة..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-xs"
+                  />
+
+                  {/* Fast Teacher Chips */}
+                  {staffList.length > 0 && (
+                    <div className="mt-2">
+                      <span className="text-[10px] font-extrabold text-slate-500 block mb-1">اختيار سريع بنقرة واحدة:</span>
+                      <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-50 rounded-xl border border-slate-200">
+                        {staffList.slice(0, 15).map(stf => {
+                          const name = (stf.fullName || `${stf.firstName} ${stf.secondName}`).trim();
+                          const isSelected = cellForm.teacherName.trim() === name;
+                          return (
+                            <button
+                              key={stf.id}
+                              type="button"
+                              onClick={() => {
+                                setCellForm(prev => ({
+                                  ...prev,
+                                  teacherName: name,
+                                  isOff: false,
+                                  subject: stf.actualSubjectTaught || stf.specialization || prev.subject
+                                }));
+                              }}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-black transition cursor-pointer ${
+                                isSelected 
+                                  ? 'bg-sky-600 text-white shadow-xs' 
+                                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-sky-100 hover:text-sky-900'
+                              }`}
+                            >
+                              {name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Subject Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="font-black text-slate-900">اسم المادة الدراسية:</label>
+                    <span className="text-[10px] text-slate-500 font-bold">اختر المادة أو اكتبها</span>
+                  </div>
+
+                  <input
+                    type="text"
+                    list="schedule-subjects-list"
+                    value={cellForm.subject}
+                    onChange={e => setCellForm(prev => ({ 
+                      ...prev, 
+                      subject: e.target.value,
+                      isOff: e.target.value.includes('شاغر') 
+                    }))}
+                    placeholder="مثال: الرياضيات، اللغة العربية، شاغر..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-bold placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-xs"
+                  />
+
+                  {/* Fast Subject Chips */}
+                  <div className="mt-2">
+                    <span className="text-[10px] font-extrabold text-slate-500 block mb-1">المواد الرسمية المعتمدة:</span>
+                    <div className="flex flex-wrap gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-200">
+                      {COMMON_SCHEDULE_SUBJECTS.map(subj => {
+                        const isSelected = cellForm.subject.trim() === subj;
+                        return (
+                          <button
+                            key={subj}
+                            type="button"
+                            onClick={() => {
+                              const isVac = subj.includes('شاغر');
+                              setCellForm(prev => ({
+                                ...prev,
+                                subject: subj,
+                                isOff: isVac,
+                                teacherName: isVac ? 'شاغر' : prev.teacherName
+                              }));
+                            }}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-black transition cursor-pointer ${
+                              isSelected 
+                                ? 'bg-indigo-600 text-white shadow-xs' 
+                                : 'bg-white text-slate-700 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-900'
+                            }`}
+                          >
+                            {subj}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Off / Vacant Toggle */}
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="cellOffToggle"
+                      checked={cellForm.isOff}
+                      onChange={e => setCellForm(prev => ({ 
+                        ...prev, 
+                        isOff: e.target.checked,
+                        subject: e.target.checked ? 'شاغر / نشاط حر' : (prev.subject === 'شاغر / نشاط حر' ? '' : prev.subject),
+                        teacherName: e.target.checked ? 'شاغر' : (prev.teacherName === 'شاغر' ? '' : prev.teacherName)
+                      }))}
+                      className="w-4 h-4 text-rose-600 rounded cursor-pointer"
+                    />
+                    <label htmlFor="cellOffToggle" className="font-extrabold text-rose-700 cursor-pointer">
+                      تفريغ الحصة وجعلها شاغرة (Off)
+                    </label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCellForm({ subject: 'شاغر / نشاط حر', teacherName: 'شاغر', isOff: true })}
+                    className="px-2.5 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 text-[10px] font-black transition cursor-pointer"
+                  >
+                    تفريغ سريع ✕
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-2">
-                <input
-                  type="checkbox"
-                  id="cellOffToggle"
-                  checked={cellForm.isOff}
-                  onChange={e => setCellForm(prev => ({ ...prev, isOff: e.target.checked }))}
-                  className="w-4 h-4 text-rose-600 rounded"
-                />
-                <label htmlFor="cellOffToggle" className="font-extrabold text-rose-600 cursor-pointer">
-                  تفريغ الحصة (شاغرة / Off)
-                </label>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setEditingCell(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-800 text-xs font-black border border-slate-300 hover:bg-slate-200 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCell}
+                  className="px-6 py-2 rounded-xl bg-sky-600 text-white text-xs font-black hover:bg-sky-700 shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>حفظ وتثبيت التعديل ✓</span>
+                </button>
               </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setEditingCell(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-800 text-xs font-black border border-slate-300 hover:bg-slate-200"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={handleSaveCell}
-                className="px-5 py-2 rounded-xl bg-sky-600 text-white text-xs font-black hover:bg-sky-700 shadow-md"
-              >
-                حفظ التعديلات
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Modal: Add Row (New Class) */}
       {showAddRowModal && (
@@ -1386,11 +1608,26 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
           <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-300 text-xs font-tajawal text-slate-700 flex justify-between items-center">
             <span>عدد الشعب في الجدول: <strong>{currentDayRows.length} شعبة</strong></span>
-            <span>حالة الجدول: <strong className="text-emerald-700 font-black">مكتمل ومدقق بنسبة 100% ✓</strong></span>
           </div>
 
         </div>
       </PrintPreviewModal>
+
+      {/* Datalists for Quick Schedule Input */}
+      <datalist id="schedule-teachers-list">
+        {staffList.map(stf => {
+          const fullName = (stf.fullName || `${stf.firstName} ${stf.secondName}`).trim();
+          const spec = stf.specialization ? ` (${stf.specialization})` : '';
+          return <option key={stf.id} value={fullName}>{fullName}{spec}</option>;
+        })}
+        <option value="شاغر" />
+      </datalist>
+
+      <datalist id="schedule-subjects-list">
+        {COMMON_SCHEDULE_SUBJECTS.map(sub => (
+          <option key={sub} value={sub} />
+        ))}
+      </datalist>
 
     </div>
   );
@@ -1401,8 +1638,8 @@ const cleanTeacherName = (name?: string) => {
   if (!name) return 'غير مخصص';
   let cleaned = name.replace(/^(أ\.|أستاذ\s*|د\.|م\.|السيد\s*)\s*/gi, '').trim();
   const tokens = cleaned.split(/\s+/).filter(t => t.length > 0);
-  if (tokens.length >= 2) {
-    return `${tokens[0]} ${tokens[1]}`;
+  if (tokens.length >= 3) {
+    return `${tokens[0]} ${tokens[1]} ${tokens[2]}`;
   }
   return cleaned;
 };

@@ -73,20 +73,20 @@ data class SupabaseGradeDto(
     val school_id: String,
     val student_record_number: String,
     val subject: String,
-    val grade: String,
-    val section: String,
     val marks: StudentMarksDto, // Maps directly to PostgreSQL jsonb column via Gson
-    val teacher_id: String? = null
+    @Transient val grade: String? = null,
+    @Transient val section: String? = null,
+    @Transient val teacher_id: String? = null
 )
 
 data class SupabaseAttendanceDto(
     val school_id: String,
     val student_record_number: String,
-    val date_string: String? = null,
-    val subject: String? = null,
+    val date: String,
     val status: String = "absent",
-    val period_number: Int = 1,
-    val date: String? = null
+    @Transient val date_string: String? = null,
+    @Transient val subject: String? = null,
+    @Transient val period_number: Int = 1
 )
 
 data class SupabaseDailyAssignmentDto(
@@ -197,12 +197,10 @@ interface SupabaseApi {
     ): Response<Void>
 
     @POST("rest/v1/grades")
-    @Headers("Prefer: resolution=merge-duplicates")
     suspend fun insertGrades(
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
-        @Query("on_conflict") onConflict: String = "school_id,student_record_number,subject",
         @Body grades: List<SupabaseGradeDto>
     ): Response<Void>
 
@@ -215,12 +213,10 @@ interface SupabaseApi {
     ): Response<Void>
 
     @POST("rest/v1/attendance")
-    @Headers("Prefer: resolution=merge-duplicates")
     suspend fun insertAttendance(
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
-        @Query("on_conflict") onConflict: String = "school_id,student_record_number,date_string,subject,period_number",
         @Body attendance: List<SupabaseAttendanceDto>
     ): Response<Void>
 
@@ -437,6 +433,12 @@ class SyncRepository @Inject constructor(
     fun standardizeSubjectName(raw: String?): String {
         if (raw.isNullOrBlank()) return "المادة العامة"
         val s = raw.trim()
+
+        // استبعاد الأحرف المفردة التي تشير إلى شعبة وتم تمريرها خطأ كمادة
+        if (s.length <= 1 || s == "أ" || s == "ب" || s == "ج" || s == "د" || s == "هـ") {
+            return "المادة العامة"
+        }
+
         val norm = normalizeArabic(s).lowercase()
         val rawLower = s.lowercase().replace("[^a-z0-9\u0600-\u06FF]".toRegex(), "")
 
@@ -630,6 +632,12 @@ class SyncRepository @Inject constructor(
         if (secStr.isNullOrBlank()) return "أ"
         val clean = secStr.trim().replace("^(شعبة|الشعبة|ش)\\s*".toRegex(), "").trim()
         val lower = clean.lowercase()
+
+        // منع الكلمات التي تدل على الصف من التحول إلى شعبة
+        if (clean.contains("متوسط") || clean.contains("اول") || clean.contains("ثاني") || clean.contains("ثالث") || clean.contains("صف")) {
+            return "أ"
+        }
+
         if (clean == "ا" || clean == "أ" || clean == "إ" || clean == "آ" || lower == "a" || lower == "1" || lower == "١") return "أ"
         if (clean == "ب" || lower == "b" || lower == "2" || lower == "٢") return "ب"
         if (clean == "ج" || lower == "c" || lower == "3" || lower == "٣") return "ج"
@@ -640,7 +648,7 @@ class SyncRepository @Inject constructor(
         if (clean == "ح" || lower == "h" || lower == "8" || lower == "٨") return "ح"
         if (clean == "ط" || lower == "9" || lower == "٩") return "ط"
         if (clean == "خ") return "خ"
-        return clean.ifBlank { "أ" }
+        return if (clean.length == 1 && clean[0].isLetter()) clean else "أ"
     }
 
     /**
@@ -1255,7 +1263,7 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-VCOL-6072" }
+            val cleanSchoolId = schoolId.trim().ifEmpty { "school_01" }
 
             // Ensure school header is active
             try {
@@ -1264,9 +1272,14 @@ class SyncRepository @Inject constructor(
                 // Non-blocking
             }
 
-            // Fetch target students (specific class or all)
-            val allStudents = if (!targetGrade.isNullOrBlank() && !targetSection.isNullOrBlank() && !targetSubject.isNullOrBlank()) {
-                val classList = studentDao.getStudentsListForClass(targetGrade.trim(), targetSection.trim(), targetSubject.trim())
+            // Fetch target students (specific class with subject fallback)
+            val allStudents = if (!targetGrade.isNullOrBlank() && !targetSection.isNullOrBlank()) {
+                var classList = if (!targetSubject.isNullOrBlank()) {
+                    studentDao.getStudentsListForClass(targetGrade.trim(), targetSection.trim(), targetSubject.trim())
+                } else emptyList()
+                if (classList.isEmpty()) {
+                    classList = studentDao.getStudentsForGradeAndSection(targetGrade.trim(), targetSection.trim())
+                }
                 if (classList.isNotEmpty()) classList else studentDao.getAllStudentsList()
             } else {
                 studentDao.getAllStudentsList()
@@ -1332,11 +1345,11 @@ class SyncRepository @Inject constructor(
                         SupabaseAttendanceDto(
                             school_id = cleanSchoolId,
                             student_record_number = cleanRec,
+                            date = abs.dateString,
+                            status = "absent",
                             date_string = abs.dateString,
                             subject = cleanSubj,
-                            status = "absent",
-                            period_number = 1,
-                            date = abs.dateString
+                            period_number = 1
                         )
                     )
                 }
@@ -1369,7 +1382,6 @@ class SyncRepository @Inject constructor(
                         apiKey = apiKey,
                         auth = authHeader,
                         schoolId = cleanSchoolId,
-                        onConflict = "school_id,student_record_number,subject",
                         grades = chunk
                     )
                     if (!gradesResp.isSuccessful) {
@@ -1399,7 +1411,6 @@ class SyncRepository @Inject constructor(
                         apiKey = apiKey,
                         auth = authHeader,
                         schoolId = cleanSchoolId,
-                        onConflict = "school_id,student_record_number,date_string,subject,period_number",
                         attendance = chunk
                     )
                     if (!attResp.isSuccessful) {
@@ -1581,7 +1592,7 @@ class SyncRepository @Inject constructor(
         return try {
             val (url, apiKey) = resolveCredentials(null, null)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-VCOL-6072" }
+            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-6884" }
 
             val isLocal = url.contains("localhost") || url.contains("192.168.") || !url.contains("supabase")
             val scheduleJson = if (isLocal) {

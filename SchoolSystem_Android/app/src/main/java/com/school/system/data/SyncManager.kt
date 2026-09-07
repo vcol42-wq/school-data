@@ -196,7 +196,7 @@ class SyncManager @Inject constructor(
 
     suspend fun fetchDataFromPrincipal(): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId else "SCH-VCOL-6072"
+        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId.trim() else "SCH-KAB2-6884"
         val token = currentConfig.syncSealToken ?: ""
         return downloadClassRoster(schoolId, token)
     }
@@ -383,7 +383,7 @@ class SyncManager @Inject constructor(
 
     suspend fun syncGrades(grade: String, section: String, subject: String): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId.trim() else "SCH-VCOL-6072"
+        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId.trim() else "SCH-KAB2-6884"
         val token = if (!currentConfig.syncSealToken.isNullOrEmpty()) currentConfig.syncSealToken!!.trim() else null
         return syncRepository.syncGradesAndAttendance(
             schoolId = schoolId,
@@ -435,7 +435,7 @@ class SyncManager @Inject constructor(
 
     suspend fun downloadSchedule(context: android.content.Context): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
+        val schoolId = currentConfig.schoolId.trim().ifEmpty { "SCH-KAB2-6884" }
         return syncRepository.downloadSchedule(context, schoolId)
     }
 

@@ -44,5 +44,12 @@ LATEST_BUILDS/The_Principal_v*_Desktop_App/
 LATEST_BUILDS/*_Desktop_App/
 *.exe
 *.zip
+*.asar
+The_Principal_Portable/
+apk_release/
+.max/
+.windsurf/
+extracted_school_system/.max/
+extracted_school_system/.windsurf/
 jdk-*/
 extracted_school_system/scratch_sync.js

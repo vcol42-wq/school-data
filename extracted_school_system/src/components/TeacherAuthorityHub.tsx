@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
 import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
+import { standardizeGradeName, standardizeSectionName, standardizeSubjectName } from '../utils/syncEngine';
 
 // Data Transfer Interface matching cloud table & local storage
 export interface SubjectAssignmentRecord {
@@ -305,15 +306,23 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
       const classes = prof.classes && prof.classes.length > 0 ? prof.classes : [{ grade: 'الأول المتوسط', section: 'أ' }];
 
       subjects.forEach(subj => {
+        const cleanSubj = standardizeSubjectName(subj);
+        if (!cleanSubj || cleanSubj.length <= 1 || /^[أ-يa-zA-Z]$/.test(cleanSubj)) return; // استبعاد إسناد الأحرف كمادة
+        if (cleanSubj.includes('مفرغ') || cleanSubj.includes('إدارة') || cleanSubj.includes('تفرغ')) return; // استبعاد المفرغين
+
         classes.forEach(cls => {
-          const key = `${cls.grade.trim()}__${cls.section.trim()}__${subj.trim()}`;
+          const cleanGrade = standardizeGradeName(cls.grade);
+          const cleanSec = standardizeSectionName(cls.section);
+          if (cleanSec.includes('متوسط') || cleanSec.includes('صف')) return; // استبعاد الشعب غير الصحيحة
+
+          const key = `${cleanGrade}__${cleanSec}__${cleanSubj}`;
           if (!seen.has(key)) {
             seen.add(key);
             result.push({
               school_id: activeSchoolId,
-              grade: cls.grade.trim(),
-              section: cls.section.trim(),
-              subject: subj.trim(),
+              grade: cleanGrade,
+              section: cleanSec,
+              subject: cleanSubj,
               secret_code: prof.secretCode.trim(),
               is_locked: prof.isLocked,
               teacher_id: prof.teacherId,
@@ -462,7 +471,24 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
                 ? stf.classesTaught 
                 : ['الأول المتوسط'];
               classesTaught.forEach(cStr => {
-                classesMap.set(`${cStr}-أ`, { grade: cStr, section: 'أ' });
+                let cleanG = cStr.replace(/^(الصف|صف)\s+/g, '').trim();
+                let sec = 'أ';
+                const pMatch = cleanG.match(/\((.*?)\)/);
+                if (pMatch) {
+                  sec = standardizeSectionName(pMatch[1].trim());
+                  cleanG = cleanG.replace(/\(.*?\)/g, '').trim();
+                } else {
+                  const parts = cleanG.split(/[-–—\s]+/);
+                  if (parts.length >= 2) {
+                    const last = parts[parts.length - 1];
+                    if (/^[أ-يa-zA-Z]$/.test(last) || ['أ', 'ب', 'ج', 'د', 'هـ', 'ه', 'و', 'ز', 'ح', 'ط', 'ي'].includes(last)) {
+                      sec = standardizeSectionName(last);
+                      cleanG = parts.slice(0, parts.length - 1).join(' ');
+                    }
+                  }
+                }
+                const stdGrade = standardizeGradeName(cleanG);
+                classesMap.set(`${stdGrade}-${sec}`, { grade: stdGrade, section: sec });
               });
             }
           }
@@ -627,7 +653,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
           console.warn('Notice clearing previous subject_assignments:', delError.message);
         }
 
-        const recordsToUpsert = flattened.map(a => ({
+        const recordsToInsert = flattened.map(a => ({
           school_id: activeSchoolId,
           grade: a.grade.trim(),
           section: a.section.trim(),
@@ -637,13 +663,15 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
           last_updated_at: new Date().toISOString()
         }));
 
-        if (recordsToUpsert.length > 0) {
+        if (recordsToInsert.length > 0) {
+          // Try upsert first; if conflict constraint missing, fallback to clean insert
           const { error: assError } = await supabase
             .from('subject_assignments')
-            .upsert(recordsToUpsert, { onConflict: 'school_id,grade,section,subject' });
+            .upsert(recordsToInsert, { onConflict: 'school_id,grade,section,subject' });
 
           if (assError) {
-            console.warn('Notice syncing subject_assignments table:', assError.message);
+            console.warn('Upsert warning, falling back to direct insert:', assError.message);
+            await supabase.from('subject_assignments').insert(recordsToInsert);
           }
         }
       } catch (assErr) {
@@ -662,12 +690,152 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     }
   };
 
-  // Dedicated Clean Purge & Sync (تفريغ الجدول بالكامل وإعادة الرفع النظيف)
+  // Dedicated Clean Purge & Sync (تفريغ الجدول بالكامل وإعادة الرفع النظيف من قوائم الطلاب والكادر)
   const handlePurgeAndResyncCloud = async () => {
-    if (!window.confirm(`هل ترغب في تفريغ جدول السحابة بالكامل لمدرستك (${activeSchoolId}) وإعادة رفع الأكواد المعتمدة الحالية فقط؟\nسيتم حذف كافة السجلات القديمة والمشوهة ومطابقة السحابة مع الحاسبة 100%.`)) {
+    if (!window.confirm(`هل ترغب في تطهير السحابة بالكامل لمدرستك (${activeSchoolId}) وإعادة بناء الشعب والرموز النقية؟\n\n1. حصر الشعب من سجلات الطلاب الـ 264 الفعلية فقط ومسح الشعب الزائدة المشوهة.\n2. استبعاد المفرغين إدارياً والمعاونين من أي رموز أو حصص تدريسية.\n3. مسح الأكواد المشوهة والمكررة وإعادة الرفع النظيف للسحابة.`)) {
       return;
     }
-    await handleSyncToCloud();
+
+    try {
+      setIsSavingCloud(true);
+      setStatusMessage({ type: 'info', text: 'جاري التطهير وإعادة استخراج الشعب من سجلات الطلاب والكادر...' });
+
+      // 1. مسح المفاتيح المحلية القديمة التي كانت تعيد البيانات المشوهة
+      localStorage.removeItem(`diyala_teacher_profiles_${activeSchoolId}`);
+      localStorage.removeItem(`diyala_subject_assignments_${activeSchoolId}`);
+
+      // 2. استخراج الشعب الحقيقية النقية من الطلاب
+      const rawStudents = localStorage.getItem('diyala_school_students');
+      const studentList = rawStudents ? JSON.parse(rawStudents) : [];
+      const studentClassesMap = new Map<string, { grade: string; section: string }>();
+      
+      if (Array.isArray(studentList)) {
+        studentList.forEach((std: any) => {
+          if (std.currentGrade && std.section) {
+            const g = standardizeGradeName(std.currentGrade);
+            const s = standardizeSectionName(std.section);
+            if (!s.includes('متوسط')) {
+              studentClassesMap.set(`${g}-${s}`, { grade: g, section: s });
+            }
+          }
+        });
+      }
+
+      const canonicalClasses = Array.from(studentClassesMap.values());
+      const fallbackClass = canonicalClasses.length > 0 ? canonicalClasses[0] : { grade: 'الأول المتوسط', section: 'أ' };
+
+      // 3. إعادة بناء بروفايلات الأساتذة النشطين فقط واستبعاد المفرغين
+      const freshProfiles: TeacherAuthorityProfile[] = staffList.map((stf, idx) => {
+        const tName = stf.fullName || `${stf.firstName} ${stf.secondName || ''} ${stf.thirdName || ''}`.trim();
+        const isExempt = detectIsExempt(stf);
+        const tId = stf.id || `stf-${idx + 1}`;
+
+        if (isExempt) {
+          return {
+            teacherId: tId,
+            teacherName: tName,
+            jobTitle: stf.jobTitle || 'إداري / متفرغ',
+            specialization: stf.specialization || 'إدارة',
+            teachingQuota: 0,
+            isExempt: true,
+            secretCode: '',
+            isLocked: false,
+            subjects: [],
+            classes: []
+          };
+        }
+
+        // الأستاذ المكلف بالتدريس
+        const rawSub = stf.actualSubjectTaught || stf.specialization || 'الرياضيات';
+        const cleanSubj = standardizeSubjectName(rawSub);
+        const validSubj = (cleanSubj.length > 1 && !cleanSubj.includes('مفرغ') && !cleanSubj.includes('إدارة'))
+          ? cleanSubj
+          : 'الرياضيات';
+
+        // مطابقة الشعب المسندة مع الشعب الحقيقية المستخرجة من الطلاب
+        const assignedClasses: Array<{ grade: string; section: string }> = [];
+        if (stf.classesTaught && stf.classesTaught.length > 0) {
+          stf.classesTaught.forEach(cStr => {
+            const parsed = parseClassTaught(cStr, validSubj);
+            const stdG = standardizeGradeName(parsed.grade);
+            const stdS = standardizeSectionName(parsed.section);
+            if (!stdS.includes('متوسط')) {
+              assignedClasses.push({ grade: stdG, section: stdS });
+            }
+          });
+        }
+
+        const finalClasses = assignedClasses.length > 0 ? assignedClasses : [fallbackClass];
+
+        return {
+          teacherId: tId,
+          teacherName: tName,
+          jobTitle: stf.jobTitle || 'مدرس',
+          specialization: stf.specialization || 'عام',
+          teachingQuota: stf.teachingQuota || 20,
+          isExempt: false,
+          secretCode: generateRandomPin(),
+          isLocked: false,
+          subjects: [validSubj],
+          classes: finalClasses
+        };
+      });
+
+      // فرز: الكادر النشط أولاً ثم المفرغين
+      freshProfiles.sort((a, b) => {
+        if (a.isExempt === b.isExempt) return a.teacherName.localeCompare(b.teacherName, 'ar');
+        return a.isExempt ? 1 : -1;
+      });
+
+      // حفظ الحالة الجديدة النقية محلياً
+      saveProfilesState(freshProfiles);
+
+      // رفع ومزامنة نقية للسحابة
+      const flattened = flattenProfilesToAssignments(freshProfiles);
+      
+      // مسح وإعادة كتابة جدول subject_assignments
+      await supabase.from('subject_assignments').delete().eq('school_id', activeSchoolId);
+      if (flattened.length > 0) {
+        const recordsToInsert = flattened.map(a => ({
+          school_id: activeSchoolId,
+          grade: a.grade.trim(),
+          section: a.section.trim(),
+          subject: a.subject.trim(),
+          secret_code: a.secret_code.trim(),
+          is_locked: !!a.is_locked,
+          last_updated_at: new Date().toISOString()
+        }));
+        await supabase.from('subject_assignments').insert(recordsToInsert);
+      }
+
+      // تحديث مدارس config
+      const fullConfig = {
+        supervisor_code: supervisor.code,
+        supervisor_name: supervisor.name,
+        supervisor_title: supervisor.title,
+        teacher_profiles: freshProfiles,
+        subject_assignments: flattened.map(a => ({
+          grade: a.grade.trim(),
+          section: a.section.trim(),
+          subject: a.subject.trim(),
+          secret_code: a.secret_code.trim(),
+          is_locked: !!a.is_locked,
+          teacher_name: a.teacher_name?.trim() || ''
+        })),
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('schools').update({ config: fullConfig }).eq('id', activeSchoolId);
+
+      setStatusMessage({
+        type: 'success',
+        text: `تم التطهير الكامل بنجاح! تم حصر الشعب من الطلاب وتوليد ${flattened.length} رمزاً معتمداً بدون تكرار واستبعاد المفرغين 100% ✓`
+      });
+    } catch (err: any) {
+      console.error('Error during deep purge:', err);
+      setStatusMessage({ type: 'error', text: `فشل التطهير السحابي: ${err.message || 'خطأ غير معروف'}` });
+    } finally {
+      setIsSavingCloud(false);
+    }
   };
 
   // Toggle Exempt / Active status for a teacher

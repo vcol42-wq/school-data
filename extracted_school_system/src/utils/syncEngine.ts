@@ -41,7 +41,7 @@ function normalizeArabic(str: string): string {
 }
 
 export function standardizeGradeName(gradeStr: string): string {
-  if (!gradeStr) return 'الأول';
+  if (!gradeStr) return 'الأول المتوسط';
   const s = gradeStr.trim().replace(/^(الصف|صف)\s+/g, '').trim();
   const lower = s.replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 
@@ -61,17 +61,28 @@ export function standardizeGradeName(gradeStr: string): string {
   else if (lower.includes('مهني')) branch = 'المهني';
   else if (lower.includes('صناعي')) branch = 'الصناعي';
   else if (lower.includes('تجاري')) branch = 'التجاري';
-  else if (lower.includes('متوسط')) branch = 'المتوسط';
   else if (lower.includes('اعدادي') || lower.includes('ثانوي')) branch = 'الإعدادي';
   else if (lower.includes('ابتدائي')) branch = 'الابتدائي';
+  else if (lower.includes('متوسط') || base === 'الأول' || base === 'الثاني' || base === 'الثالث') {
+    // توحيد صفوف المرحلة المتوسطة لمنع التكرار باختلاف كلمة (الأول مقابل الأول المتوسط)
+    branch = 'المتوسط';
+  } else if (base === 'الرابع' || base === 'الخامس' || base === 'السادس') {
+    branch = 'الإعدادي';
+  }
 
-  return branch ? `${base} ${branch}` : base;
+  return branch ? `${base} ${branch}` : `${base} المتوسط`;
 }
 
 export function standardizeSectionName(secStr: string): string {
   if (!secStr) return 'أ';
   const clean = secStr.trim().replace(/^(شعبة|الشعبة|ش)\s*/g, '').trim();
   const lower = clean.toLowerCase();
+
+  // منع الكلمات الشائعة التي تدل على الصف من التحول إلى شعبة مثل "متوسط"
+  if (clean.includes('متوسط') || clean.includes('اول') || clean.includes('ثاني') || clean.includes('ثالث') || clean.includes('صف')) {
+    return 'أ';
+  }
+
   if (clean === 'ا' || clean === 'أ' || clean === 'إ' || clean === 'آ' || lower === 'a' || lower === '1' || clean === '١') return 'أ';
   if (clean === 'ب' || lower === 'b' || lower === '2' || clean === '٢') return 'ب';
   if (clean === 'ج' || lower === 'c' || lower === '3' || clean === '٣') return 'ج';
@@ -82,68 +93,123 @@ export function standardizeSectionName(secStr: string): string {
   if (clean === 'ح' || lower === 'h' || lower === '8' || clean === '٨') return 'ح';
   if (clean === 'ط' || lower === '9' || clean === '٩') return 'ط';
   if (clean === 'خ') return 'خ';
-  return clean || 'أ';
+  return /^[أ-يa-zA-Z]$/.test(clean) ? clean : 'أ';
+}
+
+export function isValidSubjectName(raw: string): boolean {
+  if (!raw || typeof raw !== 'string') return false;
+  const s = raw.trim();
+  if (s.length <= 1) return false;
+  if (/^[أ-يa-zA-Z]$/.test(s)) return false;
+  const lower = s.toLowerCase();
+  const invalidKeywords = ['مفرغ', 'إدارة', 'شاغر', 'نشاط حر', 'تفرغ', 'معاون', 'مدير', 'كاتب', 'مرشد', 'خدمة', 'حارس'];
+  if (invalidKeywords.some(kw => lower.includes(kw))) return false;
+  return true;
+}
+
+export function isExemptStaff(member: StaffMember): boolean {
+  if (!member) return true;
+  const job = (member.jobTitle || '').trim();
+  const spec = (member.specialization || '').trim();
+  const nonTeaching = ['مدير', 'مديرة', 'معاون', 'معاونة', 'مرشد', 'مرشدة', 'أمين مكتبة', 'كاتب', 'إداري', 'متفرغ', 'تفرغ', 'مشرف', 'خدمة', 'حارس'];
+  return nonTeaching.some(kw => job.includes(kw)) || member.teachingQuota === 0 || spec.includes('إدارة') || spec.includes('تفرغ');
 }
 
 export function standardizeSubjectName(raw: string): string {
-  if (!raw) return 'المادة العامة';
+  if (!raw) return '';
   const s = raw.trim();
+
+  // استبعاد الأحرف المفردة والمسميات الإدارية تماماً
+  if (!isValidSubjectName(s)) {
+    return '';
+  }
+
   const norm = normalizeArabic(s).toLowerCase();
   const rawLower = s.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]/g, '');
 
-  // 1. اللغة الإنكليزية: جميع التسميات (عربي، إنجليزي، انكليزي، أحرف لاتينية)
+  // 1. اللغة الإنكليزية: جميع التسميات
   if (
     norm.includes('انكل') || norm.includes('انجل') ||
     rawLower.includes('engl') || rawLower.startsWith('eng') || rawLower.endsWith('eng') ||
-    rawLower === 'e' || rawLower === 'en' || rawLower === 'el' ||
+    rawLower === 'en' || rawLower === 'el' ||
     rawLower.includes('english') || norm.includes('انكلش') || norm.includes('انجلش') ||
     norm.includes('انجليز') || norm.includes('انكليز')
   ) {
     return 'اللغة الإنكليزية';
   }
 
-  // 2. الأحياء: علم الأحياء / علوم الأحياء / احياء / الأحياء
-  if (norm.includes('احياء') || norm.includes('علماحياء') || norm.includes('علوماحياء')) return 'الأحياء';
+  // 2. الأحياء: علم الأحياء / علوم الأحياء / احياء
+  if (norm.includes('احياء') || norm.includes('علماحياء') || norm.includes('علوماحياء') || norm.includes('بايو')) return 'الأحياء';
 
-  // 3. التربية الإسلامية: اسلامية / الاسلامية / دين / قرآن
-  if (norm.includes('اسلام') || norm.includes('قران') || norm.includes('دين')) return 'التربية الإسلامية';
+  // 3. التربية الإسلامية
+  if (norm.includes('اسلام') || norm.includes('قران') || norm.includes('دين') || norm.includes('عقيده')) return 'التربية الإسلامية';
 
-  // 4. اللغة العربية: عربي / العربي
-  if (norm.includes('عرب')) return 'اللغة العربية';
+  // 4. اللغة العربية
+  if (norm.includes('عرب') || norm.includes('قواعد') || norm.includes('نصوص') || norm.includes('ادب')) return 'اللغة العربية';
 
-  // 5. باقي المواد
+  // 5. باقي المواد المعتمدة
   if (norm.includes('فيزيا')) return 'الفيزياء';
   if (norm.includes('كيميا')) return 'الكيمياء';
   if (norm.includes('اجتماع') || norm.includes('تاريخ') || norm.includes('جغرافي') || norm.includes('وطني')) return 'الاجتماعيات';
-  if (norm.includes('رياض')) return 'الرياضيات';
+  if (norm.includes('رياضيات') || norm.includes('رياضي') || norm.includes('جبر') || norm.includes('هندس')) return 'الرياضيات';
+  if (norm.includes('حاسوب') || norm.includes('كمبيوتر') || norm.includes('برمج')) return 'الحاسوب';
+  if (norm.includes('فني') || norm.includes('رسم') || norm.includes('فنون')) return 'التربية الفنية';
+  if (norm.includes('رياضه') || norm.includes('العاب') || norm.includes('بدني')) return 'التربية الرياضية';
+  if (norm.includes('اخلاق')) return 'التربية الأخلاقية';
+  if (norm.includes('علوم')) return 'العلوم';
 
   return s;
 }
 
 // Helper to parse the assigned classes taught by teachers
-function parseClassTaught(classStr: string, defaultSubject: string) {
+export function parseClassTaught(classStr: string, defaultSubject: string) {
   let cleaned = classStr.replace(/^(الصف|صف)\s+/g, '').trim();
   let explicitSubject = '';
+  let explicitSection = '';
 
-  // 1. Check for parenthesis containing subject: e.g. "الأول متوسط - أ (التربية الأخلاقية)"
+  // 1. Check for parenthesis: could be section like (أ) or (ب) or subject like (التربية الأخلاقية)
   const parenMatch = cleaned.match(/\((.*?)\)/);
   if (parenMatch) {
-    explicitSubject = parenMatch[1].trim();
-    cleaned = cleaned.replace(/\(.*?\)/, '').trim();
+    const inside = parenMatch[1].trim();
+    const isSec = /^(شعبة|الشعبة|ش\s*)?[أ-يa-zA-Z]$/.test(inside) || ['أ', 'ب', 'ج', 'د', 'هـ', 'ه', 'و', 'ز', 'ح', 'ط', 'ي'].includes(inside);
+    if (isSec) {
+      explicitSection = standardizeSectionName(inside);
+    } else {
+      explicitSubject = standardizeSubjectName(inside);
+    }
+    cleaned = cleaned.replace(/\(.*?\)/g, '').trim();
   }
 
-  // 2. Split by dash or spaces to extract grade and section
+  // 2. Extract section and grade
+  let section = explicitSection;
+  let grade = '';
+
   const parts = cleaned.split(/[-–—\s]+/).filter(Boolean);
-  if (parts.length >= 2) {
-    const section = standardizeSectionName(parts[parts.length - 1]);
-    const grade = standardizeGradeName(parts.slice(0, parts.length - 1).join(' '));
-    const subject = explicitSubject || defaultSubject || 'عام';
-    return { grade, section, subject };
-  } else if (parts.length === 1) {
-    return { grade: standardizeGradeName(parts[0]), section: 'أ', subject: explicitSubject || defaultSubject || 'عام' };
+  if (!section) {
+    if (parts.length >= 2) {
+      const last = parts[parts.length - 1];
+      const isSec = /^[أ-يa-zA-Z]$/.test(last) || ['أ', 'ب', 'ج', 'د', 'هـ', 'ه', 'و', 'ز', 'ح', 'ط', 'ي'].includes(last);
+      if (isSec) {
+        section = standardizeSectionName(last);
+        grade = standardizeGradeName(parts.slice(0, parts.length - 1).join(' '));
+      } else {
+        section = 'أ';
+        grade = standardizeGradeName(parts.join(' '));
+      }
+    } else if (parts.length === 1) {
+      section = 'أ';
+      grade = standardizeGradeName(parts[0]);
+    } else {
+      section = 'أ';
+      grade = 'الأول المتوسط';
+    }
   } else {
-    return { grade: 'الأول', section: 'أ', subject: explicitSubject || defaultSubject || 'عام' };
+    grade = standardizeGradeName(cleaned || 'الأول المتوسط');
   }
+
+  const rawSub = explicitSubject || defaultSubject || '';
+  const subject = standardizeSubjectName(rawSub);
+  return { grade, section, subject };
 }
 
 /**
@@ -249,8 +315,10 @@ export async function exportSchoolDataWithProgress(
     // ----------------------------------------------------
     // Step 4: Extract and Export Unique Classes & Sections
     // ----------------------------------------------------
-    emit('step_classes', 4, 'استخراج وتصدير الفصول والشعب', 50, 'جاري استخراج الفصول والشعب الفريدة من سجلات الطلاب...', 'active');
+    emit('step_classes', 4, 'استخراج وتصدير الفصول والشعب', 50, 'جاري استخراج الفصول والشعب الفريدة وتوحيدها قياسياً...', 'active');
     const uniqueClassesMap = new Map<string, { school_id: string; name: string; section: string }>();
+
+    // 4.1 From Students Roster
     students.forEach(std => {
       if (std.currentGrade && std.section) {
         const stdGrade = standardizeGradeName(std.currentGrade);
@@ -266,20 +334,46 @@ export async function exportSchoolDataWithProgress(
       }
     });
 
+    // 4.2 From Weekly Schedule
+    if (scheduleMap) {
+      Object.keys(scheduleMap).forEach(day => {
+        (scheduleMap[day] || []).forEach(row => {
+          if (row.grade && row.section) {
+            const stdGrade = standardizeGradeName(row.grade);
+            const stdSection = standardizeSectionName(row.section);
+            const key = `${stdGrade}-${stdSection}`;
+            if (!uniqueClassesMap.has(key)) {
+              uniqueClassesMap.set(key, {
+                school_id: schoolId,
+                name: stdGrade,
+                section: stdSection
+              });
+            }
+          }
+        });
+      });
+    }
+
     const classesPayload = Array.from(uniqueClassesMap.values());
     if (classesPayload.length > 0) {
+      // Clean up previous duplicated or dirty classes in cloud for this school
+      try {
+        await client.from('classes').delete().eq('school_id', schoolId);
+      } catch (delErr) {
+        console.warn('Notice clearing previous classes:', delErr);
+      }
+
       const { error: classError } = await client.from('classes').upsert(classesPayload, { onConflict: 'school_id,name,section' });
       if (classError) {
         console.warn('Classes RLS warning:', classError.message);
         emit('step_classes', 4, 'استخراج وتصدير الفصول والشعب', 60, `تنبيه في جدول الفصول: ${classError.message}`, 'warning');
       } else {
-        emit('step_classes', 4, 'استخراج وتصدير الفصول والشعب', 60, `تم رفع ${classesPayload.length} شعبة وفصل دراسي بنجاح ✓`, 'success', classesPayload.length);
+        emit('step_classes', 4, 'استخراج وتصدير الفصول والشعب', 60, `تم رفع وتوحيد ${classesPayload.length} شعبة وفصل دراسي بنجاح بدون تكرار ✓`, 'success', classesPayload.length);
       }
     } else {
       emit('step_classes', 4, 'استخراج وتصدير الفصول والشعب', 60, 'لا توجد فصول جديدة للرفع', 'success', 0);
     }
 
-    // ----------------------------------------------------
     // ----------------------------------------------------
     // Step 5 & 6: Extract Unique Subjects and Teacher Assignments (Prioritizing Assigned Schedule Lessons)
     // ----------------------------------------------------
@@ -332,10 +426,12 @@ export async function exportSchoolDataWithProgress(
             lessonSlots.forEach(slot => {
               if (!slot.isOff && slot.subject && slot.teacherName) {
                 const stdSubject = standardizeSubjectName(slot.subject);
+                if (!isValidSubjectName(stdSubject)) return;
+
                 uniqueSubjects.add(stdSubject);
 
                 const matchedTeacher = findStaff(slot.teacherName);
-                if (matchedTeacher) {
+                if (matchedTeacher && !isExemptStaff(matchedTeacher)) {
                   const teacherIdx = staff.indexOf(matchedTeacher);
                   const teacherId = getStaffStableId(matchedTeacher, teacherIdx);
                   const key = `${teacherId}_${stdGrade}_${stdSection}_${stdSubject}`;
@@ -357,46 +453,61 @@ export async function exportSchoolDataWithProgress(
       });
     }
 
-    // 2. SECONDARY SOURCE: classesTaught and actualSubjectTaught
+    // 2. SECONDARY SOURCE: classesTaught and actualSubjectTaught (Only for active teaching staff)
     staff.forEach((member, idx) => {
+      if (isExemptStaff(member)) return; // استبعاد المفرغين إدارياً تماماً من أنصبة ومواد التدريس
+
       const stableId = getStaffStableId(member, idx);
       const defaultSubject = member.actualSubjectTaught || member.specialization || 'عام';
-      if (defaultSubject) uniqueSubjects.add(standardizeSubjectName(defaultSubject));
+      const cleanDefSubj = standardizeSubjectName(defaultSubject);
+      if (isValidSubjectName(cleanDefSubj)) {
+        uniqueSubjects.add(cleanDefSubj);
+      }
 
       if (member.classesTaught && member.classesTaught.length > 0) {
         member.classesTaught.forEach(classStr => {
-          const parsed = parseClassTaught(classStr, defaultSubject);
+          const parsed = parseClassTaught(classStr, cleanDefSubj);
           const stdGrade = standardizeGradeName(parsed.grade);
           const stdSection = standardizeSectionName(parsed.section);
           const stdSubject = standardizeSubjectName(parsed.subject);
           
-          if (stdSubject) uniqueSubjects.add(stdSubject);
-          const key = `${stableId}_${stdGrade}_${stdSection}_${stdSubject}`;
-          if (!assignmentMap.has(key)) {
-            assignmentMap.set(key, {
-              school_id: schoolId,
-              teacher_id: stableId,
-              class_name: stdGrade,
-              section: stdSection,
-              subject_name: stdSubject
-            });
+          if (isValidSubjectName(stdSubject)) {
+            uniqueSubjects.add(stdSubject);
+            const key = `${stableId}_${stdGrade}_${stdSection}_${stdSubject}`;
+            if (!assignmentMap.has(key)) {
+              assignmentMap.set(key, {
+                school_id: schoolId,
+                teacher_id: stableId,
+                class_name: stdGrade,
+                section: stdSection,
+                subject_name: stdSubject
+              });
+            }
           }
         });
       }
     });
 
-    const subjectsPayload = Array.from(uniqueSubjects).map(sub => ({
-      school_id: schoolId,
-      name: sub
-    }));
+    const subjectsPayload = Array.from(uniqueSubjects)
+      .filter(s => isValidSubjectName(s))
+      .map(sub => ({
+        school_id: schoolId,
+        name: sub
+      }));
 
     if (subjectsPayload.length > 0) {
+      try {
+        await client.from('subjects').delete().eq('school_id', schoolId);
+      } catch (delSubErr) {
+        console.warn('Notice clearing previous subjects:', delSubErr);
+      }
+
       const { error: subjectError } = await client.from('subjects').upsert(subjectsPayload, { onConflict: 'school_id,name' });
       if (subjectError) {
         console.warn('Subjects RLS warning:', subjectError.message);
         emit('step_subjects', 5, 'استخراج وتصدير المواد الدراسية', 75, `تنبيه في جدول المواد: ${subjectError.message}`, 'warning');
       } else {
-        emit('step_subjects', 5, 'استخراج وتصدير المواد الدراسية', 75, `تم تسجيل ${subjectsPayload.length} مادة دراسية في السحابة ✓`, 'success', subjectsPayload.length);
+        emit('step_subjects', 5, 'استخراج وتصدير المواد الدراسية', 75, `تم تسجيل ${subjectsPayload.length} مادة دراسية قياسية في السحابة ✓`, 'success', subjectsPayload.length);
       }
     } else {
       emit('step_subjects', 5, 'استخراج وتصدير المواد الدراسية', 75, 'المواد مسجلة مسبقاً', 'success', 0);
@@ -429,27 +540,8 @@ export async function exportSchoolDataWithProgress(
       const savedAssStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_subject_assignments_${schoolId}`) : null;
       const savedProfilesStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_teacher_profiles_${schoolId}`) : null;
 
-      if (savedAssStr) {
-        try {
-          const parsed = JSON.parse(savedAssStr);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            subAssignmentsToUpsert = parsed.map(a => ({
-              school_id: schoolId,
-              grade: standardizeGradeName(a.grade || ''),
-              section: standardizeSectionName(a.section || ''),
-              subject: standardizeSubjectName(a.subject || ''),
-              secret_code: (a.secret_code || '').trim(),
-              is_locked: !!a.is_locked,
-              teacher_name: (a.teacher_name || '').trim() || null,
-              last_updated_at: new Date().toISOString()
-            }));
-          }
-        } catch (e) {
-          console.warn('Error parsing diyala_subject_assignments:', e);
-        }
-      }
-
-      if (subAssignmentsToUpsert.length === 0 && savedProfilesStr) {
+      // Prioritize saved profiles from TeacherAuthorityHub (Teacher-Centric unified PIN)
+      if (savedProfilesStr) {
         try {
           const profiles: any[] = JSON.parse(savedProfilesStr);
           profiles.forEach(prof => {
@@ -457,12 +549,17 @@ export async function exportSchoolDataWithProgress(
             const subjects = prof.subjects && prof.subjects.length > 0 ? prof.subjects : [prof.specialization || 'عام'];
             const classes = prof.classes && prof.classes.length > 0 ? prof.classes : [{ grade: 'الأول المتوسط', section: 'أ' }];
             subjects.forEach((subj: string) => {
+              const cleanSubj = standardizeSubjectName(subj || '');
+              if (cleanSubj.includes('مفرغ') || cleanSubj.includes('إدارة') || cleanSubj.includes('تفرغ')) return;
+
               classes.forEach((cls: any) => {
+                const cleanGrade = standardizeGradeName(cls.grade || '');
+                const cleanSec = standardizeSectionName(cls.section || '');
                 subAssignmentsToUpsert.push({
                   school_id: schoolId,
-                  grade: standardizeGradeName(cls.grade || ''),
-                  section: standardizeSectionName(cls.section || ''),
-                  subject: standardizeSubjectName(subj || ''),
+                  grade: cleanGrade,
+                  section: cleanSec,
+                  subject: cleanSubj,
                   secret_code: (prof.secretCode || '').trim() || pairingCode.slice(0, 4) || '1234',
                   is_locked: !!prof.isLocked,
                   teacher_name: (prof.teacherName || '').trim() || null,
@@ -473,6 +570,32 @@ export async function exportSchoolDataWithProgress(
           });
         } catch (e) {
           console.warn('Error building subject assignments from profiles:', e);
+        }
+      }
+
+      // Fallback to legacy assignments only if profiles not found
+      if (subAssignmentsToUpsert.length === 0 && savedAssStr) {
+        try {
+          const parsed = JSON.parse(savedAssStr);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            subAssignmentsToUpsert = parsed
+              .filter(a => {
+                const s = (a.subject || '').trim();
+                return s && !s.includes('مفرغ') && !s.includes('إدارة') && !s.includes('تفرغ');
+              })
+              .map(a => ({
+                school_id: schoolId,
+                grade: standardizeGradeName(a.grade || ''),
+                section: standardizeSectionName(a.section || ''),
+                subject: standardizeSubjectName(a.subject || ''),
+                secret_code: (a.secret_code || '').trim(),
+                is_locked: !!a.is_locked,
+                teacher_name: (a.teacher_name || '').trim() || null,
+                last_updated_at: new Date().toISOString()
+              }));
+          }
+        } catch (e) {
+          console.warn('Error parsing diyala_subject_assignments:', e);
         }
       }
 
@@ -494,7 +617,22 @@ export async function exportSchoolDataWithProgress(
         });
       }
 
-      // 1. Save complete authority profiles, assignments, and supervisor to schools.config
+      // Strictly filter, sanitize, and deduplicate subAssignmentsToUpsert to prevent duplicate/letter subjects
+      const seenSubKeys = new Set<string>();
+      subAssignmentsToUpsert = subAssignmentsToUpsert.filter(a => {
+        const g = (a.grade || '').trim();
+        const sec = (a.section || '').trim();
+        const s = (a.subject || '').trim();
+        if (!g || !sec || !s) return false;
+        if (s.length <= 1 || /^[أ-يa-zA-Z]$/.test(s)) return false; // منع إسناد الأحرف كمادة
+        if (s.includes('مفرغ') || s.includes('إدارة') || s.includes('تفرغ')) return false; // استبعاد المفرغين
+        if (sec.includes('متوسط') || sec.includes('صف')) return false; // منع الشعب غير الصحيحة
+        
+        const key = `${g}__${sec}__${s}`;
+        if (seenSubKeys.has(key)) return false;
+        seenSubKeys.add(key);
+        return true;
+      });
       try {
         let profilesList: any[] = [];
         if (savedProfilesStr) {
@@ -832,3 +970,28 @@ export async function clearCloudTable(
     return { success: false, message: err.message || 'فشل تفريغ الجدول' };
   }
 }
+
+/**
+ * Deep cleans duplicate and invalid rows (single-letter subjects, ghost classes, redundant assignments)
+ * directly from Supabase for this school.
+ */
+export async function deepCleanSchoolCloudData(
+  schoolId: string
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const client = getSupabase(schoolId);
+    
+    // Purge classes, subjects, and assignments to clean all duplicates and single letter artifacts
+    await client.from('classes').delete().eq('school_id', schoolId);
+    await client.from('subjects').delete().eq('school_id', schoolId);
+    await client.from('teacher_assignments').delete().eq('school_id', schoolId);
+
+    return { 
+      success: true, 
+      message: 'تم تفريغ وتطهير جداول الشعب والمواد والإسناد في السحابة بنجاح! أصبحت السحابة نقية 100%.' 
+    };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'فشل التطهير السحابي' };
+  }
+}
+

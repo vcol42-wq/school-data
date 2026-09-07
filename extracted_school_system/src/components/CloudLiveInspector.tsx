@@ -31,6 +31,7 @@ import QRCode from 'qrcode';
 import { Student, StaffMember, AppConfig, DayScheduleMap } from '../types';
 import { 
   exportSchoolDataWithProgress, 
+  deepCleanSchoolCloudData,
   fetchCloudTableStats, 
   fetchCloudTableRows, 
   deleteCloudRow,
@@ -159,6 +160,24 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
     setSyncFinalResult(result);
     // Reload cloud stats to reflect the freshly uploaded data
     await loadCloudStats();
+  };
+
+  const handleDeepPurgeAndSync = async () => {
+    if (!confirm('⚠️ تنبيه هام للتطهير السحابي الشامل:\n\nسيقوم هذا الإجراء بمسح أي شعب مكررة، ومسح المواد الوهمية ذات الأحرف المفردة (أ، ب، ج، د)، ومسح الحصص المزدوجة من السحابة تماماً، ثم إعادة رفع ومزامنة البيانات النقية المعتمدة وفق المعايير الوزارية 100%.\n\nهل أنت متأكد وترغب بالمتابعة؟')) return;
+
+    setIsSyncing(true);
+    setSyncPercent(5);
+    setSyncSteps([]);
+    setSyncFinalResult(null);
+
+    // 1. Purge dirty cloud tables
+    const cleanRes = await deepCleanSchoolCloudData(schoolId);
+    if (!cleanRes.success) {
+      alert(`تنبيه: ${cleanRes.message}`);
+    }
+
+    // 2. Freshly export all standardized data
+    await handleStartExport();
   };
 
   const handleOpenTablePreview = async (tableName: string, title: string) => {
@@ -377,6 +396,16 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
                 <span>العودة للرئيسية ✕</span>
               </button>
             )}
+
+            <button
+              onClick={handleDeepPurgeAndSync}
+              disabled={isSyncing}
+              className="flex-1 lg:flex-none flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-black text-sm transition-all shadow-xl hover:scale-105 active:scale-95 cursor-pointer disabled:opacity-50 border border-white/20"
+              title="تطهير ومسح أي تكرارات أو أحرف مفردة من السحابة وإعادة رفع البيانات النقية"
+            >
+              <Sparkles className="w-5 h-5 text-yellow-300" />
+              <span>تطهير جذري ومزامنة نقية 🧼</span>
+            </button>
 
             <button
               onClick={handleStartExport}
