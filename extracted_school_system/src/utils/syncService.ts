@@ -408,13 +408,23 @@ export async function importGradesAndAttendance(
           m => normalizeArabic(m.subject) === stdSubj
         );
 
+        const latestRecorded = (marks.finalGrade && marks.finalGrade > 0) ? marks.finalGrade :
+          (marks.annualAverage && marks.annualAverage > 0) ? marks.annualAverage :
+          (marks.term2Avg && marks.term2Avg > 0) ? marks.term2Avg :
+          (marks.m4MonthAvg && marks.m4MonthAvg > 0) ? marks.m4MonthAvg :
+          (marks.m3MonthAvg && marks.m3MonthAvg > 0) ? marks.m3MonthAvg :
+          (marks.midtermFinalGrade && marks.midtermFinalGrade > 0) ? marks.midtermFinalGrade :
+          (marks.term1Avg && marks.term1Avg > 0) ? marks.term1Avg :
+          (marks.m2MonthAvg && marks.m2MonthAvg > 0) ? marks.m2MonthAvg :
+          (marks.m1MonthAvg && marks.m1MonthAvg > 0) ? marks.m1MonthAvg : 0;
+
         const newMarkEntry: StudentMark = {
           year: academicYear,
           subject: subject,
           midterm: marks.midtermFinalGrade ?? marks.midtermTotal ?? 0,
           finalExam: marks.finalExamTotal ?? marks.finalWrittenD1 ?? 0,
           finalGrade: marks.finalGrade ?? 0,
-          total: marks.finalGrade ?? 0,
+          total: latestRecorded,
           ...marks
         };
 

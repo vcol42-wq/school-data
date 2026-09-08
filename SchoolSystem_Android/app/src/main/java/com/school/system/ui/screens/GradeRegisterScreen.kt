@@ -86,8 +86,8 @@ fun calculateProgressiveStats(students: List<Student>): ProgressiveEvaluationRes
         )
     }
 
-    // 1. فحص الامتحان النهائي / الدرجة النهائية
-    val hasFinal = students.any { it.marks.finalGrade > 0f || it.marks.finalExamTotal > 0f || it.marks.finalWrittenD1 > 0f }
+    // 1. فحص الامتحان النهائي / الدرجة النهائية (يتطلب وجود امتحان نهائي فعلي وسعي)
+    val hasFinal = students.any { (it.marks.finalGrade > 0f && it.marks.annualAverage > 0f) || it.marks.finalExamTotal > 0f || it.marks.finalWrittenD1 > 0f }
     if (hasFinal) {
         val passed = students.count { 
             val score = if (it.marks.finalGrade > 0f) it.marks.finalGrade else it.marks.finalExamTotal
@@ -98,8 +98,8 @@ fun calculateProgressiveStats(students: List<Student>): ProgressiveEvaluationRes
         return ProgressiveEvaluationResult("النهائية", total, passed, failed, rate)
     }
 
-    // 2. فحص السعي السنوي
-    val hasAnnual = students.any { it.marks.annualAverage > 0f }
+    // 2. فحص السعي السنوي (يتطلب وجود الفصلين ونصف السنة)
+    val hasAnnual = students.any { it.marks.annualAverage > 0f && it.marks.term1Avg > 0f && it.marks.term2Avg > 0f }
     if (hasAnnual) {
         val passed = students.count { it.marks.annualAverage >= 50f }
         val failed = (total - passed).coerceAtLeast(0)
@@ -107,8 +107,8 @@ fun calculateProgressiveStats(students: List<Student>): ProgressiveEvaluationRes
         return ProgressiveEvaluationResult("السعي السنوي", total, passed, failed, rate)
     }
 
-    // 3. فحص معدل الفصل الثاني
-    val hasTerm2 = students.any { it.marks.term2Avg > 0f }
+    // 3. فحص معدل الفصل الثاني (يتطلب إدخال الشهر الرابع)
+    val hasTerm2 = students.any { it.marks.term2Avg > 0f && (it.marks.m4MonthAvg > 0f || it.marks.m4Written > 0f) }
     if (hasTerm2) {
         val passed = students.count { it.marks.term2Avg >= 50f }
         val failed = (total - passed).coerceAtLeast(0)
@@ -152,8 +152,8 @@ fun calculateProgressiveStats(students: List<Student>): ProgressiveEvaluationRes
         return ProgressiveEvaluationResult("نصف السنة", total, passed, failed, rate)
     }
 
-    // 7. فحص معدل الفصل الأول
-    val hasTerm1 = students.any { it.marks.term1Avg > 0f }
+    // 7. فحص معدل الفصل الأول (يتطلب إدخال الشهر الثاني)
+    val hasTerm1 = students.any { it.marks.term1Avg > 0f && (it.marks.m2MonthAvg > 0f || it.marks.m2Written > 0f || it.marks.m2Daily.any { d -> d > 0f }) }
     if (hasTerm1) {
         val passed = students.count { it.marks.term1Avg >= 50f }
         val failed = (total - passed).coerceAtLeast(0)

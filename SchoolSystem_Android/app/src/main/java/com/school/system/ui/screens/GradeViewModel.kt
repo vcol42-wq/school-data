@@ -12,6 +12,7 @@ import com.school.system.data.model.Student
 import com.school.system.data.model.StudentMarks
 import com.school.system.data.model.DailyColumnSetting
 import com.school.system.data.model.AbsenceRecord
+import com.school.system.data.model.latestRecordedScore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +52,11 @@ class GradeViewModel @Inject constructor(
                 val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
                     strength = java.text.Collator.PRIMARY
                 }
-                _students.value = list.sortedWith { s1, s2 ->
+                val cleanedList = list.map { s ->
+                    val recalculated = calculateTotals(s.marks, s.subject)
+                    if (recalculated != s.marks) s.copy(marks = recalculated) else s
+                }
+                _students.value = cleanedList.sortedWith { s1, s2 ->
                     val n1 = s1.fullName.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
                     val n2 = s2.fullName.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
                     collator.compare(n1, n2)
@@ -87,58 +92,86 @@ class GradeViewModel @Inject constructor(
         }
     }
 
-    private fun calculateTotals(marks: StudentMarks, subject: String): StudentMarks {
+    fun calculateTotals(marks: StudentMarks, subject: String): StudentMarks {
         val u = marks.copy()
         
         val isSpecial = isSpecialSubject(subject)
 
+        val hasM1 = u.m1Written > 0f || u.m1Daily.any { it > 0f }
+        val hasM2 = u.m2Written > 0f || u.m2Daily.any { it > 0f }
+        val hasMidterm = u.midtermScore > 0f || u.midtermOral.any { it > 0f }
+        val hasM3 = u.m3Written > 0f || u.m3Daily.any { it > 0f }
+        val hasM4 = u.m4Written > 0f || u.m4Daily.any { it > 0f }
+        val hasFinalExam = (u.finalWrittenD1 > 0f) || (u.finalWrittenD2 != null && u.finalWrittenD2!! > 0f)
+
         if (isSpecial) {
             // Month 1-4 Total = Sum(daily) + written (No division)
-            u.m1MonthAvg = u.m1Daily.sum() + u.m1Written
-            u.m2MonthAvg = u.m2Daily.sum() + u.m2Written
-            u.m3MonthAvg = u.m3Daily.sum() + u.m3Written
-            u.m4MonthAvg = u.m4Daily.sum() + u.m4Written
+            u.m1MonthAvg = if (hasM1) (u.m1Daily.sum() + u.m1Written) else 0f
+            u.m2MonthAvg = if (hasM2) (u.m2Daily.sum() + u.m2Written) else 0f
+            u.m3MonthAvg = if (hasM3) (u.m3Daily.sum() + u.m3Written) else 0f
+            u.m4MonthAvg = if (hasM4) (u.m4Daily.sum() + u.m4Written) else 0f
             
             // Midterm for Special: Sum(Oral) + Score
-            u.midtermTotal = u.midtermOral.sum() + u.midtermScore
+            u.midtermTotal = if (hasMidterm) (u.midtermOral.sum() + u.midtermScore) else 0f
             u.midtermFinalGrade = u.midtermTotal
 
             // Final Exam for Special: Sum(FinalOral) + FinalWrittenD1
-            u.finalExamTotal = u.finalOral.sum() + u.finalWrittenD1
+            u.finalExamTotal = if (hasFinalExam) (u.finalOral.sum() + u.finalWrittenD1) else 0f
         } else {
             // Other subjects: (Sum(daily) + written) / 2
-            u.m1MonthAvg = round((u.m1Daily.sum() + u.m1Written) / 2f)
-            u.m2MonthAvg = round((u.m2Daily.sum() + u.m2Written) / 2f)
-            u.m3MonthAvg = round((u.m3Daily.sum() + u.m3Written) / 2f)
-            u.m4MonthAvg = round((u.m4Daily.sum() + u.m4Written) / 2f)
+            u.m1MonthAvg = if (hasM1) round((u.m1Daily.sum() + u.m1Written) / 2f) else 0f
+            u.m2MonthAvg = if (hasM2) round((u.m2Daily.sum() + u.m2Written) / 2f) else 0f
+            u.m3MonthAvg = if (hasM3) round((u.m3Daily.sum() + u.m3Written) / 2f) else 0f
+            u.m4MonthAvg = if (hasM4) round((u.m4Daily.sum() + u.m4Written) / 2f) else 0f
             
-            // Other subjects Midterm: Just Written Score (Requested: no sum/avg for non-special midterm)
-            u.midtermFinalGrade = u.midtermScore
-            u.midtermTotal = u.midtermScore
+            // Other subjects Midterm: Just Written Score
+            u.midtermFinalGrade = if (hasMidterm) u.midtermScore else 0f
+            u.midtermTotal = u.midtermFinalGrade
 
-            // Other subjects Final: Just Written D1 (Requested: no sum/avg for non-special final)
-            u.finalExamTotal = u.finalWrittenD1
+            // Other subjects Final: Just Written D1
+            u.finalExamTotal = if (hasFinalExam) u.finalWrittenD1 else 0f
         }
         
-        // فص1 = (M1 + M2) / 2
-        u.term1Avg = round((u.m1MonthAvg + u.m2MonthAvg) / 2)
-
-        // فص2 = (M3 + M4) / 2
-        u.term2Avg = round((u.m3MonthAvg + u.m4MonthAvg) / 2)
-
-        // Annual Effort (Sae'i) = (Term1 + MidtermFinal + Term2) / 3
-        u.annualAverage = round((u.term1Avg + u.midtermFinalGrade + u.term2Avg) / 3)
-
-        // Final Grade Calculation
-        val d2 = u.finalWrittenD2
-        if (d2 != null && d2 > 0f) {
-            val d2ExamTotal = if (isSpecial) (u.finalOral.sum() + d2) else d2
-            u.finalGrade = round((d2ExamTotal + u.annualAverage) / 2)
+        // فص1 = (M1 + M2) / 2 (يحسب فقط عند إدخال الشهر الثاني)
+        u.term1Avg = if (hasM2 && hasM1) {
+            round((u.m1MonthAvg + u.m2MonthAvg) / 2f)
+        } else if (hasM2) {
+            u.m2MonthAvg
         } else {
-            u.finalGrade = round((u.finalExamTotal + u.annualAverage) / 2)
+            0f
+        }
+
+        // فص2 = (M3 + M4) / 2 (يحسب فقط عند إدخال الشهر الرابع)
+        u.term2Avg = if (hasM4 && hasM3) {
+            round((u.m3MonthAvg + u.m4MonthAvg) / 2f)
+        } else if (hasM4) {
+            u.m4MonthAvg
+        } else {
+            0f
+        }
+
+        // Annual Effort (Sae'i) = (Term1 + MidtermFinal + Term2) / 3 (يحسب فقط عند اكتمال الفصلين ونصف السنة)
+        u.annualAverage = if (u.term1Avg > 0f && u.midtermFinalGrade > 0f && u.term2Avg > 0f) {
+            round((u.term1Avg + u.midtermFinalGrade + u.term2Avg) / 3f)
+        } else {
+            0f
+        }
+
+        // Final Grade Calculation (تحسب فقط عند توفر السعي السنوي والامتحان النهائي)
+        if (hasFinalExam && u.annualAverage > 0f) {
+            val d2 = u.finalWrittenD2
+            if (d2 != null && d2 > 0f) {
+                val d2ExamTotal = if (isSpecial) (u.finalOral.sum() + d2) else d2
+                u.finalGrade = round((d2ExamTotal + u.annualAverage) / 2f)
+            } else {
+                u.finalGrade = round((u.finalExamTotal + u.annualAverage) / 2f)
+            }
+        } else {
+            u.finalGrade = 0f
         }
         
-        u.result = if (u.finalGrade >= 50) "ناجح" else "مكمل/راسب"
+        val activeScore = u.latestRecordedScore()
+        u.result = if (activeScore >= 50f) "ناجح" else "مكمل/راسب"
         
         return u
     }

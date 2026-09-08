@@ -212,29 +212,43 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
       // Auto calculation logic
       const m1 = markObj.m1MonthAvg || 0;
       const m2 = markObj.m2MonthAvg || 0;
-      if (m1 > 0 || m2 > 0) {
-        markObj.term1Avg = Math.round((m1 + m2) / (m1 > 0 && m2 > 0 ? 2 : 1));
+      if (m1 > 0 && m2 > 0) {
+        markObj.term1Avg = Math.round((m1 + m2) / 2);
+      } else if (m2 > 0) {
+        markObj.term1Avg = m2;
+      } else {
+        markObj.term1Avg = 0;
       }
 
       const m3 = markObj.m3MonthAvg || 0;
       const m4 = markObj.m4MonthAvg || 0;
-      if (m3 > 0 || m4 > 0) {
-        markObj.term2Avg = Math.round((m3 + m4) / (m3 > 0 && m4 > 0 ? 2 : 1));
+      if (m3 > 0 && m4 > 0) {
+        markObj.term2Avg = Math.round((m3 + m4) / 2);
+      } else if (m4 > 0) {
+        markObj.term2Avg = m4;
+      } else {
+        markObj.term2Avg = 0;
       }
 
       const t1 = markObj.term1Avg || 0;
       const mid = markObj.midtermFinalGrade || 0;
       const t2 = markObj.term2Avg || 0;
-      if (t1 > 0 || mid > 0 || t2 > 0) {
+      // يحسب السعي السنوي فقط عند اكتمال الفصلين ونصف السنة
+      if (t1 > 0 && mid > 0 && t2 > 0) {
         markObj.annualAverage = Math.round((t1 + mid + t2) / 3);
+      } else {
+        markObj.annualAverage = 0;
       }
 
       const annual = markObj.annualAverage || 0;
       const d1 = markObj.finalWrittenD1 || 0;
       const d2 = markObj.finalWrittenD2;
       const finalExam = (d2 !== null && d2 !== undefined && d2 > 0) ? d2 : d1;
-      if (annual > 0 || finalExam > 0) {
+      // تحسب الدرجة النهائية فقط عند توفر السعي السنوي والامتحان النهائي
+      if (annual > 0 && finalExam > 0) {
         markObj.finalGrade = Math.round((annual + finalExam) / 2);
+      } else {
+        markObj.finalGrade = 0;
       }
 
       if (markIndex > -1) {
