@@ -11,7 +11,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.ThePrinciple.appname"
+        applicationId "com.theprincipal.teacher"
         minSdk 26
         targetSdk 34
         versionCode 1
@@ -77,8 +77,7 @@ dependencies {
     implementation "androidx.room:room-ktx:$room_version"
     kapt "androidx.room:room-compiler:$room_version"
 
-    // ML Kit for OCR and Barcode
-    implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.0'
+    // ML Kit for Barcode / QR
     implementation 'com.google.mlkit:barcode-scanning:17.2.0'
 
     // Coil

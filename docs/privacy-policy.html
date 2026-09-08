@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سياسة الخصوصية | سجل درجات المدرس ThePrincipal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --primary-light: #eff6ff;
+            --accent: #059669;
+            --text-dark: #0f172a;
+            --text-muted: #475569;
+            --bg-page: #f8fafc;
+            --bg-card: #ffffff;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Cairo', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-dark);
+            line-height: 1.8;
+            padding: 0;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
+            color: #ffffff;
+            padding: 50px 20px;
+            text-align: center;
+            border-bottom: 4px solid #3b82f6;
+        }
+
+        .header-container {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+
+        .app-badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(8px);
+            padding: 6px 16px;
+            border-radius: 9999px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+        }
+
+        header h1 {
+            font-size: 2.2rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .lang-switch {
+            margin-top: 20px;
+            display: inline-flex;
+            gap: 10px;
+        }
+
+        .lang-btn {
+            background: #ffffff;
+            color: #1e3a8a;
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-weight: 700;
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .lang-btn:hover {
+            transform: translateY(-2px);
+            background: #f1f5f9;
+        }
+
+        main {
+            max-width: 860px;
+            margin: -30px auto 60px auto;
+            padding: 0 20px;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 36px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            margin-bottom: 30px;
+        }
+
+        .meta-info {
+            background: var(--primary-light);
+            border-right: 4px solid var(--primary);
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 28px;
+            font-size: 0.95rem;
+            color: #1e40af;
+        }
+
+        h2 {
+            font-size: 1.4rem;
+            color: #1e293b;
+            margin-top: 28px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid #f1f5f9;
+            padding-bottom: 8px;
+        }
+
+        h2::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 24px;
+            background: var(--primary);
+            border-radius: 4px;
+        }
+
+        p, ul {
+            margin-bottom: 16px;
+            color: var(--text-muted);
+            font-size: 1.02rem;
+        }
+
+        ul {
+            padding-right: 24px;
+        }
+
+        li {
+            margin-bottom: 8px;
+        }
+
+        .highlight-box {
+            background: #f0fdf4;
+            border-right: 4px solid var(--accent);
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            color: #166534;
+        }
+
+        .ltr-section {
+            direction: ltr;
+            text-align: left;
+            font-family: 'Inter', -apple-system, sans-serif;
+            border-top: 2px dashed #cbd5e1;
+            padding-top: 30px;
+            margin-top: 40px;
+        }
+
+        .ltr-section h2 {
+            direction: ltr;
+            text-align: left;
+        }
+
+        .ltr-section h2::before {
+            display: none;
+        }
+
+        .ltr-section ul {
+            padding-right: 0;
+            padding-left: 24px;
+        }
+
+        .ltr-section .meta-info {
+            border-right: none;
+            border-left: 4px solid var(--primary);
+        }
+
+        .contact-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            margin-top: 24px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 30px 20px;
+            color: #94a3b8;
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-container">
+            <span class="app-badge">Official Privacy Policy • سياسة الخصوصية الرسمية</span>
+            <h1>سجل درجات المدرس ThePrincipal</h1>
+            <p>ThePrincipal: Teacher Gradebook & Academic Record</p>
+            <div class="lang-switch">
+                <a href="#arabic" class="lang-btn">العربية</a>
+                <a href="#english" class="lang-btn">English</a>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="card">
+            
+            <!-- القسم العربي -->
+            <section id="arabic">
+                <div class="meta-info">
+                    <strong>اسم التطبيق:</strong> سجل درجات المدرس ThePrincipal<br>
+                    <strong>معرف الحزمة (Package ID):</strong> com.theprincipal.teacher<br>
+                    <strong>تاريخ آخر تحديث:</strong> مارس 2025 / سبتمبر 2026
+                </div>
+
+                <h2>1. مقدمة ونظرة عامة</h2>
+                <p>
+                    نحن في فريق <strong>ThePrincipal</strong> نلتزم التزاماً تاماً بحماية خصوصية المدرسين والكوادر التعليمية والطلبة. توضح سياسة الخصوصية هذه نوع البيانات التي يتعامل معها تطبيق "سجل درجات المدرس ThePrincipal" وكيفية معالجتها وحمايتها لضمان الامتثال الكامل لسياسات متجر Google Play وقوانين حماية البيانات التعليمية.
+                </p>
+
+                <h2>2. البيانات التي يعالجها التطبيق</h2>
+                <p>التطبيق مصمم كأداة تنظيمية تربوية للمعلم لإدارة مهامه اليومية، ويعالج البيانات التالية:</p>
+                <ul>
+                    <li><strong>بيانات المعلم والجدول:</strong> اسم المعلم، المواد المكلف بها، الفصول والشعب المسندة إليه، وجدول الحصص الأسبوعي.</li>
+                    <li><strong>بيانات وسجلات الطلبة:</strong> أسماء الطلبة، الشعب، سجلات الغياب والحضور اليومي، ودرجات الامتحانات والتقييمات الشهرية والفصلية.</li>
+                </ul>
+
+                <h2>3. الأذونات وصلاحيات الجهاز (Permissions)</h2>
+                <p>يطلب التطبيق الحد الأدنى الضروري فقط من الصلاحيات لتقديم وظائفه الأساسية:</p>
+                <ul>
+                    <li>
+                        <strong>صلاحية الكاميرا (android.permission.CAMERA):</strong>
+                        تُستخدم الكاميرا <strong>فقط وحصرياً لمسح رمز الاستجابة السريعة (QR Code / الباركود)</strong> لإقران التطبيق بنظام الإدارة المدرسية المكتبي أو السحابي بسرعة وسلاسة. 
+                        <em>لا يقوم التطبيق بالتقاط أو تسجيل أو حفظ أو مشاركة أي صور أو فيديوهات شخصية للمستخدم أو الطلبة على الإطلاق.</em>
+                    </li>
+                    <li>
+                        <strong>تنبيهات وجرس الحصص (Alarms & Notifications):</strong>
+                        يستخدم التطبيق المنبهات الداخلية والإشعارات لإطلاق صوت جرس الحصة والتنبيه بمواعيد بدء وانتهاء الدروس وفق جدول المدرسة. 
+                        <em>التطبيق <strong>لا يسجل الصوت (No Audio Recording)</strong> ولا يطلب إذن المايكروفون.</em>
+                    </li>
+                    <li>
+                        <strong>صلاحية الاتصال بالإنترنت (INTERNET):</strong>
+                        تُستخدم لمزامنة الدرجات والغيابات سحابياً مع خادم المدرسة الآمن (Supabase) عند تفعيل المعلم لخيار المزامنة السحابية.
+                    </li>
+                </ul>
+
+                <div class="highlight-box">
+                    <strong>تأكيد الخصوصية:</strong> التطبيق خالٍ تماماً من أي إعلانات تجارية (No Ads)، ولا يقوم بجمع معرفات التتبع الإعلاني، ولا يبيع أو يشارك أي بيانات لأي أطراف ثالثة تجارية.
+                </div>
+
+                <h2>4. تخزين البيانات وأمانها</h2>
+                <ul>
+                    <li><strong>التخزين المحلي الآمن:</strong> تُحفظ السجلات على ذاكرة الجهاز المشفرة باستخدام مكتبة Room/SQLite لتوفير إمكانية العمل بدون إنترنت (Offline Mode).</li>
+                    <li><strong>المزامنة المشفرة وعزل المدارس:</strong> عند المزامنة، يتم تشفير الاتصال بالكامل باستخدام بروتوكول HTTPS/TLS، وتُعزل بيانات كل مدرسة استناداً إلى سياسات أمان متقدمة (Row Level Security - RLS) تمنع وصول أي جهة غير مصرح لها.</li>
+                </ul>
+
+                <h2>5. خصوصية الأطفال والطلبة (Student Privacy)</h2>
+                <p>
+                    نظراً لأن التطبيق يتعامل مع درجات وسجلات طلاب المدارس، فإننا نلتزم بأعلى معايير الحفاظ على سرية السجلات الأكاديمية (وفق معايير COPPA و FERPA). جميع البيانات المدخلة تظل ملكاً خالصاً للمدرسة والمعلم المخول، ولا تُستخدم لأي غرض خارج إطار العملية التعليمية.
+                </p>
+
+                <h2>6. حق حذف البيانات والتحكم بها</h2>
+                <p>
+                    يمتلك المعلم والمدرسة كامل الصلاحية لحذف أو تعديل أي سجلات للدرجات أو الحضور في أي وقت، كما يمكن حذف البيانات المحلية فوراً عبر خيار مسح البيانات أو تسجيل الخروج من التطبيق.
+                </p>
+
+                <h2>7. التواصل والدعم</h2>
+                <p>لأي استفسار أو طلب يتعلق بسياسة الخصوصية أو بياناتك، يمكنك التواصل معنا مباشرة عبر:</p>
+                <div class="contact-box">
+                    <strong>فريق تطوير ThePrincipal</strong><br>
+                    البريد الإلكتروني للدعم الفني: <a href="mailto:support@theprincipal.app">support@theprincipal.app</a>
+                </div>
+            </section>
+
+            <!-- English Section for Google Play Reviewers -->
+            <section id="english" class="ltr-section">
+                <div class="meta-info">
+                    <strong>Application Name:</strong> سجل درجات المدرس ThePrincipal (ThePrincipal: Teacher Gradebook)<br>
+                    <strong>Package Name:</strong> com.theprincipal.teacher<br>
+                    <strong>Effective Date:</strong> March 2025 / September 2026
+                </div>
+
+                <h2>1. Introduction</h2>
+                <p>
+                    <strong>ThePrincipal</strong> is committed to protecting the privacy of educators, school administrators, and students. This Privacy Policy details the data handling practices of our Android mobile application "سجل درجات المدرس ThePrincipal" (com.theprincipal.teacher) in compliance with Google Play Developer Program Policies.
+                </p>
+
+                <h2>2. Data Collection and Usage</h2>
+                <p>The application acts as an academic productivity and management companion for teachers. The application processes:</p>
+                <ul>
+                    <li><strong>Teacher & Schedule Information:</strong> Teacher name, designated academic stages, classes, assigned subjects, and weekly timetable.</li>
+                    <li><strong>Student Academic Records:</strong> Student rosters, daily attendance/absence records, and periodic/monthly exam grades inputted directly by the instructor.</li>
+                </ul>
+
+                <h2>3. Device Permissions & Purpose</h2>
+                <ul>
+                    <li>
+                        <strong>Camera Permission (CAMERA):</strong>
+                        Used solely for scanning <strong>QR Codes</strong> to seamlessly pair the teacher's device with the desktop school database or cloud sync system. The camera is never used to capture, record, store, or transmit photos or videos.
+                    </li>
+                    <li>
+                        <strong>Exact Alarm & Notifications:</strong>
+                        Used solely for the automated school period bell reminders (alerting teachers when a class starts or concludes). 
+                        <em>The app does NOT record audio and does NOT request microphone permissions.</em>
+                    </li>
+                    <li>
+                        <strong>Internet Access:</strong>
+                        Used to synchronize academic marks and attendance with the school's authorized secure cloud database (Supabase).
+                    </li>
+                </ul>
+
+                <div class="highlight-box">
+                    <strong>Zero Commercial Tracking:</strong> The application contains NO third-party advertising SDKs, does not collect advertising IDs, and never sells or brokers user or student data.
+                </div>
+
+                <h2>4. Data Storage and Security</h2>
+                <p>
+                    Records are stored locally in the device's secure sandbox via SQLite/Room database for offline reliability. Cloud synchronization utilizes encrypted HTTPS/TLS channels with multi-tenant database Row Level Security (RLS) ensuring strict school data isolation.
+                </p>
+
+                <h2>5. Children and Student Privacy Compliance</h2>
+                <p>
+                    Student records are handled exclusively for authorized educational workflows under the supervision of the school. We strictly uphold COPPA and student privacy principles; student information is never profiled or monetized.
+                </p>
+
+                <h2>6. Data Retention and Deletion</h2>
+                <p>
+                    Teachers and school administrators maintain full control over their records. Local data can be erased at any moment by clearing app storage or logging out.
+                </p>
+
+                <h2>7. Contact Information</h2>
+                <div class="contact-box">
+                    <strong>ThePrincipal Development Team</strong><br>
+                    Inquiries & Privacy Requests: <a href="mailto:support@theprincipal.app">support@theprincipal.app</a>
+                </div>
+            </section>
+
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2026 ThePrincipal School Systems. All rights reserved. • جميع الحقوق محفوظة لنظام ThePrincipal المدرسي.</p>
+    </footer>
+
+</body>
+</html>
