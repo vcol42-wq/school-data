@@ -60,3 +60,19 @@ data class StudentMarks(
     var result: String = "مستمر",
     var status: String = "مستمر"
 )
+
+// Helper to determine the latest recorded meaningful score for display
+fun StudentMarks.latestRecordedScore(): Float {
+    if (this.finalGrade > 0f) return this.finalGrade
+    if (this.annualAverage > 0f) return this.annualAverage
+    if (this.term2Avg > 0f) return this.term2Avg
+    if (this.m4MonthAvg > 0f) return this.m4MonthAvg
+    if (this.m3MonthAvg > 0f) return this.m3MonthAvg
+    if (this.midtermFinalGrade > 0f) return this.midtermFinalGrade
+    if (this.term1Avg > 0f) return this.term1Avg
+    if (this.m2MonthAvg > 0f) return this.m2MonthAvg
+    if (this.m1MonthAvg > 0f) return this.m1MonthAvg
+    return 0f
+}
+
+fun StudentMarks.latestRecordedScoreInt(): Int = latestRecordedScore().toInt()

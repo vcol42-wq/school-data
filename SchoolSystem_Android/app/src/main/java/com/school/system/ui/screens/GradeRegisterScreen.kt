@@ -55,6 +55,8 @@ import com.school.system.data.model.Student
 import com.school.system.data.model.StudentMarks
 import com.school.system.data.model.DailyColumnSetting
 import com.school.system.data.model.AbsenceRecord
+import com.school.system.data.model.latestRecordedScore
+import com.school.system.data.model.latestRecordedScoreInt
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.school.system.data.repository.SecureUploadResult
 import com.school.system.utils.BiometricHelper
@@ -1249,7 +1251,7 @@ fun exportAndSharePdfWithIText7(
                     "${m.annualAverage.toInt()}",
                     "${m.finalExamTotal.toInt()}",
                     d2Formatted,
-                    "${m.finalGrade.toInt()}"
+                    "${m.latestRecordedScoreInt()}"
                 )
                 2 -> listOf(
                     "${index + 1}",
@@ -1260,7 +1262,7 @@ fun exportAndSharePdfWithIText7(
                     "${m.annualAverage.toInt()}",
                     "${m.finalExamTotal.toInt()}",
                     d2Formatted,
-                    "${m.finalGrade.toInt()}"
+                    "${m.latestRecordedScoreInt()}"
                 )
                 else -> listOf(
                     "${index + 1}",
@@ -1427,7 +1429,7 @@ fun generateGradesHtml(
             rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #1e3a8a;'>${marks.annualAverage.toInt()}</td>")
             rowsHtml.append("<td class='cell-data'>${marks.finalExamTotal.toInt()}</td>")
             rowsHtml.append("<td class='cell-data'>$d2Formatted</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>${marks.finalGrade.toInt()}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>${marks.latestRecordedScoreInt()}</td>")
         } else if (tabIndex == 2) {
             rowsHtml.append("<td class='cell-data'>${marks.term1Avg.toInt()}</td>")
             rowsHtml.append("<td class='cell-data'>${marks.midtermFinalGrade.toInt()}</td>")
@@ -1435,7 +1437,7 @@ fun generateGradesHtml(
             rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #1e3a8a;'>${marks.annualAverage.toInt()}</td>")
             rowsHtml.append("<td class='cell-data'>${marks.finalExamTotal.toInt()}</td>")
             rowsHtml.append("<td class='cell-data'>$d2Formatted</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>${marks.finalGrade.toInt()}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>${marks.latestRecordedScoreInt()}</td>")
         } else {
             rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: ${if (totalAbs > 3) "#dc2626" else "#0f172a"};'>$totalAbs</td>")
             rowsHtml.append("<td class='cell-data'>${marks.status}</td>")
@@ -1870,7 +1872,7 @@ fun AdminRegisterTable(
                         PaperTableCell(m.annualAverage.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = rowBg)
                         PaperTableCell(m.finalExamTotal.toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
                         PaperTableCell(d2Formatted, cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperTableCell(m.finalGrade.toInt().toString(), cellW, rowH, fontSize, isBold = true, textColor = if (m.finalGrade < 50) Color(0xFFDC2626) else null, backgroundColor = rowBg)
+                        PaperTableCell(m.latestRecordedScoreInt().toString(), cellW, rowH, fontSize, isBold = true, textColor = if (m.latestRecordedScore() < 50f) Color(0xFFDC2626) else null, backgroundColor = rowBg)
                     }
                 }
             }
@@ -1991,7 +1993,7 @@ fun TeacherRegisterTable(
                         PaperTableCell(m.annualAverage.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = rowBg)
                         PaperTableCell(m.finalExamTotal.toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
                         PaperTableCell(d2Formatted, cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperTableCell(m.finalGrade.toInt().toString(), cellW, rowH, fontSize, isBold = true, textColor = if (m.finalGrade < 50) Color(0xFFDC2626) else null, backgroundColor = rowBg)
+                        PaperTableCell(m.latestRecordedScoreInt().toString(), cellW, rowH, fontSize, isBold = true, textColor = if (m.latestRecordedScore() < 50f) Color(0xFFDC2626) else null, backgroundColor = rowBg)
                     }
                 }
             }
