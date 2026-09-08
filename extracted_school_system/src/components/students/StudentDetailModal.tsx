@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, GraduationCap, Save, Edit3, Award, FileText } from 'lucide-react';
 import { Student } from '../../types';
+import { Portal } from '../common/Portal';
 
 interface StudentDetailModalProps {
   student: Student | null;
@@ -33,7 +34,8 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <Portal>
+      <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white border-2 border-emerald-500 rounded-3xl p-6 md:p-8 max-w-3xl w-full shadow-2xl space-y-5 my-8 text-slate-900">
         
         {/* Header */}
@@ -227,5 +229,6 @@ export const StudentDetailModal: React.FC<StudentDetailModalProps> = ({
 
       </div>
     </div>
+    </Portal>
   );
 };

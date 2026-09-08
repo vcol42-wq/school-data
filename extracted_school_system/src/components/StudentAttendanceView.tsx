@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { importGradesAndAttendance } from '../utils/syncService';
+import { Portal } from './common/Portal';
 
 interface StudentAttendanceViewProps {
   students: Student[];
@@ -373,73 +374,75 @@ export const StudentAttendanceView: React.FC<StudentAttendanceViewProps> = ({
 
       {/* Official Warning Letter Modal */}
       {warningModalStudent && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative" dir="rtl">
-            <button
-              onClick={() => setWarningModalStudent(null)}
-              className="absolute left-4 top-4 text-slate-400 hover:text-slate-600"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="border-4 border-double border-slate-700 p-6 rounded-xl text-center bg-amber-50/20">
-              <div className="flex justify-between items-center text-xs font-bold text-slate-600 mb-4 border-b border-slate-300 pb-2">
-                <div>
-                  <p>جمهورية العراق</p>
-                  <p>وزارة التربية</p>
-                  <p>{config.directorateName || 'المديرية العامة للتربية'}</p>
-                </div>
-                <div>
-                  <h2 className="text-base font-black text-rose-800">
-                    {warningModalStudent.absencesCount && warningModalStudent.absencesCount > 6 ? 'إنذار نهائي وتنبيه بالفصل' : 'إنذار غياب رسمي'}
-                  </h2>
-                  <p>الرقم: م / غ / {warningModalStudent.recordNumber || '---'}</p>
-                </div>
-                <div>
-                  <p>{config.schoolName || 'المدرسة'}</p>
-                  <p>التاريخ: {new Date().toLocaleDateString('ar-IQ')}</p>
-                </div>
-              </div>
-
-              <div className="my-6 text-right text-sm leading-relaxed font-bold text-slate-800">
-                <p className="mb-2">إلى ولي أمر الطالب / الطالبة: <span className="text-rose-700 font-black text-base">{[warningModalStudent.firstName, warningModalStudent.secondName, warningModalStudent.thirdName, warningModalStudent.titleName].filter(Boolean).join(' ')}</span> المحترم</p>
-                <p className="mb-2">الصف: <span className="text-indigo-700">{warningModalStudent.currentGrade}</span> | الشعبة: <span className="text-indigo-700">{warningModalStudent.section}</span> | رقم القيد: <span className="text-indigo-700">{warningModalStudent.recordNumber}</span></p>
-                <p className="mt-4 leading-7">
-                  نود إعلامكم بأن الطالب المذكور أعلاه قد بلغ مجموع غياباته بدون عذر مشروع <span className="text-rose-800 text-lg font-black underline">({warningModalStudent.absencesCount || 0}) يوماً</span> خلال العام الدراسي الحالي.
-                  يرجى الحضور إلى إدارة المدرسة خلال مدة أقصاها (٣) أيام لبيان أسباب الغياب وتلافي صدور قرار الفصل بموجب التعليمات والأنظمة الوزارية النافذة.
-                </p>
-              </div>
-
-              <div className="flex justify-between items-center mt-10 pt-4 border-t border-slate-300 text-xs font-bold text-slate-700">
-                <div>
-                  <p>المرشد التربوي / المعاون</p>
-                  <p className="mt-6">..........................................</p>
-                </div>
-                <div>
-                  <p>مدير المدرسة</p>
-                  <p className="text-sm font-black text-slate-900 mt-1">{config.managerName || 'مدير المدرسة'}</p>
-                  <p className="mt-4">الختم والتوقيع الرسمي</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => window.print()}
-                className="px-5 py-2.5 bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs rounded-xl shadow flex items-center gap-2"
-              >
-                <Printer className="w-4 h-4" />
-                <span>طباعة هذا الإنذار فوراً</span>
-              </button>
+        <Portal>
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative" dir="rtl">
               <button
                 onClick={() => setWarningModalStudent(null)}
-                className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl"
+                className="absolute left-4 top-4 text-slate-400 hover:text-slate-600"
               >
-                إغلاق
+                <X className="w-5 h-5" />
               </button>
+
+              <div className="border-4 border-double border-slate-700 p-6 rounded-xl text-center bg-amber-50/20">
+                <div className="flex justify-between items-center text-xs font-bold text-slate-600 mb-4 border-b border-slate-300 pb-2">
+                  <div>
+                    <p>جمهورية العراق</p>
+                    <p>وزارة التربية</p>
+                    <p>{config.directorateName || 'المديرية العامة للتربية'}</p>
+                  </div>
+                  <div>
+                    <h2 className="text-base font-black text-rose-800">
+                      {warningModalStudent.absencesCount && warningModalStudent.absencesCount > 6 ? 'إنذار نهائي وتنبيه بالفصل' : 'إنذار غياب رسمي'}
+                    </h2>
+                    <p>الرقم: م / غ / {warningModalStudent.recordNumber || '---'}</p>
+                  </div>
+                  <div>
+                    <p>{config.schoolName || 'المدرسة'}</p>
+                    <p>التاريخ: {new Date().toLocaleDateString('ar-IQ')}</p>
+                  </div>
+                </div>
+
+                <div className="my-6 text-right text-sm leading-relaxed font-bold text-slate-800">
+                  <p className="mb-2">إلى ولي أمر الطالب / الطالبة: <span className="text-rose-700 font-black text-base">{[warningModalStudent.firstName, warningModalStudent.secondName, warningModalStudent.thirdName, warningModalStudent.titleName].filter(Boolean).join(' ')}</span> المحترم</p>
+                  <p className="mb-2">الصف: <span className="text-indigo-700">{warningModalStudent.currentGrade}</span> | الشعبة: <span className="text-indigo-700">{warningModalStudent.section}</span> | رقم القيد: <span className="text-indigo-700">{warningModalStudent.recordNumber}</span></p>
+                  <p className="mt-4 leading-7">
+                    نود إعلامكم بأن الطالب المذكور أعلاه قد بلغ مجموع غياباته بدون عذر مشروع <span className="text-rose-800 text-lg font-black underline">({warningModalStudent.absencesCount || 0}) يوماً</span> خلال العام الدراسي الحالي.
+                    يرجى الحضور إلى إدارة المدرسة خلال مدة أقصاها (٣) أيام لبيان أسباب الغياب وتلافي صدور قرار الفصل بموجب التعليمات والأنظمة الوزارية النافذة.
+                  </p>
+                </div>
+
+                <div className="flex justify-between items-center mt-10 pt-4 border-t border-slate-300 text-xs font-bold text-slate-700">
+                  <div>
+                    <p>المرشد التربوي / المعاون</p>
+                    <p className="mt-6">..........................................</p>
+                  </div>
+                  <div>
+                    <p>مدير المدرسة</p>
+                    <p className="text-sm font-black text-slate-900 mt-1">{config.managerName || 'مدير المدرسة'}</p>
+                    <p className="mt-4">الختم والتوقيع الرسمي</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 mt-4">
+                <button
+                  onClick={() => window.print()}
+                  className="px-5 py-2.5 bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs rounded-xl shadow flex items-center gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة هذا الإنذار فوراً</span>
+                </button>
+                <button
+                  onClick={() => setWarningModalStudent(null)}
+                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-xl"
+                >
+                  إغلاق
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
     </div>
   );

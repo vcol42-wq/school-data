@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, UserPlus } from 'lucide-react';
 import { Student } from '../../types';
+import { Portal } from '../common/Portal';
 
 interface AddStudentModalProps {
   isOpen: boolean;
@@ -20,7 +21,8 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <Portal>
+      <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
       <form 
         onSubmit={onSubmit} 
         className="modal-surface bg-white border-2 border-emerald-500 rounded-3xl p-6 md:p-8 max-w-xl w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-slate-900"
@@ -220,5 +222,6 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
         </div>
       </form>
     </div>
+    </Portal>
   );
 };

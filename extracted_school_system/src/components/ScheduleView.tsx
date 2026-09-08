@@ -20,6 +20,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { PrintPreviewModal } from './PrintPreviewModal';
+import { Portal } from './common/Portal';
 import { getSupabase } from '../utils/supabaseClient';
 import { generateSmartFairSchedule, sanitizeAndRepairSections, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS, LESSON_LABELS } from '../utils/scheduleSolver';
 import { SmartScheduleSection, SectionSubjectAssignment, StaffMember, Student } from '../types';
@@ -1063,7 +1064,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       {editingCell && (() => {
         const editingRow = currentDayRows.find(r => r.id === editingCell.rowId);
         return (
-          <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <Portal>
+            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white border-2 border-sky-400 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto dir-rtl">
               <div className="flex items-center justify-between border-b border-slate-200 pb-3">
                 <div>
@@ -1263,223 +1265,228 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               </div>
             </div>
           </div>
+          </Portal>
         );
       })()}
 
       {/* Modal: Add Row (New Class) */}
       {showAddRowModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
-          <form onSubmit={handleAddRow} className="bg-white border-2 border-sky-300 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-              <h3 className="text-base font-black text-slate-900">إضافة صف / شعبة لجدول {selectedDay}</h3>
-              <button type="button" onClick={() => setShowAddRowModal(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-600">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4">
+            <form onSubmit={handleAddRow} className="bg-white border-2 border-sky-300 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <h3 className="text-base font-black text-slate-900">إضافة صف / شعبة لجدول {selectedDay}</h3>
+                <button type="button" onClick={() => setShowAddRowModal(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-black mb-1 text-slate-900">الصف الدراسـي:</label>
-                <select
-                  value={newRowGrade}
-                  onChange={e => setNewRowGrade(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-black focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-black mb-1 text-slate-900">الصف الدراسـي:</label>
+                  <select
+                    value={newRowGrade}
+                    onChange={e => setNewRowGrade(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-black focus:outline-none focus:border-sky-500 shadow-sm cursor-pointer"
+                  >
+                    <optgroup label="المرحلة الابتدائية">
+                      <option value="الأول ابتدائي">الأول ابتدائي</option>
+                      <option value="الثاني ابتدائي">الثاني ابتدائي</option>
+                      <option value="الثالث ابتدائي">الثالث ابتدائي</option>
+                      <option value="الرابع ابتدائي">الرابع ابتدائي</option>
+                      <option value="الخامس ابتدائي">الخامس ابتدائي</option>
+                      <option value="السادس ابتدائي">السادس ابتدائي</option>
+                    </optgroup>
+                    <optgroup label="المرحلة المتوسطة">
+                      <option value="الأول متوسط">الأول متوسط</option>
+                      <option value="الثاني متوسط">الثاني متوسط</option>
+                      <option value="الثالث متوسط">الثالث متوسط</option>
+                    </optgroup>
+                    <optgroup label="المرحلة الإعدادية والثانوية">
+                      <option value="الرابع العلمي">الرابع العلمي</option>
+                      <option value="الرابع الأدبي">الرابع الأدبي</option>
+                      <option value="الخامس العلمي">الخامس العلمي</option>
+                      <option value="الخامس الأدبي">الخامس الأدبي</option>
+                      <option value="السادس العلمي (أحياء)">السادس العلمي (أحياء)</option>
+                      <option value="السادس العلمي (تطبيقية)">السادس العلمي (تطبيقية)</option>
+                      <option value="السادس الأدبي">السادس الأدبي</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-black mb-1 text-slate-900">الشعبة:</label>
+                  <input
+                    type="text"
+                    value={newRowSection}
+                    onChange={e => setNewRowSection(e.target.value)}
+                    placeholder="أ / ب / ج / د..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-black placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-black mb-1 text-slate-900">مرشد الصف المسؤول:</label>
+                  <input
+                    type="text"
+                    value={newRowTeacher}
+                    onChange={e => setNewRowTeacher(e.target.value)}
+                    placeholder="اسم المدرس..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-black placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRowModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-800 text-xs font-black border border-slate-300 hover:bg-slate-200"
                 >
-                  <optgroup label="المرحلة الابتدائية">
-                    <option value="الأول ابتدائي">الأول ابتدائي</option>
-                    <option value="الثاني ابتدائي">الثاني ابتدائي</option>
-                    <option value="الثالث ابتدائي">الثالث ابتدائي</option>
-                    <option value="الرابع ابتدائي">الرابع ابتدائي</option>
-                    <option value="الخامس ابتدائي">الخامس ابتدائي</option>
-                    <option value="السادس ابتدائي">السادس ابتدائي</option>
-                  </optgroup>
-                  <optgroup label="المرحلة المتوسطة">
-                    <option value="الأول متوسط">الأول متوسط</option>
-                    <option value="الثاني متوسط">الثاني متوسط</option>
-                    <option value="الثالث متوسط">الثالث متوسط</option>
-                  </optgroup>
-                  <optgroup label="المرحلة الإعدادية والثانوية">
-                    <option value="الرابع العلمي">الرابع العلمي</option>
-                    <option value="الرابع الأدبي">الرابع الأدبي</option>
-                    <option value="الخامس العلمي">الخامس العلمي</option>
-                    <option value="الخامس الأدبي">الخامس الأدبي</option>
-                    <option value="السادس العلمي (أحياء)">السادس العلمي (أحياء)</option>
-                    <option value="السادس العلمي (تطبيقية)">السادس العلمي (تطبيقية)</option>
-                    <option value="السادس الأدبي">السادس الأدبي</option>
-                  </optgroup>
-                </select>
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-sky-600 text-white text-xs font-black hover:bg-sky-700 shadow-md"
+                >
+                  إضافة للصفوف
+                </button>
               </div>
-
-              <div>
-                <label className="block font-black mb-1 text-slate-900">الشعبة:</label>
-                <input
-                  type="text"
-                  value={newRowSection}
-                  onChange={e => setNewRowSection(e.target.value)}
-                  placeholder="أ / ب / ج / د..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-black placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block font-black mb-1 text-slate-900">مرشد الصف المسؤول:</label>
-                <input
-                  type="text"
-                  value={newRowTeacher}
-                  onChange={e => setNewRowTeacher(e.target.value)}
-                  placeholder="اسم المدرس..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border-2 border-sky-300 bg-white text-slate-900 font-black placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-sm"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setShowAddRowModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-800 text-xs font-black border border-slate-300 hover:bg-slate-200"
-              >
-                إلغاء
-              </button>
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl bg-sky-600 text-white text-xs font-black hover:bg-sky-700 shadow-md"
-              >
-                إضافة للصفوف
-              </button>
-            </div>
-          </form>
-        </div>
+            </form>
+          </div>
+        </Portal>
       )}
 
       {/* Modal: Schedule Settings Modal (ضبط وتعديل أسماء الدروس والأساتذة) */}
       {showSettingsModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 dir-rtl">
-          <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-slate-900 dark:text-white">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                  <SlidersHorizontal className="w-5 h-5" />
+        <Portal>
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 dir-rtl">
+            <div className="bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto text-slate-900 dark:text-white">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <SlidersHorizontal className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">
+                    إعدادات وضبط أسماء الدروس والأساتذة بالجدول
+                  </h3>
                 </div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white">
-                  إعدادات وضبط أسماء الدروس والأساتذة بالجدول
-                </h3>
+                <button 
+                  onClick={() => setShowSettingsModal(false)} 
+                  className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button 
-                onClick={() => setShowSettingsModal(false)} 
-                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="space-y-4 text-xs">
-              <div>
-                <p className="font-black text-sm text-slate-900 dark:text-slate-100 mb-2.5 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-                  1. تخصيص أسماء وألقاب الحصص والدروس:
-                </p>
+              <div className="space-y-4 text-xs">
+                <div>
+                  <p className="font-black text-sm text-slate-900 dark:text-slate-100 mb-2.5 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                    1. تخصيص أسماء وألقاب الحصص والدروس:
+                  </p>
 
-                <div className="grid grid-cols-2 gap-2.5">
-                  {Object.keys(customLessonNames).map((key, idx) => (
-                    <div key={key}>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {Object.keys(customLessonNames).map((key, idx) => (
+                      <div key={key}>
+                        <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
+                          الدرس {idx + 1}:
+                        </label>
+                        <input
+                          type="text"
+                          value={customLessonNames[key]}
+                          onChange={e => setCustomLessonNames(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                  <p className="font-black text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                    2. إعادة تخصيص واستبدال الأستاذ في جدول اليوم ({selectedDay}):
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
                       <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
-                        الدرس {idx + 1}:
+                        اسم الأستاذ الحالي للبحث عنه:
                       </label>
                       <input
                         type="text"
-                        value={customLessonNames[key]}
-                        onChange={e => setCustomLessonNames(prev => ({ ...prev, [key]: e.target.value }))}
+                        placeholder="مثال: أ. أحمد"
+                        value={replaceOldTeacher}
+                        onChange={e => setReplaceOldTeacher(e.target.value)}
                         className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
                       />
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
-                <p className="font-black text-sm text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
-                  2. إعادة تخصيص واستبدال الأستاذ في جدول اليوم ({selectedDay}):
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
-                      اسم الأستاذ الحالي للبحث عنه:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: أ. أحمد"
-                      value={replaceOldTeacher}
-                      onChange={e => setReplaceOldTeacher(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
-                    />
+                    <div>
+                      <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
+                        اسم الأستاذ البديل الجديد:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="مثال: أ. حيدر"
+                        value={replaceNewTeacher}
+                        onChange={e => setReplaceNewTeacher(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-black text-slate-700 dark:text-slate-300 mb-1">
-                      اسم الأستاذ البديل الجديد:
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="مثال: أ. حيدر"
-                      value={replaceNewTeacher}
-                      onChange={e => setReplaceNewTeacher(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-black text-xs placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 shadow-sm transition-all"
-                    />
-                  </div>
-                </div>
 
-                <button
-                  onClick={() => {
-                    const oldT = replaceOldTeacher.trim();
-                    const newT = replaceNewTeacher.trim();
-                    if (!oldT || !newT) {
-                      setReplaceStatus('يرجى إدخال اسم الأستاذ الحالي والجديد أولاً.');
-                      return;
-                    }
+                  <button
+                    onClick={() => {
+                      const oldT = replaceOldTeacher.trim();
+                      const newT = replaceNewTeacher.trim();
+                      if (!oldT || !newT) {
+                        setReplaceStatus('يرجى إدخال اسم الأستاذ الحالي والجديد أولاً.');
+                        return;
+                      }
 
-                    setScheduleMap(prev => {
-                      const dayRows = prev[selectedDay] || [];
-                      const updated = dayRows.map(row => {
-                        const newLessons = { ...row.lessons };
-                        (Object.keys(newLessons) as Array<keyof typeof newLessons>).forEach(k => {
-                          if (newLessons[k].teacherName && newLessons[k].teacherName.includes(oldT)) {
-                            newLessons[k] = { ...newLessons[k], teacherName: newT };
-                          }
+                      setScheduleMap(prev => {
+                        const dayRows = prev[selectedDay] || [];
+                        const updated = dayRows.map(row => {
+                          const newLessons = { ...row.lessons };
+                          (Object.keys(newLessons) as Array<keyof typeof newLessons>).forEach(k => {
+                            if (newLessons[k].teacherName && newLessons[k].teacherName.includes(oldT)) {
+                              newLessons[k] = { ...newLessons[k], teacherName: newT };
+                            }
+                          });
+                          return { ...row, lessons: newLessons };
                         });
-                        return { ...row, lessons: newLessons };
+                        return { ...prev, [selectedDay]: updated };
                       });
-                      return { ...prev, [selectedDay]: updated };
-                    });
 
-                    setReplaceStatus(`تم استبدال الأستاذ "${oldT}" بـ "${newT}" بنجاح! ✓`);
-                    setReplaceOldTeacher('');
-                    setReplaceNewTeacher('');
-                    setTimeout(() => setReplaceStatus(''), 3500);
-                  }}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black transition-all shadow-md cursor-pointer text-xs"
-                >
-                  استبدال الأستاذ في جدول اليوم الحالي ✓
-                </button>
+                      setReplaceStatus(`تم استبدال الأستاذ "${oldT}" بـ "${newT}" بنجاح! ✓`);
+                      setReplaceOldTeacher('');
+                      setReplaceNewTeacher('');
+                      setTimeout(() => setReplaceStatus(''), 3500);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-black transition-all shadow-md cursor-pointer text-xs"
+                  >
+                    استبدال الأستاذ في جدول اليوم الحالي ✓
+                  </button>
 
-                {replaceStatus && (
-                  <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-black rounded-xl text-center">
-                    {replaceStatus}
-                  </div>
-                )}
+                  {replaceStatus && (
+                    <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-black rounded-xl text-center">
+                      {replaceStatus}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black shadow-md transition-all cursor-pointer"
-              >
-                حفظ وإغلاق الضبط
-              </button>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black shadow-md transition-all cursor-pointer"
+                >
+                  حفظ وإغلاق الضبط
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
       {/* Print Preview Modal */}

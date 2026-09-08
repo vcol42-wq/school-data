@@ -196,7 +196,12 @@
     backdrop-filter: blur(14px);
   }
   .theme-cream .text-slate-900, .theme-burgundy .text-slate-900, .theme-sky .text-slate-900, .theme-emerald .text-slate-900, .theme-night .text-slate-900, .theme-moon .text-slate-900,
-  .theme-cream .text-slate-800, .theme-burgundy .text-slate-800, .theme-sky .text-slate-800, .theme-emerald .text-slate-800, .theme-night .text-slate-800, .theme-moon .text-slate-800 {
+  .theme-cream .text-slate-800, .theme-burgundy .text-slate-800, .theme-sky .text-slate-800, .theme-emerald .text-slate-800, .theme-night .text-slate-800, .theme-moon .text-slate-800,
+  .theme-cream .text-slate-950, .theme-burgundy .text-slate-950, .theme-sky .text-slate-950, .theme-emerald .text-slate-950, .theme-night .text-slate-950, .theme-moon .text-slate-950,
+  .theme-night .text-slate-700, .theme-moon .text-slate-700, .theme-burgundy .text-slate-700,
+  .theme-night .text-gray-900, .theme-moon .text-gray-900, .theme-burgundy .text-gray-900,
+  .theme-night .text-gray-800, .theme-moon .text-gray-800, .theme-burgundy .text-gray-800,
+  .theme-night .text-gray-700, .theme-moon .text-gray-700, .theme-burgundy .text-gray-700 {
     color: var(--theme-text-main) !important;
   }
   .theme-cream .text-slate-500, .theme-burgundy .text-slate-500, .theme-sky .text-slate-500, .theme-emerald .text-slate-500, .theme-night .text-slate-500, .theme-moon .text-slate-500,
@@ -204,11 +209,79 @@
     color: var(--theme-text-muted) !important;
   }
   .theme-cream .border-slate-200, .theme-burgundy .border-slate-200, .theme-sky .border-slate-200, .theme-emerald .border-slate-200, .theme-night .border-slate-200, .theme-moon .border-slate-200,
-  .theme-cream .border-slate-100, .theme-burgundy .border-slate-100, .theme-sky .border-slate-100, .theme-emerald .border-slate-100, .theme-night .border-slate-100, .theme-moon .border-slate-100 {
+  .theme-cream .border-slate-100, .theme-burgundy .border-slate-100, .theme-sky .border-slate-100, .theme-emerald .border-slate-100, .theme-night .border-slate-100, .theme-moon .border-slate-100,
+  .theme-cream .border-slate-300, .theme-burgundy .border-slate-300, .theme-sky .border-slate-300, .theme-emerald .border-slate-300, .theme-night .border-slate-300, .theme-moon .border-slate-300 {
     border-color: var(--theme-card-border) !important;
   }
   .theme-cream button:hover, .theme-burgundy button:hover, .theme-sky button:hover, .theme-emerald button:hover, .theme-night button:hover, .theme-moon button:hover {
     --tw-ring-color: var(--theme-primary);
+  }
+
+  /* High-contrast and vivid texts for Night & Moon themes */
+  .theme-night .text-purple-950, .theme-night .text-purple-900, .theme-moon .text-purple-950, .theme-moon .text-purple-900 { color: #d8b4fe !important; }
+  .theme-night .text-indigo-950, .theme-night .text-indigo-900, .theme-moon .text-indigo-950, .theme-moon .text-indigo-900 { color: #a5b4fc !important; }
+  .theme-night .text-blue-950, .theme-night .text-blue-900, .theme-moon .text-blue-950, .theme-moon .text-blue-900 { color: #93c5fd !important; }
+  .theme-night .text-sky-950, .theme-night .text-sky-900, .theme-moon .text-sky-950, .theme-moon .text-sky-900 { color: #7dd3fc !important; }
+  .theme-night .text-emerald-950, .theme-night .text-emerald-900, .theme-moon .text-emerald-950, .theme-moon .text-emerald-900 { color: #6ee7b7 !important; }
+  .theme-night .text-amber-950, .theme-night .text-amber-900, .theme-moon .text-amber-950, .theme-moon .text-amber-900 { color: #fde047 !important; }
+  .theme-night .text-rose-950, .theme-night .text-rose-900, .theme-moon .text-rose-950, .theme-moon .text-rose-900 { color: #fda4af !important; }
+
+  /* Surface badges, pills and secondary backgrounds for Night & Moon */
+  .theme-night .bg-slate-100 {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+  }
+  .theme-night .bg-slate-200 {
+    background-color: rgba(255, 255, 255, 0.14) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+  }
+  .theme-night .bg-slate-300 {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+  }
+
+  .theme-moon .bg-slate-100 {
+    background-color: rgba(45, 43, 80, 0.85) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(167, 139, 250, 0.25) !important;
+  }
+  .theme-moon .bg-slate-200 {
+    background-color: rgba(60, 56, 100, 0.85) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(167, 139, 250, 0.35) !important;
+  }
+  .theme-moon .bg-slate-300 {
+    background-color: rgba(75, 70, 120, 0.85) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(167, 139, 250, 0.45) !important;
+  }
+
+  .theme-burgundy .bg-slate-100 {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+  }
+  .theme-burgundy .bg-slate-200 {
+    background-color: rgba(255, 255, 255, 0.14) !important;
+    color: var(--theme-text-main) !important;
+    border-color: rgba(255, 255, 255, 0.22) !important;
+  }
+
+  /* Table pastel tints in dark themes */
+  .theme-night .bg-blue-50, .theme-moon .bg-blue-50 { background-color: rgba(59, 130, 246, 0.14) !important; }
+  .theme-night .bg-purple-50, .theme-moon .bg-purple-50 { background-color: rgba(168, 85, 247, 0.14) !important; }
+  .theme-night .bg-emerald-50, .theme-moon .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.14) !important; }
+  .theme-night .bg-indigo-50, .theme-moon .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.14) !important; }
+  .theme-night .bg-amber-50, .theme-moon .bg-amber-50 { background-color: rgba(245, 158, 11, 0.14) !important; }
+  .theme-night .bg-rose-50, .theme-moon .bg-rose-50 { background-color: rgba(244, 63, 94, 0.14) !important; }
+
+  /* Schedule View Background override in dark themes */
+  .theme-night .bg-\[\#e6f4f1\], .theme-moon .bg-\[\#e6f4f1\], .theme-burgundy .bg-\[\#e6f4f1\] {
+    background-color: var(--theme-bg) !important;
+    border-color: var(--theme-card-border) !important;
   }
 
   .theme-choice { background: var(--theme-card); box-shadow: 0 12px 30px -20px var(--theme-primary); }
@@ -247,16 +320,15 @@
   .theme-night input, .theme-night select, .theme-night textarea, .theme-moon input, .theme-moon select, .theme-moon textarea {
     color: var(--theme-text-main) !important; background: color-mix(in srgb, var(--theme-card) 88%, #000) !important;
   }
+
+  /* Safe opacity-only entrance animation for main views (Prevents containing-block trap for fixed modals) */
   .theme-cream main > *, .theme-burgundy main > *, .theme-sky main > *, .theme-emerald main > *, .theme-night main > *, .theme-moon main > * {
-    animation: themeReveal .55s cubic-bezier(.2,.75,.25,1) both;
+    animation: themeReveal .35s ease-out both;
   }
-  .theme-sky main > * { animation-name: skyReveal; }
-  .theme-burgundy main > * { animation-name: burgundyReveal; }
-  .theme-moon main > * { animation-name: moonReveal; }
-  @keyframes themeReveal { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes skyReveal { from { opacity: 0; transform: translateX(12px) scale(.99); } to { opacity: 1; transform: translateX(0) scale(1); } }
-  @keyframes burgundyReveal { from { opacity: 0; transform: translateY(16px); filter: saturate(.75); } to { opacity: 1; transform: translateY(0); filter: saturate(1); } }
-  @keyframes moonReveal { from { opacity: 0; transform: scale(.985); filter: brightness(.8); } to { opacity: 1; transform: scale(1); filter: brightness(1); } }
+  @keyframes themeReveal { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes skyReveal { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes burgundyReveal { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes moonReveal { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) {
     .theme-cream main > *, .theme-burgundy main > *, .theme-sky main > *, .theme-emerald main > *, .theme-night main > *, .theme-moon main > * {
       animation: none !important;
