@@ -57,8 +57,9 @@ export default function App() {
   // Navigation & Theme
   const [activeView, setActiveView] = useState<ActiveView>('launcher');
   const [theme, setTheme] = useState<AppTheme>(() => {
-    localStorage.removeItem('diyala_school_theme');
-    return 'default';
+    const savedTheme = localStorage.getItem('diyala_school_theme');
+    const supportedThemes: AppTheme[] = ['cream', 'burgundy', 'sky', 'emerald', 'night', 'moon'];
+    return supportedThemes.includes(savedTheme as AppTheme) ? savedTheme as AppTheme : 'cream';
   });
   const [font, setFont] = useState<AppFont>(() => {
     return (localStorage.getItem('diyala_school_font') as AppFont) || 'tajawal';
@@ -193,7 +194,7 @@ export default function App() {
   // Sync Font to LocalStorage & Body
   useEffect(() => {
     localStorage.setItem('diyala_school_font', font);
-    document.body.className = `font-${font} bg-slate-50 text-slate-900 min-h-screen`;
+    document.body.className = `font-${font} min-h-screen`;
   }, [font]);
 
   useEffect(() => {
@@ -537,6 +538,7 @@ export default function App() {
       {showScreensaver && (
         <ScreensaverModal
           config={config}
+          scheduleMap={scheduleMap}
           onUnlock={() => setShowScreensaver(false)}
         />
       )}

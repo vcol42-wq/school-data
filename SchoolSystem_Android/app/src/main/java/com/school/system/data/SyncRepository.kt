@@ -5,7 +5,6 @@ import com.school.system.data.dao.*
 import com.school.system.data.model.*
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -325,11 +324,7 @@ class SyncRepository @Inject constructor(
         }
         val baseUrl = if (formattedUrl.endsWith("/")) formattedUrl else "$formattedUrl/"
 
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
         val client = OkHttpClient.Builder()
-            .addInterceptor(logging)
             .build()
 
         return Retrofit.Builder()

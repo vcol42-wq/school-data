@@ -50,9 +50,10 @@ export const printElement = (
   clone.style.border = '2px solid #0f172a';
   clone.style.padding = '10mm 12mm';
   clone.style.margin = '0 auto';
-  clone.style.width = '100%';
+  clone.style.width = orientation === 'landscape' ? '297mm' : '210mm';
   clone.style.maxWidth = '100%';
-  clone.style.minHeight = orientation === 'landscape' ? '195mm' : '275mm';
+  clone.style.minHeight = orientation === 'landscape' ? '210mm' : '297mm';
+  clone.style.maxWidth = orientation === 'landscape' ? '297mm' : '210mm';
   clone.style.display = 'flex';
   clone.style.flexDirection = 'column';
   clone.style.justifyContent = 'space-between';
@@ -75,7 +76,7 @@ export const printElement = (
       <style>
         @page {
           size: A4 ${orientation};
-          margin: 6mm 8mm;
+          margin: 0;
         }
         @media print {
           html, body {
@@ -89,6 +90,13 @@ export const printElement = (
           }
           .no-print, .no-print-modal {
             display: none !important;
+          }
+          #printable-area-frame, .print-page, .print-page-a4 {
+            width: ${orientation === 'landscape' ? '297mm' : '210mm'} !important;
+            max-width: ${orientation === 'landscape' ? '297mm' : '210mm'} !important;
+            min-height: ${orientation === 'landscape' ? '210mm' : '297mm'} !important;
+            margin: 0 auto !important;
+            border-radius: 0 !important;
           }
         }
         body {

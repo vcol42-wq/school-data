@@ -58,7 +58,7 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
         {/* Marks Table */}
         <div>
           <h4 className="font-black text-xs mb-2 border-r-4 border-emerald-600 pr-2">درجات ومواظبة الطالب المقيدة بالسجلات الرسمية:</h4>
-          <table className="w-full text-center border-collapse border border-slate-400 text-xs">
+          <table className="data-grid w-full text-center border-collapse border border-slate-400 text-xs">
             <thead>
               <tr className="bg-slate-100 font-black border-b border-slate-400">
                 <th className="py-2 border-r border-slate-400">المادة الدراسية</th>

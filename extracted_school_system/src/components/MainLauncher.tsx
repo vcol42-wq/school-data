@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActiveView } from '../types';
 import { 
   CalendarDays, 
@@ -19,7 +19,11 @@ import {
   ClipboardList,
   UserCheck,
   Trash2,
-  KeyRound
+  KeyRound,
+  Clock3,
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2
 } from 'lucide-react';
 
 interface MainLauncherProps {
@@ -40,10 +44,33 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
   staffCount,
   onOpenVoiceModal,
   config,
-  onResetData
+  onResetData,
+  scheduleMap
 }) => {
   const [iconShape, setIconShape] = useState<'squircle' | 'round'>('squircle');
   const [copiedCode, setCopiedCode] = useState(false);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const todayRows = scheduleMap?.[dayNames[now.getDay()]] || [];
+  const schoolStart = (config?.schoolStartHour || '08:00').split(':').map(Number);
+  const lessonMinutes = config?.lessonDurationMinutes || 45;
+  const breakMinutes = config?.breakDurationMinutes || 10;
+  const elapsed = (now.getHours() * 60 + now.getMinutes()) - ((schoolStart[0] || 8) * 60 + (schoolStart[1] || 0));
+  const elapsedSeconds = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) - ((schoolStart[0] || 8) * 3600 + (schoolStart[1] || 0) * 60);
+  const slotSize = lessonMinutes + breakMinutes;
+  const currentSlot = elapsed >= 0 ? Math.floor(elapsed / slotSize) : -1;
+  const minuteInSlot = elapsed >= 0 ? elapsed % slotSize : 0;
+  const currentIsBreak = currentSlot >= 0 && minuteInSlot >= lessonMinutes;
+  const currentLessonRemaining = currentSlot >= 0 ? (currentIsBreak ? slotSize * 60 - (elapsedSeconds % (slotSize * 60)) : lessonMinutes * 60 - (elapsedSeconds % (slotSize * 60))) : 0;
+  const currentLessonLabel = currentSlot >= 0 && currentSlot < 6
+    ? (currentIsBreak ? `الفرصة بعد الدرس ${currentSlot + 1}` : `الدرس ${currentSlot + 1}`)
+    : elapsed < 0 ? 'قبل بداية الدوام' : 'انتهى الدوام';
+  const scheduledGaps = todayRows.filter((row: any) => currentSlot >= 0 && currentSlot < 6 && row.lessons?.[`lesson${currentSlot + 1}`]?.isOff).length;
+  const formatMinutes = (seconds: number) => `${String(Math.max(0, Math.floor(seconds / 60))).padStart(2, '0')}:${String(Math.max(0, Math.floor(seconds % 60))).padStart(2, '0')}`;
 
   const launcherItems = [
     // 1. الجدول والحصص
@@ -235,12 +262,12 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
               setCopiedCode(true);
               setTimeout(() => setCopiedCode(false), 2000);
             }}
-            title="انقر لنسخ رمز الاقتران الموحد لربط التطبيقات"
+            title="نسخ رمز الاقتران دون عرضه على الشاشة"
             className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 px-2.5 py-1 rounded-lg border border-amber-500 shadow-xs cursor-pointer hover:scale-102 transition-all"
           >
             <Cloud className="w-3.5 h-3.5 text-indigo-950" />
             <span className="text-[10px] font-black text-slate-800">كود الاقتران:</span>
-            <span className="font-mono font-black text-xs tracking-wider text-indigo-950">{config?.pairingCode || '112233'}</span>
+            <span className="font-mono font-black text-xs tracking-wider text-indigo-950" aria-label="رمز الاقتران مخفي">••••••</span>
             <span className="text-[9px] bg-slate-950 text-amber-300 px-1 py-0.2 rounded font-black">
               {copiedCode ? '✓' : 'نسخ'}
             </span>
@@ -255,9 +282,31 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
         </div>
       </div>
 
+      {/* Director's live pulse */}
+      <section className="director-pulse mb-8 rounded-3xl border-2 border-[var(--theme-card-border)] p-4 md:p-5 shadow-xl">
+        <div className="flex flex-col lg:flex-row items-stretch gap-4">
+          <div className="director-pulse-main flex-1 rounded-2xl p-4 text-white">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-black"><Clock3 className="w-5 h-5 text-amber-300" /> ملخص اليوم الدراسي</div>
+              <span className="text-xs text-white/70">{dayNames[now.getDay()]} • {now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}</span>
+            </div>
+            <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-3">
+              <div><span className="block text-xs text-white/65">الحالة الآن</span><strong className="text-2xl">{currentLessonLabel}</strong></div>
+              <div><span className="block text-xs text-white/65">المتبقي</span><strong className="text-3xl font-mono dir-ltr">{formatMinutes(currentLessonRemaining)}</strong></div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:w-[48%] gap-3">
+            <button onClick={() => setActiveView('students')} className="pulse-stat"><span>الطلاب</span><strong>{studentsCount}</strong><ArrowLeft /></button>
+            <button onClick={() => setActiveView('staff')} className="pulse-stat"><span>الكادر</span><strong>{staffCount}</strong><ArrowLeft /></button>
+            <button onClick={() => setActiveView('schedule')} className={`pulse-stat ${scheduledGaps ? 'pulse-stat-warning' : ''}`}><span>الشواغر الآن</span><strong>{scheduledGaps}</strong>{scheduledGaps ? <AlertTriangle /> : <CheckCircle2 />}</button>
+            <button onClick={() => setActiveView('sync_center')} className="pulse-stat"><span>الربط السحابي</span><strong>جاهز</strong><Cloud /></button>
+          </div>
+        </div>
+      </section>
+
       {/* Desktop App Icons Container */}
       <div 
-        className="relative overflow-hidden bg-white border-4 theme-accent-border rounded-3xl p-6 md:p-8 shadow-xl transition-colors duration-300"
+        className="theme-launcher-panel relative overflow-hidden bg-white border-4 theme-accent-border rounded-3xl p-6 md:p-8 shadow-xl transition-colors duration-300"
       >
         <div className="flex items-center justify-between mb-6 pb-3 border-b-2 border-slate-100">
           <div className="flex items-center gap-2">
@@ -286,7 +335,7 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
               >
                 {/* Icon Box */}
                 <div 
-                  className={`relative w-20 h-20 md:w-22 md:h-22 bg-gradient-to-br ${item.gradient} text-white flex items-center justify-center transition-all duration-300 group-hover:scale-105 border-2 border-white shadow-lg ${
+                  className={`launcher-icon relative w-20 h-20 md:w-22 md:h-22 bg-gradient-to-br ${item.gradient} text-white flex items-center justify-center transition-all duration-300 group-hover:scale-105 border-2 border-white shadow-lg ${
                     iconShape === 'squircle' 
                       ? 'rounded-[26%]' 
                       : 'rounded-full'
@@ -296,7 +345,7 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
                   <div className="absolute inset-0 bg-gradient-to-t from-transparent via-white/10 to-white/20 rounded-[inherit] pointer-events-none" />
 
                   {/* Icon Symbol */}
-                  <IconComponent className="w-9 h-9 md:w-10 md:h-10 text-white drop-shadow-sm group-hover:rotate-3 transition-transform duration-300 z-10" />
+                  <IconComponent className="launcher-icon-symbol w-9 h-9 md:w-10 md:h-10 text-white drop-shadow-sm group-hover:rotate-3 transition-transform duration-300 z-10" />
 
                   {/* Corner Badge */}
                   <span className={`absolute -top-2 -right-2 px-2 py-0.5 rounded-full text-[10px] font-black shadow-lg border-2 border-white ${item.badgeBg}`}>

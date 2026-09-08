@@ -9,7 +9,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Inject
@@ -29,12 +28,7 @@ class AuthRepository @Inject constructor(
         }
         val baseUrl = if (formattedUrl.endsWith("/")) formattedUrl else "$formattedUrl/"
 
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-        val client = OkHttpClient.Builder()
-            .addInterceptor(logging)
-            .build()
+        val client = OkHttpClient.Builder().build()
 
         return Retrofit.Builder()
             .baseUrl(baseUrl)

@@ -56,7 +56,7 @@ export const PrintRosterModal: React.FC<PrintRosterModalProps> = ({
 
         {/* Table */}
         <div className="border border-slate-400 rounded-xl overflow-hidden">
-          <table className="w-full text-center border-collapse text-xs">
+          <table className="data-grid w-full text-center border-collapse text-xs">
             <thead>
               <tr className="bg-slate-200 border-b border-slate-400 font-black">
                 <th className="py-2.5 px-2 border-r border-slate-400">ت</th>

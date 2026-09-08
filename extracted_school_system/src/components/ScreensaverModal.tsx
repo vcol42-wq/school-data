@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { AppConfig } from '../types';
+import { AppConfig, DayScheduleMap } from '../types';
 import { Lock, Clock, Sparkles, BellRing, ArrowLeft, Volume2, ShieldCheck, User, Calendar, BookOpen, Layers } from 'lucide-react';
 import { AppLogo } from './AppLogo';
 
 interface ScreensaverModalProps {
   config: AppConfig;
+  scheduleMap?: DayScheduleMap;
   onUnlock: () => void;
 }
 
@@ -17,7 +18,7 @@ const NATURE_BACKGROUNDS = [
   'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?auto=format&fit=crop&w=1920&q=80', // Peaceful autumn hills
 ];
 
-export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUnlock }) => {
+export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, scheduleMap = {}, onUnlock }) => {
   const [now, setNow] = useState(new Date());
   const [bgIndex, setBgIndex] = useState(0);
   const [hasPlayedChime, setHasPlayedChime] = useState(false);
@@ -104,6 +105,7 @@ export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUn
 
         return {
           type: 'lesson' as const,
+          lessonIndex: i,
           title: lessonNames[i],
           remainingMin,
           remainingSec,
@@ -129,6 +131,7 @@ export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUn
 
         return {
           type: 'break' as const,
+          lessonIndex: i,
           title: `الفرصة المدرسية (${i + 1})`,
           remainingMin,
           remainingSec,
@@ -147,11 +150,12 @@ export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUn
     if (now < todayStart) {
       return {
         type: 'before_school' as const,
+        lessonIndex: -1,
         title: 'قبل بداية الدوام الرسمي',
-        remainingMin: 0,
-        remainingSec: 0,
-        remainingTotalSec: 0,
-        endTimeStr: '--:--',
+        remainingMin: Math.floor((todayStart.getTime() - now.getTime()) / 60000),
+        remainingSec: Math.floor(((todayStart.getTime() - now.getTime()) % 60000) / 1000),
+        remainingTotalSec: Math.max(0, Math.floor((todayStart.getTime() - now.getTime()) / 1000)),
+        endTimeStr: todayStart.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
         nextTitle: 'الدرس الأول',
         nextStartStr: todayStart.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }),
         isEndingSoon: false
@@ -160,6 +164,7 @@ export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUn
 
     return {
       type: 'after_school' as const,
+      lessonIndex: -1,
       title: 'انتهى الدوام المدرسي اليومي',
       remainingMin: 0,
       remainingSec: 0,
@@ -172,6 +177,15 @@ export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUn
   };
 
   const scheduleInfo = calculateLessonSchedule();
+  const daysArabic = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  const todayRows = scheduleMap[daysArabic[now.getDay()]] || [];
+  const lessonKeys = ['lesson1', 'lesson2', 'lesson3', 'lesson4', 'lesson5', 'lesson6'] as const;
+  const currentKey = scheduleInfo.lessonIndex >= 0 ? lessonKeys[scheduleInfo.lessonIndex] : null;
+  const nextKey = scheduleInfo.lessonIndex >= 0 && scheduleInfo.lessonIndex < 5 ? lessonKeys[scheduleInfo.lessonIndex + 1] : null;
+  const formatCountdown = (totalSeconds: number) => {
+    const safe = Math.max(0, totalSeconds);
+    return `${String(Math.floor(safe / 60)).padStart(2, '0')}:${String(safe % 60).padStart(2, '0')}`;
+  };
 
   // Trigger alert sound once when entering warning state (< 3 minutes)
   useEffect(() => {
@@ -282,11 +296,13 @@ export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUn
                 </div>
 
                 {/* Countdown Timer Badge */}
-                {scheduleInfo.type !== 'after_school' && scheduleInfo.type !== 'before_school' && (
+                {scheduleInfo.type !== 'after_school' && (
                   <div className="bg-slate-950/80 px-6 py-3 rounded-2xl border border-amber-400/30 text-center min-w-[180px]">
-                    <span className="block text-[10px] font-bold text-amber-300/80 mb-0.5">الزمن المتبقي:</span>
+                    <span className="block text-[10px] font-bold text-amber-300/80 mb-0.5">
+                      {scheduleInfo.type === 'before_school' ? 'متبقٍ على بداية الدوام:' : 'الزمن المتبقي:'}
+                    </span>
                     <span className="text-2xl md:text-3xl font-black font-mono text-amber-400 dir-ltr">
-                      {String(scheduleInfo.remainingMin).padStart(2, '0')}:{String(scheduleInfo.remainingSec).padStart(2, '0')}
+                      {formatCountdown(scheduleInfo.remainingTotalSec)}
                     </span>
                   </div>
                 )}
@@ -317,6 +333,37 @@ export const ScreensaverModal: React.FC<ScreensaverModalProps> = ({ config, onUn
         </div>
 
       </div>
+
+      {/* TODAY'S LIVE CLASS BOARD */}
+      {todayRows.length > 0 && (
+        <div className="relative z-10 w-full max-w-6xl rounded-2xl border border-white/15 bg-slate-950/65 backdrop-blur-xl p-3 shadow-2xl">
+          <div className="flex items-center justify-between gap-3 mb-2 px-2">
+            <div className="flex items-center gap-2 text-xs font-black text-amber-200">
+              <Layers className="w-4 h-4 text-amber-400" />
+              <span>خريطة حصص الشعب - {daysArabic[now.getDay()]}</span>
+            </div>
+            <span className="text-[10px] text-slate-300">{todayRows.length} شعبة ظاهرة</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 max-h-36 overflow-y-auto custom-scrollbar">
+            {todayRows.map((row) => {
+              const currentCell = currentKey ? row.lessons[currentKey] : undefined;
+              const nextCell = nextKey ? row.lessons[nextKey] : undefined;
+              return (
+                <div key={row.id} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 flex items-center justify-between gap-3">
+                  <div className="min-w-0 text-right">
+                    <span className="block text-[10px] text-slate-400">{row.grade} / شعبة {row.section}</span>
+                    <span className="block truncate text-xs font-black text-white">{currentCell?.isOff ? 'فرصة / شاغرة' : currentCell?.subject || 'لا توجد مادة'}</span>
+                  </div>
+                  <div className={`shrink-0 rounded-lg px-2 py-1 text-[10px] font-black ${currentCell?.isOff ? 'bg-slate-700 text-slate-200' : 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/30'}`}>
+                    {currentKey ? `الحاضر • ${scheduleInfo.lessonIndex + 1}` : 'خارج الجدول'}
+                  </div>
+                  {nextCell && <div className="hidden lg:block text-left text-[10px] text-slate-400 max-w-24 truncate">التالي: {nextCell.isOff ? 'فرصة' : nextCell.subject}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* FOOTER UNLOCK HINT */}
       <div className="relative z-10 flex items-center gap-2 text-xs md:text-sm font-bold text-slate-200 bg-white/15 px-6 py-3 rounded-full border border-white/20 backdrop-blur-xl shadow-xl hover:bg-white/25 transition-all">

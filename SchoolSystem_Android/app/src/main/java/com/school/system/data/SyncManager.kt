@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 import javax.inject.Singleton
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
@@ -38,11 +37,7 @@ class SyncManager @Inject constructor(
         }
         val url = if (formattedUrl.endsWith("/")) formattedUrl else "$formattedUrl/"
         
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
         val client = OkHttpClient.Builder()
-            .addInterceptor(logging)
             .build()
 
         return Retrofit.Builder()

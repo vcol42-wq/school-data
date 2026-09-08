@@ -194,7 +194,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       {/* Royal Purple Top Header Bar with Bounded Side Borders & Ornate Frame */}
       <div className="sticky top-0 z-40 w-full px-2 sm:px-4 py-1.5 pointer-events-none">
         <header 
-          className="max-w-7xl mx-auto rounded-2xl bg-white text-slate-900 border-4 theme-accent-border relative overflow-hidden pointer-events-auto shadow-2xl transition-colors duration-300"
+          className="theme-shell-header max-w-7xl mx-auto rounded-2xl bg-white text-slate-900 border-4 theme-accent-border relative overflow-hidden pointer-events-auto shadow-2xl transition-colors duration-300"
           style={{
             boxShadow: '0px 8px 0px 0px rgba(15, 23, 42, 0.1), 0px 12px 24px -2px rgba(88, 28, 135, 0.1)'
           }}
@@ -231,7 +231,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               </button>
 
               {/* School Name & Manager Info */}
-              <div className="flex flex-col text-right leading-tight">
+              <div className="header-school-identity flex flex-col text-right leading-tight">
                 <span className="font-black text-xs md:text-sm text-indigo-900 drop-shadow-sm">
                   {config.schoolName}
                 </span>
@@ -244,18 +244,23 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             {/* Center Section: App Brand (The Principal Logo & Title) */}
             <div 
               onClick={() => setActiveView('launcher')}
-              className="cursor-pointer hover:opacity-95 transition-opacity px-2 py-0.5 rounded-2xl bg-slate-50 border border-slate-200 shadow-inner"
+              className="header-brand cursor-pointer hover:opacity-95 transition-opacity px-2 py-0.5 rounded-2xl bg-slate-50 border border-slate-200 shadow-inner"
             >
               <AppLogo size="md" showText={true} />
             </div>
 
             {/* Left Section: Live Date & Time Widget */}
             <div className="flex items-center gap-2 shrink-0">
-              <div className="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-black text-slate-700 shadow-inner">
+              <div className="header-clock hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-200 px-3.5 py-1.5 rounded-xl text-xs font-black text-slate-700 shadow-inner">
                 <Clock className="w-4 h-4 text-indigo-600 animate-pulse shrink-0" />
                 <span>{dayName}، {now.toLocaleDateString('ar-IQ', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                 <span className="text-slate-300">|</span>
                 <span className="font-mono dir-ltr text-slate-900 text-xs font-black">{now.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+              </div>
+              <div className={`header-lesson-status hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[10px] font-black ${activeLessonInfo.isWarning ? 'header-lesson-warning' : ''}`}>
+                <BellRing className="w-3.5 h-3.5" />
+                <span>{activeLessonInfo.lessonName}</span>
+                <span className="font-mono dir-ltr">{formatRemaining(activeLessonInfo.remainingSeconds)}</span>
               </div>
 
               {/* Quick Mobile Pairing Button with Generated Code Display */}

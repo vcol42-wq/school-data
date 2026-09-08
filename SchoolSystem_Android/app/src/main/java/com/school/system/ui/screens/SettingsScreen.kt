@@ -133,11 +133,11 @@ class SettingsViewModel @Inject constructor(
             _connectionStatus.value = when (response.code) {
                 200 -> "السحابة: متصل ومصادق ✓ (المزامنة السحابية نشطة)"
                 401, 403 -> "السحابة: متصل ولكن يتطلب تفعيل الصلاحيات (401)"
-                404 -> "السحابة: لم يتم العثور على مدرسة برمز $schoolId"
-                else -> "السحابة: استجابة (${response.code})"
+                404 -> "السحابة: تعذر العثور على بيانات المدرسة"
+                else -> "السحابة: تعذر إكمال الفحص (رمز ${response.code})"
             }
         } catch (e: Exception) {
-            _connectionStatus.value = "السحابة: خطأ '${e.localizedMessage}'"
+            _connectionStatus.value = "السحابة: تعذر إكمال الفحص، حاول مرة أخرى"
         }
     }
 

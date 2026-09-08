@@ -26,10 +26,10 @@ export const StudentRosterTable: React.FC<StudentRosterTableProps> = ({
   onDeleteStudent
 }) => {
   return (
-    <div className="bg-white rounded-2xl border-2 border-slate-400 shadow-xl overflow-hidden">
+    <div className="data-grid-shell bg-white rounded-2xl border-2 border-slate-400 shadow-xl overflow-hidden">
       <div className="overflow-x-auto custom-scrollbar">
         {activeTab === 'active' ? (
-          <table className="w-full text-center border-collapse text-xs">
+          <table className="data-grid w-full text-center border-collapse text-xs">
             <thead>
               <tr className="bg-slate-900 text-white font-black border-b-3 border-amber-400 text-xs">
                 <th className="py-3.5 px-2 border-r border-slate-700 w-10 text-center whitespace-nowrap text-amber-300">ت</th>
@@ -170,7 +170,7 @@ export const StudentRosterTable: React.FC<StudentRosterTableProps> = ({
           </table>
         ) : (
           /* Former Students Archive Table */
-          <table className="w-full text-center border-collapse min-w-[1300px] text-xs">
+          <table className="data-grid w-full text-center border-collapse min-w-[1300px] text-xs">
             <thead>
               <tr className="bg-gradient-to-r from-rose-800 via-rose-700 to-amber-700 text-white font-black border-b-2 border-rose-400 text-xs">
                 <th className="py-3.5 px-3 border-r border-rose-600 w-12 text-center whitespace-nowrap">ت</th>

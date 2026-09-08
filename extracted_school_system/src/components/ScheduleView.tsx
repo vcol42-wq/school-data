@@ -62,6 +62,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 }) => {
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('الأحد');
   const [activeSlotIndex, setActiveSlotIndex] = useState<number | null>(null);
+  const [scheduleNow, setScheduleNow] = useState(() => new Date());
   const [editingCell, setEditingCell] = useState<{
     rowId: string;
     lessonKey: keyof ClassScheduleRow['lessons'];
@@ -350,11 +351,21 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   };
 
   const slotTimings = calculateSlotTimings();
+  const activeTiming = activeSlotIndex === null ? null : slotTimings[activeSlotIndex];
+  const activeRemainingSeconds = activeTiming
+    ? Math.max(0, Math.floor(((
+      Number(activeTiming.end.split(':')[0]) * 3600 +
+      Number(activeTiming.end.split(':')[1]) * 60
+    ) - (scheduleNow.getHours() * 3600 + scheduleNow.getMinutes() * 60 + scheduleNow.getSeconds()))))
+    : 0;
+  const formatScheduleCountdown = (seconds: number) =>
+    `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
 
   // Determine active slot based on system clock
   useEffect(() => {
     const checkActiveSlot = () => {
       const now = new Date();
+      setScheduleNow(now);
       const currentMin = now.getHours() * 60 + now.getMinutes();
 
       let activeIdx: number | null = null;
@@ -374,7 +385,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     };
 
     checkActiveSlot();
-    const interval = setInterval(checkActiveSlot, 5000);
+    const interval = setInterval(checkActiveSlot, 1000);
     return () => clearInterval(interval);
   }, [config]);
 
@@ -569,6 +580,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           <p className="text-xs text-[var(--theme-text-muted)] mt-1">
             مدة الدرس: {config.lessonDurationMinutes} دقيقة | مدة الفرصة: {config.breakDurationMinutes} دقائق | بداية الدوام: {config.schoolStartHour} صباحاً
           </p>
+          <div className={`inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-xl border text-xs font-black ${activeTiming ? 'bg-amber-100 text-amber-950 border-amber-300' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+            <Clock className="w-3.5 h-3.5" />
+            <span>{activeTiming ? `${activeTiming.type === 'break' ? 'الفرصة الحالية' : activeTiming.name} — متبقٍ` : 'لا توجد حصة جارية الآن'}</span>
+            {activeTiming && <strong className="font-mono dir-ltr">{formatScheduleCountdown(activeRemainingSeconds)}</strong>}
+          </div>
         </div>
 
         {/* Days Bar */}

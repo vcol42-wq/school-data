@@ -3,7 +3,6 @@ package com.school.system.data.network
 import com.school.system.data.dao.ConfigDao
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Inject
@@ -14,12 +13,7 @@ class GeminiAssistantService @Inject constructor(
     private val configDao: ConfigDao
 ) {
     private val geminiApi: GeminiApi by lazy {
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
-        val client = OkHttpClient.Builder()
-            .addInterceptor(logging)
-            .build()
+        val client = OkHttpClient.Builder().build()
 
         Retrofit.Builder()
             .baseUrl("https://generativelanguage.googleapis.com/")

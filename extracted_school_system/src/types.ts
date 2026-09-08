@@ -22,7 +22,7 @@ export type ActiveView =
   | 'mobile_dashboard'
   | 'teacher_authority';
 
-export type AppTheme = 'default';
+export type AppTheme = 'cream' | 'burgundy' | 'sky' | 'emerald' | 'night' | 'moon';
 
 export type AppFont = 'tajawal' | 'cairo' | 'amiri' | 'alexandria' | 'noto';
 

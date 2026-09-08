@@ -32,5 +32,9 @@ Start-Sleep -Milliseconds 500
 Remove-Item -Path "..\LATEST_BUILDS\The_Principal_v6_Desktop_App" -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path "..\LATEST_BUILDS\The_Principal_v6_Desktop_App" -Force | Out-Null
 Copy-Item -Path "dist_electron\win-unpacked\*" -Destination "..\LATEST_BUILDS\The_Principal_v6_Desktop_App" -Recurse -Force
+if (Test-Path "..\The_Principal_Portable\resources") {
+    Copy-Item -Path "dist_electron\win-unpacked\resources\app.asar" -Destination "..\The_Principal_Portable\resources\app.asar" -Force
+}
 
 Write-Host "SUCCESS: Desktop App v6.0 completely built and packaged with 100% updated assets!"
+

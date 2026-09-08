@@ -469,7 +469,7 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
       {/* Main Grades Matrix Table (جدول المواد المعتمدة ودرجة آخر شهر والنتيجة الآلية) */}
       <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-xl overflow-hidden">
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-center border-collapse text-xs min-w-[980px]">
+          <table className="data-grid w-full text-center border-collapse text-xs min-w-[980px]">
             <thead>
               <tr className="bg-gradient-to-r from-amber-700 via-amber-600 to-orange-700 text-white font-black border-b-2 border-amber-400 text-xs">
                 <th className="py-2.5 px-1 border-r border-amber-500 w-8 text-center whitespace-nowrap text-[11px]">ت</th>
@@ -659,7 +659,7 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
 
             {/* Detailed Grade Breakdown Table */}
             <div className="overflow-x-auto border-2 border-slate-200 rounded-2xl shadow-inner max-h-[60vh]">
-              <table className="w-full text-center border-collapse text-xs min-w-[950px]">
+              <table className="data-grid w-full text-center border-collapse text-xs min-w-[950px]">
                 <thead className="sticky top-0 bg-slate-900 text-white font-black z-10">
                   <tr className="text-xs">
                     <th className="py-3 px-3 border-r border-slate-700 text-right min-w-[150px]">المادة الدراسية</th>

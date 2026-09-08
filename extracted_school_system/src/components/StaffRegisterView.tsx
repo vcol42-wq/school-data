@@ -29,6 +29,7 @@ import {
   Save
 } from 'lucide-react';
 import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
+import { printElement } from '../utils/printHelper';
 
 interface StaffRegisterViewProps {
   staffList: StaffMember[];
@@ -778,7 +779,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
       </div>
 
       {/* Horizontal Scroll Quick Bar & Table View */}
-      <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-lg overflow-hidden">
+      <div className="data-grid-shell bg-white rounded-2xl border-2 border-slate-300 shadow-lg overflow-hidden">
         
         {/* Quick Top Scroll Strip / Control Indicator */}
         <div className="bg-slate-100 border-b border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-700 font-bold">
@@ -819,7 +820,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
           id="staff-table-scroll-container" 
           className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] scrollbar-thin scrollbar-thumb-sky-500"
         >
-          <table className="w-full text-center border-collapse min-w-[1250px] text-xs">
+          <table className="data-grid w-full text-center border-collapse min-w-[1250px] text-xs">
             <thead className="sticky top-0 z-20 shadow-md">
               <tr className="bg-gradient-to-r from-sky-800 via-indigo-800 to-purple-800 text-white font-black border-b-2 border-indigo-400 text-xs">
                 <th className="py-3.5 px-2.5 border-r border-indigo-600 w-10 text-center whitespace-nowrap">ت</th>
@@ -1445,7 +1446,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
       {/* Printable Staff Roster Modal */}
       {showPrintStaffModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white text-slate-900 rounded-3xl p-8 max-w-4xl w-full shadow-2xl space-y-6 my-8 print-page relative border-2 border-slate-800 dir-rtl">
+          <div id="staff-roster-printable-area" className="bg-white text-slate-900 rounded-3xl p-8 max-w-4xl w-full shadow-2xl space-y-6 my-8 print-page relative border-2 border-slate-800 dir-rtl">
             
             {/* Header Official Letterhead */}
             <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4">
@@ -1477,7 +1478,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
 
             {/* Table */}
             <div className="border border-slate-400 rounded-xl overflow-hidden">
-              <table className="w-full text-center border-collapse text-xs">
+              <table className="data-grid w-full text-center border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-200 border-b border-slate-400 font-black">
                     <th className="py-2.5 px-2 border-r border-slate-400">ت</th>
@@ -1535,7 +1536,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
               </button>
 
               <button
-                onClick={() => window.print()}
+                onClick={() => printElement('staff-roster-printable-area', { title: 'سجل الكادر الموحد', orientation: 'landscape' })}
                 className="flex-1 py-3 rounded-2xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-black shadow-xl flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Printer className="w-4 h-4" />

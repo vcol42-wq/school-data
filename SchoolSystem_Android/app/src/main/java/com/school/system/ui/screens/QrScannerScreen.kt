@@ -247,7 +247,9 @@ fun QrScannerScreen(
                                 }
                             }
 
-                            // Details Container
+                            // Do not echo the QR payload here: it contains the cloud key,
+                            // tenant id and pairing secret. The payload is only handed to
+                            // the pairing flow after explicit confirmation.
                             Surface(
                                 color = Color(0xFFF8FAFC),
                                 shape = RoundedCornerShape(12.dp),
@@ -260,7 +262,7 @@ fun QrScannerScreen(
                                 ) {
                                     if (details.teacherName.isNotBlank()) {
                                         Text(
-                                            "الاسم: ${details.teacherName}", 
+                                            "الحساب: ${details.teacherName}",
                                             fontWeight = FontWeight.Bold, 
                                             fontSize = 13.sp, 
                                             color = Color(0xFF1E293B)
@@ -274,20 +276,16 @@ fun QrScannerScreen(
                                             color = Color(0xFF334155)
                                         )
                                     }
-                                    if (details.code.isNotBlank()) {
-                                        Text(
-                                            "رمز الدخول (PIN): ${details.code}", 
-                                            fontSize = 12.sp, 
-                                            color = Color(0xFF475569)
-                                        )
-                                    }
-                                    if (details.schoolId.isNotBlank()) {
-                                        Text(
-                                            "معرف المدرسة: ${details.schoolId}", 
-                                            fontSize = 11.sp, 
-                                            color = Color(0xFF64748B)
-                                        )
-                                    }
+                                    Text(
+                                        "بيانات اتصال آمنة جاهزة للإقران",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF475569)
+                                    )
+                                    Text(
+                                        "لن يتم عرض رمز الربط أو معرف المدرسة على الشاشة",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF64748B)
+                                    )
                                 }
                             }
 
