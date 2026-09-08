@@ -37,7 +37,7 @@ import {
   Wifi,
   WifiOff
 } from 'lucide-react';
-import { isSupabaseConfigured, getSupabaseKey, supabase } from '../utils/supabaseClient';
+import { isSupabaseConfigured, getSupabaseKey, getSupabase, supabase } from '../utils/supabaseClient';
 import { sendPairingRequest } from '../utils/syncService';
 import { generateSecureOtp } from '../utils/uploadTokens';
 
@@ -176,19 +176,35 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const [pairingRequests, setPairingRequests] = useState<any[]>([]);
   const [isUploadingSchoolData, setIsUploadingSchoolData] = useState(false);
 
-  // Poll pairing requests from the cloud server
+  // Poll pairing requests from the cloud server (Supabase join_requests)
   useEffect(() => {
     let interval: any;
     const fetchPairings = async () => {
       try {
         const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
-        const response = await fetch(`/api/sync/pairing-requests?schoolId=${activeSchoolId}`);
-        const data = await response.json();
-        if (data.success && data.pairings) {
-          setPairingRequests(data.pairings);
+        const client = getSupabase(activeSchoolId);
+        const { data, error } = await client
+          .from('join_requests')
+          .select('*')
+          .or(`school_id.eq.${activeSchoolId},school_id.eq.school_01`)
+          .eq('role', 'teacher')
+          .order('created_at', { ascending: false });
+
+        if (!error && data) {
+          const mapped = data.map((r: any) => ({
+            id: r.id,
+            teacherName: r.full_name || 'معلم غير معروف',
+            subject: r.subject_specialty || r.subject_name || 'عام',
+            grade: r.class_name || 'غير محدد',
+            section: r.section_name || r.section || 'أ',
+            status: r.status || 'approved',
+            lastActiveTime: r.created_at || new Date().toISOString(),
+            isNewNotification: r.status === 'pending'
+          }));
+          setPairingRequests(mapped);
         }
       } catch (err) {
-        console.error('Error fetching pairing requests:', err);
+        console.error('Error fetching pairing requests from Supabase:', err);
       }
     };
 
@@ -200,16 +216,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const handleApprovePairing = async (pairingId: string) => {
     try {
       const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
-      const response = await fetch('/api/sync/approve-pairing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'approve' })
-      });
-      const data = await response.json();
-      if (data.success) {
+      const client = getSupabase(activeSchoolId);
+      const { error } = await client
+        .from('join_requests')
+        .update({ status: 'approved' })
+        .eq('id', pairingId);
+
+      if (!error) {
         setPairingRequests(prev => prev.map(p => p.id === pairingId ? { ...p, status: 'approved', isNewNotification: false } : p));
       } else {
-        alert(data.error || 'فشلت عملية الموافقة.');
+        alert('فشلت عملية الموافقة: ' + error.message);
       }
     } catch (err) {
       console.error('Error approving pairing:', err);
@@ -220,17 +236,13 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   const handleDismissNotification = async (pairingId: string) => {
     try {
       const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
-      const response = await fetch('/api/sync/approve-pairing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'dismiss_notification' })
-      });
-      const data = await response.json();
-      if (data.success) {
-        setPairingRequests(prev => prev.map(p => p.id === pairingId ? { ...p, isNewNotification: false } : p));
-      } else {
-        alert(data.error || 'فشل اعتماد التنبيه.');
-      }
+      const client = getSupabase(activeSchoolId);
+      await client
+        .from('join_requests')
+        .update({ status: 'approved' })
+        .eq('id', pairingId);
+
+      setPairingRequests(prev => prev.map(p => p.id === pairingId ? { ...p, isNewNotification: false } : p));
     } catch (err) {
       console.error('Error dismissing notification:', err);
     }
@@ -240,16 +252,16 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
     if (!confirm('هل أنت متأكد من إيقاف هذا الربط وطلب إعادة قراءة الرمز من المعلم؟')) return;
     try {
       const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
-      const response = await fetch('/api/sync/approve-pairing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'reread' })
-      });
-      const data = await response.json();
-      if (data.success) {
+      const client = getSupabase(activeSchoolId);
+      const { error } = await client
+        .from('join_requests')
+        .update({ status: 'reread' })
+        .eq('id', pairingId);
+
+      if (!error) {
         setPairingRequests(prev => prev.map(p => p.id === pairingId ? { ...p, status: 'reread', isNewNotification: false } : p));
       } else {
-        alert(data.error || 'فشلت عملية إيقاف الربط.');
+        alert('فشلت عملية إيقاف الربط.');
       }
     } catch (err) {
       console.error('Error revoking pairing:', err);
@@ -258,23 +270,22 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   };
 
   const handleRejectPairing = async (pairingId: string) => {
-    if (!confirm('هل أنت متأكد من رفض وحذف طلب الاقتران هذا؟')) return;
+    if (!confirm('هل أنت متأكد من حذف هذا السجل نهائياً؟')) return;
     try {
       const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
-      const response = await fetch('/api/sync/approve-pairing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ schoolId: activeSchoolId, pairingId, action: 'reject' })
-      });
-      const data = await response.json();
-      if (data.success) {
+      const client = getSupabase(activeSchoolId);
+      const { error } = await client
+        .from('join_requests')
+        .delete()
+        .eq('id', pairingId);
+
+      if (!error) {
         setPairingRequests(prev => prev.filter(p => p.id !== pairingId));
       } else {
-        alert(data.error || 'فشلت عملية الحذف.');
+        alert('فشلت عملية الحذف.');
       }
     } catch (err) {
       console.error('Error rejecting pairing:', err);
-      alert('خطأ في الاتصال بالخادم.');
     }
   };
 

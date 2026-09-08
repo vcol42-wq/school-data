@@ -128,6 +128,17 @@ data class SupabaseScheduleDto(
     val schedule_map: Map<String, Any>?
 )
 
+data class SupabaseJoinRequestDto(
+    val school_id: String,
+    val role: String = "teacher",
+    val full_name: String,
+    val class_name: String? = null,
+    val section: String? = null,
+    val subject_name: String? = null,
+    val status: String = "approved",
+    val pairing_code_attempt: String? = null
+)
+
 interface SupabaseApi {
     @GET("rest/v1/schools")
     suspend fun getSchools(
@@ -301,6 +312,15 @@ interface SupabaseApi {
         @Query("or") orFilter: String? = null,
         @Query("id") idFilter: String? = null
     ): Response<List<SupabaseScheduleDto>>
+
+    @POST("rest/v1/join_requests")
+    @Headers("Prefer: return=representation")
+    suspend fun insertJoinRequest(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Body request: SupabaseJoinRequestDto
+    ): Response<List<SupabaseJoinRequestDto>>
 }
 
 @Singleton
@@ -847,6 +867,27 @@ class SyncRepository @Inject constructor(
                     )
                 )
 
+                // Register presence in join_requests in Supabase
+                try {
+                    api.insertJoinRequest(
+                        apiKey = apiKey,
+                        auth = authHeader,
+                        schoolId = schoolId,
+                        request = SupabaseJoinRequestDto(
+                            school_id = schoolId,
+                            role = "teacher",
+                            full_name = matchedTeacher.name,
+                            class_name = "الأول",
+                            section = "أ",
+                            subject_name = matchedTeacher.specialization?.ifBlank { "عام" } ?: "عام",
+                            status = "approved",
+                            pairing_code_attempt = pairingCode
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.w("SyncRepository", "Non-blocking presence registration: ${e.message}")
+                }
+
                 // Download Roster exclusively for this registered teacher
                 val rosterSuccess = downloadRoster(schoolId, matchedTeacher.id, url, apiKey)
                 if (rosterSuccess) {
@@ -875,6 +916,26 @@ class SyncRepository @Inject constructor(
                             isActivated = true
                         )
                     )
+
+                    try {
+                        api.insertJoinRequest(
+                            apiKey = apiKey,
+                            auth = authHeader,
+                            schoolId = schoolId,
+                            request = SupabaseJoinRequestDto(
+                                school_id = schoolId,
+                                role = "teacher",
+                                full_name = savedName,
+                                class_name = "عام",
+                                section = "أ",
+                                subject_name = "عام",
+                                status = "approved",
+                                pairing_code_attempt = pairingCode.ifBlank { cleanInput }
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.w("SyncRepository", "Non-blocking presence registration: ${e.message}")
+                    }
 
                     // Pair successfully without flooding the phone with all 30+ school classes
                     PairingResult(
@@ -1413,6 +1474,33 @@ class SyncRepository @Inject constructor(
                         Log.e("SyncRepository", "Insert Attendance failed code: ${attResp.code()}, body: $errBody")
                     }
                 }
+            }
+
+            // 3. Register/Update teacher active presence in join_requests in Supabase
+            try {
+                val currentConfig = configDao.getConfig().first()
+                val finalTeacherName = (currentConfig?.managerName?.takeIf { it.isNotBlank() } 
+                    ?: teacherId 
+                    ?: "المدرس").trim()
+
+                api.insertJoinRequest(
+                    apiKey = apiKey,
+                    auth = authHeader,
+                    schoolId = cleanSchoolId,
+                    request = SupabaseJoinRequestDto(
+                        school_id = cleanSchoolId,
+                        role = "teacher",
+                        full_name = finalTeacherName,
+                        class_name = targetGrade?.ifBlank { null } ?: "الأول",
+                        section = targetSection?.ifBlank { null } ?: "أ",
+                        subject_name = targetSubject?.ifBlank { null } ?: "المادة العامة",
+                        status = "approved",
+                        pairing_code_attempt = currentConfig?.pairingCode
+                    )
+                )
+                Log.d("SyncRepository", "Teacher presence updated in join_requests for $finalTeacherName")
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "Non-blocking: could not update presence in join_requests: ${e.message}")
             }
 
             true
