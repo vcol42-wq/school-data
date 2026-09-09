@@ -22,7 +22,8 @@ import {
   Trash2
 } from 'lucide-react';
 import { importGradesAndAttendance, normalizeArabic } from '../utils/syncService';
-import { standardizeSubjectName } from '../utils/syncEngine';
+import { standardizeSubjectName, standardizeGradeName, standardizeSectionName } from '../utils/syncEngine';
+import { Portal } from './common/Portal';
 
 interface StudentGradesViewProps {
   students: Student[];
@@ -292,15 +293,48 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
     }
   };
 
-  // Filtered and Alphabetically Sorted list
+  // Filtered and Alphabetically Sorted list with Smart Arabic & Grade matching
   const filteredStudents = students
-    .filter(
-      s => (selectedGrade !== 'الكل' ? s.currentGrade === selectedGrade : true) && 
-           (selectedSection !== 'الكل' ? s.section === selectedSection : true) && 
-           ['active', 'مستمر', 'muted'].includes(s.status) &&
-           (`${s.firstName} ${s.secondName || ''} ${s.thirdName || ''} ${s.titleName || ''}`.includes(searchQuery) ||
-            (s.recordNumber && s.recordNumber.includes(searchQuery)))
-    )
+    .filter(s => {
+      const isContinuing = ['active', 'مستمر', 'muted'].includes(s.status);
+      if (!isContinuing) return false;
+
+      const query = searchQuery.trim();
+      if (query) {
+        const full = `${s.firstName} ${s.secondName || ''} ${s.thirdName || ''} ${s.fourthName || ''} ${s.titleName || ''} ${s.fullName || ''}`
+          .toLowerCase()
+          .replace(/[أإآ]/g, 'ا')
+          .replace(/ة/g, 'ه')
+          .replace(/ى/g, 'ي')
+          .replace(/[\u064B-\u065F\u0670]/g, '')
+          .replace(/ـ/g, '');
+        const cleanQuery = query
+          .toLowerCase()
+          .replace(/[أإآ]/g, 'ا')
+          .replace(/ة/g, 'ه')
+          .replace(/ى/g, 'ي')
+          .replace(/[\u064B-\u065F\u0670]/g, '')
+          .replace(/ـ/g, '');
+
+        const matchesQuery = full.includes(cleanQuery) || 
+                             (s.recordNumber && s.recordNumber.includes(cleanQuery));
+        if (!matchesQuery) return false;
+      }
+
+      if (selectedGrade !== 'الكل') {
+        const stdG = standardizeGradeName(s.currentGrade);
+        const selG = standardizeGradeName(selectedGrade);
+        if (stdG !== selG && s.currentGrade !== selectedGrade) return false;
+      }
+
+      if (selectedSection !== 'الكل') {
+        const stdS = standardizeSectionName(s.section);
+        const selS = standardizeSectionName(selectedSection);
+        if (stdS !== selS && s.section !== selectedSection) return false;
+      }
+
+      return true;
+    })
     .sort((a, b) => {
       const nameA = [a.firstName, a.secondName, a.thirdName, a.fourthName, a.titleName].filter(Boolean).join(' ').trim();
       const nameB = [b.firstName, b.secondName, b.thirdName, b.fourthName, b.titleName].filter(Boolean).join(' ').trim();
@@ -548,7 +582,17 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
 
                       {/* 3. Full Name */}
                       <td className="py-2 px-2.5 font-black border-r border-slate-200 text-right whitespace-nowrap text-slate-950 text-xs">
-                        {std.firstName} {std.secondName} {std.thirdName} {std.fourthName || ''} {std.titleName || ''}
+                        <div className="flex items-center gap-1.5 justify-start">
+                          <span>{std.firstName} {std.secondName} {std.thirdName} {std.fourthName || ''} {std.titleName || ''}</span>
+                          {std.addedByTeacher && (
+                            <span 
+                              className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-purple-100 text-purple-800 border border-purple-300 shrink-0" 
+                              title="تمت إضافة هذا الطالب من قبل مدرس المادة في تطبيق الهاتف"
+                            >
+                              مضاف من الأستاذ 👨‍🏫
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 4. Grade & Section */}
@@ -630,208 +674,222 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
 
       {/* Modal 1: Full Expandable Student Grade Sheet (تفصيل الدرجات الشامل كشهادة النتيجة) */}
       {expandedStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white border-2 border-amber-400 rounded-3xl p-6 max-w-5xl w-full shadow-2xl space-y-5 my-6">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b pb-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-md">
-                  <Award className="w-6 h-6" />
+        <Portal>
+          <div 
+            onClick={(e) => { if (e.target === e.currentTarget) setExpandedStudent(null); }}
+            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in dir-rtl"
+          >
+            <div className="bg-white border-2 border-amber-400 rounded-3xl max-w-5xl w-full shadow-2xl flex flex-col max-h-[85vh] md:max-h-[90vh] overflow-hidden">
+              
+              {/* Modal Header */}
+              <div className="p-5 border-b shrink-0 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500 text-white rounded-2xl shadow-md">
+                    <Award className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900">
+                      بطاقة وسجل الدرجات التفصيلي للطالب (سجل الأستاذ الشامل)
+                    </h3>
+                    <p className="text-xs text-slate-600 font-bold">
+                      الطالب: <span className="text-amber-800 font-black text-sm">{expandedStudent.firstName} {expandedStudent.secondName} {expandedStudent.thirdName} {expandedStudent.fourthName || ''} {expandedStudent.titleName || ''}</span> | رقم القيد: #{expandedStudent.recordNumber} | الصف: {expandedStudent.currentGrade} ({expandedStudent.section})
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-900">
-                    بطاقة وسجل الدرجات التفصيلي للطالب (سجل الأستاذ الشامل)
-                  </h3>
-                  <p className="text-xs text-slate-600 font-bold">
-                    الطالب: <span className="text-amber-800 font-black text-sm">{expandedStudent.firstName} {expandedStudent.secondName} {expandedStudent.thirdName} {expandedStudent.fourthName || ''} {expandedStudent.titleName || ''}</span> | رقم القيد: #{expandedStudent.recordNumber} | الصف: {expandedStudent.currentGrade} ({expandedStudent.section})
-                  </p>
-                </div>
+
+                <button 
+                  onClick={() => setExpandedStudent(null)}
+                  className="p-2 rounded-xl bg-white hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer border shadow-xs"
+                  title="إغلاق النافذة"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              <button 
-                onClick={() => setExpandedStudent(null)}
-                className="p-2 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Detailed Grade Breakdown Table */}
-            <div className="overflow-x-auto border-2 border-slate-200 rounded-2xl shadow-inner max-h-[60vh]">
-              <table className="data-grid w-full text-center border-collapse text-xs min-w-[950px]">
-                <thead className="sticky top-0 bg-slate-900 text-white font-black z-10">
-                  <tr className="text-xs">
-                    <th className="py-3 px-3 border-r border-slate-700 text-right min-w-[150px]">المادة الدراسية</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-sky-950/40">ش1</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-sky-950/40">ش2</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-blue-900/60 font-black text-blue-200">معدل ف1</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-indigo-900/60 font-black text-amber-300">نصف السنة</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-purple-950/40">ش3</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-purple-950/40">ش4</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-purple-900/60 font-black text-purple-200">معدل ف2</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-amber-900/60 font-black text-amber-200">السعي السنوي</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-slate-800">نهائي د1</th>
-                    <th className="py-3 px-2 border-r border-slate-700 bg-slate-800">نهائي د2</th>
-                    <th className="py-3 px-3 bg-emerald-900 font-black text-white">الدرجة النهائية</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {subjectList.map(subj => {
-                    const m = getStudentMarkForSubject(expandedStudent, subj);
-                    const isFinalPass = m.finalGrade >= 50;
-
-                    return (
-                      <tr key={subj} className="hover:bg-amber-50/40 transition-colors">
-                        
-                        {/* Subject Title */}
-                        <td className="py-2.5 px-3 border-r border-slate-200 text-right font-black text-slate-900">
-                          {subj}
-                        </td>
-
-                        {/* M1 */}
-                        <td className="py-1.5 px-1 border-r border-slate-200">
-                          <input 
-                            type="number" min="0" max="100"
-                            value={m.m1MonthAvg || ''}
-                            onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm1MonthAvg', parseInt(e.target.value, 10) || 0)}
-                            className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
-                          />
-                        </td>
-
-                        {/* M2 */}
-                        <td className="py-1.5 px-1 border-r border-slate-200">
-                          <input 
-                            type="number" min="0" max="100"
-                            value={m.m2MonthAvg || ''}
-                            onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm2MonthAvg', parseInt(e.target.value, 10) || 0)}
-                            className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
-                          />
-                        </td>
-
-                        {/* Term 1 Avg */}
-                        <td className="py-2.5 px-1.5 border-r border-slate-200 font-mono font-bold text-blue-900 bg-blue-50/50">
-                          {m.term1Avg || 0}
-                        </td>
-
-                        {/* Midterm */}
-                        <td className="py-1.5 px-1 border-r border-slate-200 bg-amber-50/40">
-                          <input 
-                            type="number" min="0" max="100"
-                            value={m.midtermFinalGrade || ''}
-                            onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'midtermFinalGrade', parseInt(e.target.value, 10) || 0)}
-                            className="w-12 text-center p-1 rounded border-2 border-amber-300 font-mono font-black text-xs bg-white"
-                          />
-                        </td>
-
-                        {/* M3 */}
-                        <td className="py-1.5 px-1 border-r border-slate-200">
-                          <input 
-                            type="number" min="0" max="100"
-                            value={m.m3MonthAvg || ''}
-                            onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm3MonthAvg', parseInt(e.target.value, 10) || 0)}
-                            className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
-                          />
-                        </td>
-
-                        {/* M4 */}
-                        <td className="py-1.5 px-1 border-r border-slate-200">
-                          <input 
-                            type="number" min="0" max="100"
-                            value={m.m4MonthAvg || ''}
-                            onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm4MonthAvg', parseInt(e.target.value, 10) || 0)}
-                            className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
-                          />
-                        </td>
-
-                        {/* Term 2 Avg */}
-                        <td className="py-2.5 px-1.5 border-r border-slate-200 font-mono font-bold text-purple-900 bg-purple-50/50">
-                          {m.term2Avg || 0}
-                        </td>
-
-                        {/* Annual Average */}
-                        <td className="py-2.5 px-1.5 border-r border-slate-200 font-mono font-black text-amber-900 bg-amber-100/60">
-                          {m.annualAverage || 0}
-                        </td>
-
-                        {/* Final D1 */}
-                        <td className="py-1.5 px-1 border-r border-slate-200">
-                          <input 
-                            type="number" min="0" max="100"
-                            value={m.finalWrittenD1 || ''}
-                            onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'finalWrittenD1', parseInt(e.target.value, 10) || 0)}
-                            className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
-                          />
-                        </td>
-
-                        {/* Final D2 */}
-                        <td className="py-1.5 px-1 border-r border-slate-200">
-                          <input 
-                            type="number" min="0" max="100"
-                            value={m.finalWrittenD2 ?? ''}
-                            onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'finalWrittenD2', e.target.value ? parseInt(e.target.value, 10) : null)}
-                            placeholder="—"
-                            className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
-                          />
-                        </td>
-
-                        {/* Final Grade */}
-                        <td className={`py-2.5 px-2 font-mono font-black text-sm ${
-                          isFinalPass ? 'text-slate-900 bg-slate-50' : 'text-rose-600 bg-rose-50'
-                        }`}>
-                          {m.finalGrade || 0}
-                        </td>
-
+              {/* Scrollable Detailed Grade Breakdown Table */}
+              <div className="p-4 overflow-y-auto flex-1">
+                <div className="overflow-x-auto border-2 border-slate-200 rounded-2xl shadow-inner">
+                  <table className="data-grid w-full text-center border-collapse text-xs min-w-[950px]">
+                    <thead className="sticky top-0 bg-slate-900 text-white font-black z-10">
+                      <tr className="text-xs">
+                        <th className="py-3 px-3 border-r border-slate-700 text-right min-w-[150px]">المادة الدراسية</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-sky-950/40">ش1</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-sky-950/40">ش2</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-blue-900/60 font-black text-blue-200">معدل ف1</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-indigo-900/60 font-black text-amber-300">نصف السنة</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-purple-950/40">ش3</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-purple-950/40">ش4</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-purple-900/60 font-black text-purple-200">معدل ف2</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-amber-900/60 font-black text-amber-200">السعي السنوي</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-slate-800">نهائي د1</th>
+                        <th className="py-3 px-2 border-r border-slate-700 bg-slate-800">نهائي د2</th>
+                        <th className="py-3 px-3 bg-emerald-900 font-black text-white">الدرجة النهائية</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200">
+                      {subjectList.map(subj => {
+                        const m = getStudentMarkForSubject(expandedStudent, subj);
 
-            {/* Modal Footer */}
-            <div className="flex items-center justify-between pt-3 border-t">
-              <div className="text-xs font-bold text-slate-600">
-                💡 يتم حساب معدلات الفصول والسعي السنوي والدرجة النهائية تلقائياً فور كتابة الدرجات.
+                        return (
+                          <tr key={subj} className="hover:bg-amber-50/40 transition-colors">
+                            <td className="py-2.5 px-3 border-r border-slate-200 font-black text-right text-slate-900 bg-slate-50">
+                              {subj}
+                            </td>
+
+                            {/* M1 */}
+                            <td className="py-1.5 px-1 border-r border-slate-200">
+                              <input 
+                                type="number" min="0" max="100"
+                                value={m.m1MonthAvg || ''}
+                                onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm1MonthAvg', parseInt(e.target.value, 10) || 0)}
+                                className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
+                              />
+                            </td>
+
+                            {/* M2 */}
+                            <td className="py-1.5 px-1 border-r border-slate-200">
+                              <input 
+                                type="number" min="0" max="100"
+                                value={m.m2MonthAvg || ''}
+                                onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm2MonthAvg', parseInt(e.target.value, 10) || 0)}
+                                className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
+                              />
+                            </td>
+
+                            {/* Term 1 Avg */}
+                            <td className="py-2.5 px-1.5 border-r border-slate-200 font-mono font-bold text-blue-900 bg-blue-50/50">
+                              {m.term1Avg || 0}
+                            </td>
+
+                            {/* Midterm Final */}
+                            <td className="py-1.5 px-1 border-r border-slate-200 bg-amber-50/40">
+                              <input 
+                                type="number" min="0" max="100"
+                                value={m.midtermFinalGrade || ''}
+                                onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'midtermFinalGrade', parseInt(e.target.value, 10) || 0)}
+                                className="w-12 text-center p-1 rounded border-2 border-amber-300 font-mono font-black text-xs bg-white"
+                              />
+                            </td>
+
+                            {/* M3 */}
+                            <td className="py-1.5 px-1 border-r border-slate-200">
+                              <input 
+                                type="number" min="0" max="100"
+                                value={m.m3MonthAvg || ''}
+                                onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm3MonthAvg', parseInt(e.target.value, 10) || 0)}
+                                className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
+                              />
+                            </td>
+
+                            {/* M4 */}
+                            <td className="py-1.5 px-1 border-r border-slate-200">
+                              <input 
+                                type="number" min="0" max="100"
+                                value={m.m4MonthAvg || ''}
+                                onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'm4MonthAvg', parseInt(e.target.value, 10) || 0)}
+                                className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
+                              />
+                            </td>
+
+                            {/* Term 2 Avg */}
+                            <td className="py-2.5 px-1.5 border-r border-slate-200 font-mono font-bold text-purple-900 bg-purple-50/50">
+                              {m.term2Avg || 0}
+                            </td>
+
+                            {/* Annual Average */}
+                            <td className="py-2.5 px-1.5 border-r border-slate-200 font-mono font-black text-amber-900 bg-amber-100/60">
+                              {m.annualAverage || 0}
+                            </td>
+
+                            {/* Final D1 */}
+                            <td className="py-1.5 px-1 border-r border-slate-200">
+                              <input 
+                                type="number" min="0" max="100"
+                                value={m.finalWrittenD1 || ''}
+                                onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'finalWrittenD1', parseInt(e.target.value, 10) || 0)}
+                                className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
+                              />
+                            </td>
+
+                            {/* Final D2 */}
+                            <td className="py-1.5 px-1 border-r border-slate-200">
+                              <input 
+                                type="number" min="0" max="100"
+                                value={m.finalWrittenD2 || ''}
+                                onChange={(e) => handleUpdateDetailedMark(expandedStudent.id, subj, 'finalWrittenD2', parseInt(e.target.value, 10) || 0)}
+                                className="w-12 text-center p-1 rounded border border-slate-300 font-mono text-xs"
+                              />
+                            </td>
+
+                            {/* Final Grade */}
+                            <td className="py-2.5 px-2 font-mono font-black text-emerald-950 bg-emerald-50 text-sm">
+                              {m.finalGrade || 0}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <button
-                onClick={() => setExpandedStudent(null)}
-                className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
-              >
-                إغلاق وحفظ التعديلات
-              </button>
-            </div>
 
+              {/* Pinned Sticky Modal Footer - Never gets cut off */}
+              <div className="p-4 bg-slate-50 border-t shrink-0 flex items-center justify-between">
+                <div className="text-xs font-bold text-slate-600">
+                  💡 يتم احتساب السعي السنوي والمعدلات تلقائياً فور كتابة أي درجة.
+                </div>
+                <button
+                  onClick={() => setExpandedStudent(null)}
+                  className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
+                >
+                  إغلاق وحفظ التعديلات ✓
+                </button>
+              </div>
+
+            </div>
           </div>
-        </div>
+        </Portal>
       )}
 
       {/* Modal 2: Edit Subject Name */}
       {editingSubjectIndex !== null && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-4">
-            <h4 className="font-black text-sm text-slate-900">تعديل اسم المادة الدراسية:</h4>
-            <input
-              type="text"
-              value={editingSubjectName}
-              onChange={e => setEditingSubjectName(e.target.value)}
-              className="w-full p-2.5 rounded-xl border-2 border-amber-300 font-bold text-xs"
-            />
-            <div className="flex items-center justify-between pt-3 border-t">
-              <button 
-                onClick={() => handleDeleteSubject(subjectList[editingSubjectIndex])} 
-                className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>حذف هذه المادة 🗑️</span>
-              </button>
-              <div className="flex gap-2">
-                <button onClick={() => setEditingSubjectIndex(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold cursor-pointer">إلغاء</button>
-                <button onClick={() => handleSaveSubjectName(editingSubjectIndex)} className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-black text-xs cursor-pointer">حفظ الاسم</button>
+        <Portal>
+          <div 
+            onClick={(e) => { if (e.target === e.currentTarget) setEditingSubjectIndex(null); }}
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in dir-rtl"
+          >
+            <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 border-2 border-amber-300">
+              <div className="flex items-center justify-between border-b pb-2">
+                <h4 className="font-black text-sm text-slate-900">تعديل اسم المادة الدراسية:</h4>
+                <button 
+                  onClick={() => setEditingSubjectIndex(null)}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={editingSubjectName}
+                onChange={e => setEditingSubjectName(e.target.value)}
+                className="w-full p-2.5 rounded-xl border-2 border-amber-300 font-bold text-xs outline-none focus:border-amber-500"
+              />
+              <div className="flex items-center justify-between pt-2 border-t">
+                <button 
+                  onClick={() => handleDeleteSubject(subjectList[editingSubjectIndex])} 
+                  className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>حذف المادة 🗑️</span>
+                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => setEditingSubjectIndex(null)} className="px-4 py-2 rounded-xl bg-slate-100 text-xs font-bold cursor-pointer">إلغاء</button>
+                  <button onClick={() => handleSaveSubjectName(editingSubjectIndex)} className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-black text-xs cursor-pointer shadow-xs">حفظ الاسم</button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </Portal>
       )}
 
       {/* Modal 3: Add New Subject */}

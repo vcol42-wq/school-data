@@ -73,9 +73,9 @@ data class SupabaseGradeDto(
     val student_record_number: String,
     val subject: String,
     val marks: StudentMarksDto, // Maps directly to PostgreSQL jsonb column via Gson
-    @Transient val grade: String? = null,
-    @Transient val section: String? = null,
-    @Transient val teacher_id: String? = null
+    val grade: String? = null,
+    val section: String? = null,
+    val teacher_id: String? = null
 )
 
 data class SupabaseAttendanceDto(
@@ -196,6 +196,15 @@ interface SupabaseApi {
         @Query("current_grade") gradeFilter: String? = null,
         @Query("section") sectionFilter: String? = null
     ): Response<List<SupabaseStudentDto>>
+
+    @POST("rest/v1/students")
+    @Headers("Prefer: resolution=merge-duplicates")
+    suspend fun upsertStudents(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Body students: List<SupabaseStudentDto>
+    ): Response<Void>
 
     @DELETE("rest/v1/grades")
     suspend fun deleteGrades(
@@ -1414,6 +1423,40 @@ class SyncRepository @Inject constructor(
             // CRITICAL: Deduplicate batch payload to prevent duplicates
             val gradesPayload = rawGradesPayload.distinctBy { "${it.school_id}__${it.student_record_number}__${it.subject}" }
             val attendancePayload = rawAttendancePayload.distinctBy { "${it.school_id}__${it.student_record_number}__${it.date_string ?: it.date}__${it.subject ?: ""}" }
+
+            // 0. Ensure all students in this class are synced to cloud students table (including teacher-added students)
+            val studentsPayload = allStudents.map { student ->
+                val cleanRec = if (student.recordNumber.isNotBlank()) student.recordNumber.trim() else "std_${student.id}"
+                val cleanGrd = standardizeGradeName(student.grade.trim().ifBlank { targetGrade?.trim() ?: "الأول" })
+                val cleanSec = standardizeSectionName(student.section.trim().ifBlank { targetSection?.trim() ?: "أ" })
+                val parts = student.fullName.trim().split("\\s+".toRegex())
+                SupabaseStudentDto(
+                    school_id = cleanSchoolId,
+                    record_number = cleanRec,
+                    first_name = parts.getOrNull(0) ?: student.fullName,
+                    second_name = parts.getOrNull(1),
+                    third_name = parts.getOrNull(2),
+                    fourth_name = if (parts.size > 3) parts.drop(3).joinToString(" ") else null,
+                    title_name = null,
+                    full_name = student.fullName.trim(),
+                    current_grade = cleanGrd,
+                    section = cleanSec,
+                    absences_count = student.historicalAbsences
+                )
+            }.distinctBy { "${it.school_id}__${it.record_number}" }
+
+            if (studentsPayload.isNotEmpty()) {
+                try {
+                    api.upsertStudents(
+                        apiKey = apiKey,
+                        auth = authHeader,
+                        schoolId = cleanSchoolId,
+                        students = studentsPayload
+                    )
+                } catch (e: Exception) {
+                    Log.w("SyncRepository", "Upsert students warning: ${e.message}")
+                }
+            }
 
             // 1. Delete prior grades for subject(s) then insert new
             val uniqueSubjects = gradesPayload.map { it.subject }.distinct()

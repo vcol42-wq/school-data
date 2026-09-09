@@ -162,15 +162,15 @@ export interface StudentNote {
 
 export interface Student {
   id: string;
-  sequence: number;
+  sequence?: number;
   recordNumber: string;
-  registerPageNumber: string;
-  wasatiPageNumber: string;
-  registrationYear: string;
-  previousYearResult: string;
+  registerPageNumber?: string;
+  wasatiPageNumber?: string;
+  registrationYear?: string;
+  previousYearResult?: string;
   currentGrade: string;
   section: string;
-  absencesCount: number;
+  absencesCount?: number;
   finalYearScore?: number;
   isLockedAndSynced?: boolean;
   syncSealToken?: string;
@@ -178,23 +178,26 @@ export interface Student {
   attestationStage?: 'غير مصادق' | 'الفصل الأول' | 'نصف السنة' | 'الفصل الثاني' | 'أخر السنة' | 'الدور الثاني';
   status: 'مستمر' | 'غادر المدرسة' | 'متخرج' | 'مفصول' | 'active' | 'muted' | 'graduated' | 'transferred';
   cloudSyncStatus?: 'synced' | 'pending' | 'disconnected';
-  healthStatus: string;
+  healthStatus?: string;
   firstName: string;
-  secondName: string;
-  thirdName: string;
-  fourthName: string;
-  titleName: string;
-  motherName: string;
-  nationalCardNumber: string;
-  conductScore: string;
-  marksHistory: StudentMark[];
-  notesLog: StudentNote[];
+  secondName?: string;
+  thirdName?: string;
+  fourthName?: string;
+  titleName?: string;
+  motherName?: string;
+  nationalCardNumber?: string;
+  conductScore?: string;
+  marksHistory?: StudentMark[];
+  notesLog?: StudentNote[];
   guardianPhone?: string;
   address?: string;
   previousSchool?: string;
   consecutiveFailureYears?: number;
   currentResult?: string;
   academicStatus?: string;
+  addedByTeacher?: boolean;
+  teacherName?: string;
+  fullName?: string;
 }
 
 // 3. Staff Member Types

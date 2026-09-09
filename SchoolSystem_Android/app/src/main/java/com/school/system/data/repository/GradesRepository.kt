@@ -43,9 +43,9 @@ data class SupabaseGradeDto(
     @SerializedName("student_record_number") val student_record_number: String,
     @SerializedName("subject") val subject: String,
     @SerializedName("marks") val marks: StudentMarksDto,
-    @Transient val grade: String? = null,
-    @Transient val section: String? = null,
-    @Transient val teacher_id: String? = null
+    @SerializedName("grade") val grade: String? = null,
+    @SerializedName("section") val section: String? = null,
+    @SerializedName("teacher_id") val teacher_id: String? = null
 )
 
 data class SecureUploadResponse(

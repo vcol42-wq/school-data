@@ -102,19 +102,60 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
     };
   };
 
+// Smart Arabic text normalizer for accurate search matching
+function normalizeForSearch(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/[\u064B-\u065F\u0670]/g, '') // remove tashkeel
+    .replace(/ـ/g, '') // remove tatweel
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
   // Logic: Handle Add Student
   const handleAddStudentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanGrade = (newStudent.currentGrade && newStudent.currentGrade !== 'الصف الأول') 
+      ? newStudent.currentGrade 
+      : (students[0]?.currentGrade || 'الأول المتوسط');
+
+    const cleanFullName = [
+      newStudent.firstName,
+      newStudent.secondName,
+      newStudent.thirdName,
+      newStudent.fourthName,
+      newStudent.titleName
+    ].filter(Boolean).join(' ').trim();
+
     const studentToAdd: Student = {
       ...newStudent as Student,
       id: `std-${Date.now()}`,
       sequence: students.length + 1,
+      currentGrade: cleanGrade,
+      section: newStudent.section || 'أ',
+      fullName: cleanFullName,
+      status: 'مستمر',
       marksHistory: [],
       notesLog: []
     };
-    setStudents(prev => [...prev, studentToAdd]);
+
+    const updated = [...students, studentToAdd];
+    setStudents(updated);
+    localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+    quickSyncStudentsToSupabase(schoolId, updated);
+
     setShowAddStudentModal(false);
-    alert('تمت إضافة الطالب بنجاح!');
+    setNewStudent({
+      firstName: '', secondName: '', thirdName: '', fourthName: '', titleName: '',
+      motherName: '', nationalCardNumber: '', currentGrade: cleanGrade, section: 'أ',
+      recordNumber: '', status: 'مستمر', healthStatus: 'سليم', absencesCount: 0
+    });
+    alert('تمت إضافة الطالب بنجاح وحفظه في سجل المدرسة وسجل الدرجات والسحابة! ✓');
   };
 
   // Logic: Real AI OCR Scanner
@@ -297,28 +338,49 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
     }));
   }, [students]);
 
-  // Filtered and Sorted Students
+  // Filtered and Sorted Students with Smart Arabic Search
   const filteredStudents = React.useMemo(() => {
+    const query = normalizeForSearch(searchQuery);
+    const queryWords = query ? query.split(' ').filter(Boolean) : [];
+
     const list = students.filter(s => {
       const isContinuing = ['active', 'مستمر', 'muted'].includes(s.status);
       if (activeTab === 'active' && !isContinuing) return false;
       if (activeTab === 'archive' && isContinuing) return false;
 
+      // When searching by query, search globally across the current active/archive tab
+      if (queryWords.length > 0) {
+        const full = normalizeForSearch(`${s.firstName} ${s.secondName || ''} ${s.thirdName || ''} ${s.fourthName || ''} ${s.titleName || ''} ${s.fullName || ''}`);
+        const rec = (s.recordNumber || '').trim();
+        const nat = (s.nationalCardNumber || '').trim();
+
+        const matchesQuery = queryWords.every(w => full.includes(w)) || rec.includes(query) || nat.includes(query);
+        return matchesQuery;
+      }
+
+      // If no query, filter by selected grade and section
       if (selectedGrade !== 'الكل' && s.currentGrade !== selectedGrade) return false;
       if (selectedSection !== 'الكل' && s.section !== selectedSection) return false;
 
-      const query = searchQuery.toLowerCase().trim();
-      if (!query) return true;
-      const fullName = `${s.firstName} ${s.secondName || ''} ${s.thirdName || ''} ${s.fourthName || ''} ${s.titleName || ''}`.toLowerCase();
-      return fullName.includes(query) || (s.recordNumber && s.recordNumber.includes(query)) || (s.nationalCardNumber && s.nationalCardNumber.includes(query));
+      return true;
     });
 
     return list.sort((a, b) => {
+      if (sortOption === 'record') {
+        const rA = parseInt(a.recordNumber, 10) || 0;
+        const rB = parseInt(b.recordNumber, 10) || 0;
+        return rA - rB;
+      }
+      if (sortOption === 'marks') {
+        const mA = a.marksHistory?.reduce((acc, m) => acc + (m.finalGrade || m.total || 0), 0) || 0;
+        const mB = b.marksHistory?.reduce((acc, m) => acc + (m.finalGrade || m.total || 0), 0) || 0;
+        return mB - mA;
+      }
       const nameA = [a.firstName, a.secondName, a.thirdName, a.fourthName, a.titleName].filter(Boolean).join(' ').trim();
       const nameB = [b.firstName, b.secondName, b.thirdName, b.fourthName, b.titleName].filter(Boolean).join(' ').trim();
       return nameA.localeCompare(nameB, 'ar', { sensitivity: 'base' });
     });
-  }, [students, activeTab, selectedGrade, selectedSection, searchQuery]);
+  }, [students, activeTab, selectedGrade, selectedSection, searchQuery, sortOption]);
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

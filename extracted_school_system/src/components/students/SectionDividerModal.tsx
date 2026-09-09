@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Student } from '../../types';
+import { Portal } from '../common/Portal';
 import { 
   X, 
   Split, 
@@ -119,7 +120,7 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
     if (!previewResult) return;
 
     // Check if any section exceeds max limit
-    const exceeded = Object.entries(previewResult).some(([_, list]) => list.length > MAX_STUDENTS_PER_SECTION);
+    const exceeded = Object.entries(previewResult).some(([_, list]) => (list as Student[]).length > MAX_STUDENTS_PER_SECTION);
     if (exceeded) {
       if (!confirm(`تنبيه: إحدى الشعب تتجاوز الحد الأقصى المقرر (${MAX_STUDENTS_PER_SECTION} طالباً). هل أنت متأكد من المتابعة رغم التحذير؟`)) {
         return;
@@ -128,7 +129,7 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
 
     const studentToSectionMap = new Map<string, string>();
     Object.entries(previewResult).forEach(([sec, list]) => {
-      list.forEach(std => {
+      (list as Student[]).forEach(std => {
         studentToSectionMap.set(std.id, sec);
       });
     });
@@ -151,8 +152,12 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in dir-rtl">
-      <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl border-4 border-indigo-600 shadow-2xl flex flex-col overflow-hidden">
+    <Portal>
+      <div 
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in dir-rtl"
+      >
+        <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl border-4 border-indigo-600 shadow-2xl flex flex-col overflow-hidden">
         
         {/* Header */}
         <div className="p-5 bg-gradient-to-r from-indigo-900 via-indigo-800 to-blue-900 text-white flex items-center justify-between shrink-0">
@@ -348,7 +353,9 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(previewResult).map(([sec, list]) => (
+                {Object.entries(previewResult).map(([sec, rawList]) => {
+                  const list = rawList as Student[];
+                  return (
                   <div key={sec} className="p-4 rounded-2xl bg-white border-2 border-indigo-200 shadow-sm space-y-3">
                     <div className="flex items-center justify-between border-b pb-2">
                       <span className="font-black text-sm text-indigo-700">شعبة ({sec})</span>
@@ -371,7 +378,8 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
                       ))}
                     </div>
                   </div>
-                ))}
+                );
+              })}
               </div>
             </div>
           )}
@@ -402,5 +410,6 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
 
       </div>
     </div>
+  </Portal>
   );
 };

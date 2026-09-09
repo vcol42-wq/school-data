@@ -347,16 +347,29 @@ export async function exportSchoolData(
 
 /**
  * Imports all student grades and attendance records from Supabase
+/**
+ * Imports all student grades and attendance records from Supabase,
+ * detects any new students added by teachers or cloud,
  * and merges them back into the Manager's local students array state.
  */
 export async function importGradesAndAttendance(
   schoolId: string,
   currentStudents: Student[]
-): Promise<{ success: boolean; message: string; updatedStudents?: Student[] }> {
+): Promise<{ success: boolean; message: string; updatedStudents?: Student[]; newStudentsCount?: number }> {
   try {
     const client = getSupabase(schoolId);
 
-    // 1. Fetch all grades matching school_id
+    // 1. Fetch all cloud students matching school_id
+    const { data: dbCloudStudents, error: cloudStudentsError } = await client
+      .from('students')
+      .select('*')
+      .eq('school_id', schoolId);
+
+    if (cloudStudentsError) {
+      console.warn('Notice fetching cloud students:', cloudStudentsError.message);
+    }
+
+    // 2. Fetch all grades matching school_id
     const { data: dbGrades, error: gradesError } = await client
       .from('grades')
       .select('*')
@@ -364,7 +377,7 @@ export async function importGradesAndAttendance(
 
     if (gradesError) throw new Error(`Pull Grades Error: ${gradesError.message}`);
 
-    // 2. Fetch all attendance matching school_id
+    // 3. Fetch all attendance matching school_id
     const { data: dbAttendance, error: attendanceError } = await client
       .from('attendance')
       .select('*')
@@ -372,17 +385,109 @@ export async function importGradesAndAttendance(
 
     if (attendanceError) throw new Error(`Pull Attendance Error: ${attendanceError.message}`);
 
-    // 3. Map grades & attendance to updated students list
-    const updatedStudents = currentStudents.map(std => {
+    // 4. Identify any students from cloud that are NOT in currentStudents
+    // (e.g. added by teacher in mobile app)
+    const newStudents: Student[] = [];
+    const existingRecs = new Set<string>();
+    const existingIds = new Set<string>();
+    const existingNameKeys = new Set<string>();
+
+    currentStudents.forEach(s => {
+      if (s.recordNumber) existingRecs.add(s.recordNumber.trim());
+      if (s.id) existingIds.add(s.id.trim());
+      const nKey = `${normalizeArabic(s.fullName || `${s.firstName} ${s.secondName}`)}_${standardizeGradeName(s.currentGrade)}_${standardizeSectionName(s.section)}`;
+      existingNameKeys.add(nKey);
+    });
+
+    (dbCloudStudents || []).forEach(cs => {
+      const csRec = (cs.record_number || '').trim();
+      const csId = (cs.id || '').trim();
+      const csNameKey = `${normalizeArabic(cs.full_name || `${cs.first_name} ${cs.second_name || ''}`)}_${standardizeGradeName(cs.current_grade)}_${standardizeSectionName(cs.section)}`;
+
+      const exists = (csRec && existingRecs.has(csRec)) ||
+                     (csId && existingIds.has(csId)) ||
+                     existingNameKeys.has(csNameKey);
+
+      if (!exists) {
+        // This student was added by a teacher in the mobile app!
+        const fullName = (cs.full_name || `${cs.first_name} ${cs.second_name || ''} ${cs.third_name || ''}`).trim();
+        const parts = fullName.split(/\s+/);
+        const newStd: Student = {
+          id: cs.id || `std_t_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          recordNumber: cs.record_number || `REC-${Math.floor(1000 + Math.random() * 9000)}`,
+          firstName: cs.first_name || parts[0] || 'طالب جديد',
+          secondName: cs.second_name || parts[1] || '',
+          thirdName: cs.third_name || parts[2] || '',
+          fourthName: cs.fourth_name || parts.slice(3).join(' ') || '',
+          titleName: cs.title_name || '',
+          fullName: fullName,
+          currentGrade: standardizeGradeName(cs.current_grade || 'الأول الابتدائي'),
+          section: standardizeSectionName(cs.section || 'أ'),
+          status: (cs.status as any) || 'مستمر',
+          absencesCount: cs.absences_count || 0,
+          registrationYear: '2025-2026',
+          marksHistory: [],
+          addedByTeacher: true,
+          teacherName: 'الأستاذ'
+        };
+        newStudents.push(newStd);
+        if (csRec) existingRecs.add(csRec);
+        if (csId) existingIds.add(csId);
+        existingNameKeys.add(csNameKey);
+      }
+    });
+
+    // Also check if dbGrades has student_record_number that is neither in currentStudents nor in newStudents
+    (dbGrades || []).forEach(g => {
+      const gRec = (g.student_record_number || '').trim();
+      if (!gRec) return;
+      const exists = existingRecs.has(gRec) || existingIds.has(gRec);
+      if (!exists) {
+        const studentName = g.marks?.studentName || `طالب (${gRec})`;
+        const parts = studentName.split(/\s+/);
+        const newStd: Student = {
+          id: `std_grade_${gRec}`,
+          recordNumber: gRec,
+          firstName: parts[0] || studentName,
+          secondName: parts[1] || '',
+          thirdName: parts[2] || '',
+          fourthName: parts.slice(3).join(' ') || '',
+          titleName: '',
+          fullName: studentName,
+          currentGrade: standardizeGradeName(g.grade || 'الأول الابتدائي'),
+          section: standardizeSectionName(g.section || 'أ'),
+          status: 'مستمر',
+          absencesCount: 0,
+          registrationYear: '2025-2026',
+          marksHistory: [],
+          addedByTeacher: true,
+          teacherName: 'الأستاذ'
+        };
+        newStudents.push(newStd);
+        existingRecs.add(gRec);
+      }
+    });
+
+    // Merge base students with newly discovered teacher-added students
+    const allStudentsToProcess = [...currentStudents, ...newStudents];
+
+    // 5. Map grades & attendance to all students
+    const updatedStudents = allStudentsToProcess.map(std => {
       const stdRec = (std.recordNumber || '').trim();
       const stdAltId = `std_${std.id}`.trim();
       const stdGradeNorm = standardizeGradeName(std.currentGrade);
       const stdSecNorm = standardizeSectionName(std.section);
+      const stdNormName = normalizeArabic(std.fullName || `${std.firstName} ${std.secondName} ${std.thirdName || ''}`.trim());
 
       const studentGrades = (dbGrades || []).filter(g => {
         const gRec = (g.student_record_number || '').trim();
         const recMatches = (stdRec && gRec === stdRec) || (stdRec && gRec.includes(stdRec)) || gRec === stdAltId;
-        if (!recMatches) return false;
+        
+        // Match by name as fallback
+        const gName = g.marks?.studentName || '';
+        const nameMatches = gName && normalizeArabic(gName) === stdNormName;
+
+        if (!recMatches && !nameMatches) return false;
 
         // If cloud grade row has grade & section, ensure they match to prevent cross-over
         if (g.grade && g.section) {
@@ -446,10 +551,24 @@ export async function importGradesAndAttendance(
       };
     });
 
+    // 6. Automatically persist back into localStorage and notify all views
+    try {
+      localStorage.setItem('diyala_school_students', JSON.stringify(updatedStudents));
+      window.dispatchEvent(new Event('school_data_updated'));
+    } catch (storageErr) {
+      console.warn('LocalStorage save warning:', storageErr);
+    }
+
+    const newCount = newStudents.length;
+    const msg = newCount > 0
+      ? `تم سحب وتحديث درجات وغيابات الطلاب بنجاح (${dbGrades?.length || 0} سجل درجات). تم اكتشاف وإدراج ${newCount} طالب جديد مضاف من الأستاذ 👨‍🏫!`
+      : `تم سحب وتحديث درجات وغيابات الطلاب بنجاح (${dbGrades?.length || 0} سجل سحابي)!`;
+
     return {
       success: true,
-      message: `تم سحب وتحديث درجات وغيابات الطلاب بنجاح (${dbGrades?.length || 0} سجل سحابي)!`,
-      updatedStudents
+      message: msg,
+      updatedStudents,
+      newStudentsCount: newCount
     };
   } catch (error: any) {
     console.error('Import Error:', error);

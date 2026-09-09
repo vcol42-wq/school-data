@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Award, X, CheckCircle2, GraduationCap, AlertCircle, ArrowRight, UserMinus, ShieldAlert } from 'lucide-react';
 import { Student } from '../../types';
+import { Portal } from '../common/Portal';
 
 interface PromotionModalProps {
   isOpen: boolean;
@@ -63,28 +64,39 @@ export const PromotionModal: React.FC<PromotionModalProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-white border-2 border-amber-400 rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-5 my-6 dir-rtl">
-        
-        {/* Modal Header */}
-        <div className="flex items-center justify-between border-b pb-3">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-amber-500 text-white rounded-2xl shadow-md">
-              <Award className="w-6 h-6" />
+    <Portal>
+      <div 
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+      >
+        <div className="bg-white border-2 border-amber-400 rounded-3xl max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh] md:max-h-[90vh] overflow-hidden dir-rtl">
+          
+          {/* Modal Header */}
+          <div className="p-5 border-b shrink-0 flex items-center justify-between bg-gradient-to-r from-amber-50 to-orange-50">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-amber-500 text-white rounded-2xl shadow-md">
+                <Award className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900">
+                  نظام الترفيع والترحيل الوزاري التلقائي للعام الدراسي الجديد
+                </h3>
+                <p className="text-xs text-slate-500 font-bold">
+                  تطبيق القواعد الوزارية الصارمة للناجحين، الخريجين، المفصولين، والمنقولين للمسائي
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-lg font-black text-slate-900">
-                نظام الترفيع والترحيل الوزاري التلقائي للعام الدراسي الجديد
-              </h3>
-              <p className="text-xs text-slate-500 font-bold">
-                تطبيق القواعد الوزارية الصارمة للناجحين، الخريجين، المفصولين، والمنقولين للمسائي
-              </p>
-            </div>
+            <button 
+              onClick={onClose} 
+              className="p-2 rounded-xl bg-white hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer border shadow-xs"
+              title="إغلاق النافذة"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button onClick={onClose} className="p-2 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-600 transition-colors cursor-pointer">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+
+          {/* Scrollable Modal Body */}
+          <div className="p-6 overflow-y-auto flex-1 space-y-4">
 
         {/* Configuration Options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -171,15 +183,16 @@ export const PromotionModal: React.FC<PromotionModalProps> = ({
           <div className="pt-2 text-[11px] text-slate-500 font-bold">
             🔒 <span className="font-black text-slate-700">الأرشفة التلقائية:</span> جميع الخريجين والمفصولين والمنقولين للمسائي يُحذفون فوراً من قائمة المستمرين وتُحفظ سجلاتهم كاملة في أيقونة الطلاب السابقين (الخزن المحلي).
           </div>
+          </div>
         </div>
 
-        {/* Modal Actions */}
-        <div className="flex items-center justify-between pt-3 border-t">
+        {/* Sticky Pinned Footer - Never gets cut off */}
+        <div className="p-4 bg-slate-50 border-t shrink-0 flex items-center justify-between">
           <button
             onClick={onClose}
             className="px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-black transition-colors cursor-pointer"
           >
-            إلغاء
+            إلغاء التراجع
           </button>
           
           <button
@@ -192,11 +205,12 @@ export const PromotionModal: React.FC<PromotionModalProps> = ({
             className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 text-xs font-black shadow-lg transition-all cursor-pointer"
           >
             <Award className="w-4 h-4" />
-            <span>تنفيذ الترحيل والأرشفة للعام الجديد</span>
+            <span>تنفيذ الترحيل والأرشفة للعام الجديد 🚀</span>
           </button>
         </div>
 
       </div>
     </div>
+  </Portal>
   );
 };

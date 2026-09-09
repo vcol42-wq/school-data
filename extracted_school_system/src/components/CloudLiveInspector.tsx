@@ -28,6 +28,7 @@ import {
   Key
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { Portal } from './common/Portal';
 import { Student, StaffMember, AppConfig, DayScheduleMap } from '../types';
 import { 
   exportSchoolDataWithProgress, 
@@ -257,6 +258,24 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
       setTimeout(() => setActionMsg(null), 3000);
     } else {
       setActionMsg({ type: 'error', text: res.message });
+    }
+  };
+
+  const handleClearTableDirectly = async (tableName: string, title: string) => {
+    if (tableName === 'schools') {
+      alert('لا يمكن مسح سجل هوية المدرسة الأساسي.');
+      return;
+    }
+    if (!confirm(`⚠️ تأكيد التصفير السحابي المباشر:\n\nهل أنت متأكد من رغبتك في تصفير ومسح كافة سجلات جدول (${title}) لهذه المدرسة من السحابة تماماً؟\n\nلن تتأثر بياناتك المحلية في الحاسوب، لكن سيتم تفريغ الجدول السحابي فوراً.`)) return;
+
+    setIsLoadingStats(true);
+    const res = await clearCloudTable(schoolId, tableName);
+    setIsLoadingStats(false);
+    if (res.success) {
+      alert(`✅ ${res.message}`);
+      await loadCloudStats();
+    } else {
+      alert(`❌ تنبيه: ${res.message}`);
     }
   };
 
@@ -603,58 +622,185 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
                   <p className="text-[10px] text-slate-400 font-mono mt-0.5">table: {card.tableName}</p>
                 </div>
 
-                <button
-                  onClick={() => handleOpenTablePreview(card.tableName, card.title)}
-                  className="w-full py-1.5 rounded-xl bg-white hover:bg-indigo-600 hover:text-white text-indigo-700 text-xs font-black border border-indigo-200 flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>معاينة وتعديل السجلات 👁️</span>
-                </button>
+                <div className="flex items-center gap-1.5 pt-1">
+                  <button
+                    onClick={() => handleOpenTablePreview(card.tableName, card.title)}
+                    className="flex-1 py-1.5 rounded-xl bg-white hover:bg-indigo-600 hover:text-white text-indigo-700 text-xs font-black border border-indigo-200 flex items-center justify-center gap-1 transition-all cursor-pointer shadow-xs"
+                    title="معاينة وتعديل سجلات الجدول"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>معاينة 👁️</span>
+                  </button>
+                  {card.tableName !== 'schools' && (
+                    <button
+                      onClick={() => handleClearTableDirectly(card.tableName, card.title)}
+                      className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 text-xs font-black border border-rose-200 flex items-center justify-center gap-1 transition-all cursor-pointer shadow-xs"
+                      title={`تصفير وتفريغ جدول (${card.title}) من السحابة`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>تصفير</span>
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Cloud Data Preview Modal with Editing & Deletion */}
-      {previewTableName && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-3xl border-4 border-indigo-600 shadow-2xl flex flex-col overflow-hidden">
-            
-            {/* Modal Header */}
-            <div className="p-5 bg-gradient-to-r from-indigo-900 to-blue-900 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-3">
-                <Database className="w-6 h-6 text-amber-400 shrink-0" />
-                <div>
-                  <h3 className="text-base font-black">
-                    مستكشف وتعديل السجلات الحية: {previewTableTitle}
-                  </h3>
-                  <p className="text-xs text-indigo-200 font-mono">
-                    جدول: {previewTableName} | إجمالي المعروض: {previewRows.length} سجل
-                  </p>
-                </div>
-              </div>
+      {/* Cloud Purge & Reset Control Hub */}
+      <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-indigo-950 p-6 rounded-3xl border-3 border-rose-500 shadow-xl text-white space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-rose-500 rounded-2xl shadow-md">
+              <Trash2 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-rose-300">
+                لوحة تصفير وإعادة تعيين بيانات السحابة (Cloud Purge & Reset Hub)
+              </h3>
+              <p className="text-xs text-slate-300 font-bold">
+                أزرار فورية لتصفير معلومات معينة في السحابة لبدء دورة امتحانية أو سنة دراسية جديدة
+              </p>
+            </div>
+          </div>
+          <span className="text-[11px] font-mono px-3 py-1 bg-white/10 rounded-full text-rose-200 border border-rose-400/30">
+            School ID: {schoolId}
+          </span>
+        </div>
 
-              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between sm:justify-end">
-                {previewTableName !== 'schools' && previewRows.length > 0 && (
-                  <button
-                    onClick={handleClearEntireTable}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-700 text-white font-black text-xs transition-all cursor-pointer"
-                    title="تفريغ هذا الجدول بالكامل من السحابة"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>تفريغ الجدول بالكامل</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => setPreviewTableName(null)}
-                  className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-all"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+          <button
+            onClick={() => handleClearTableDirectly('grades', 'الدرجات المرصودة')}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-rose-900/40 hover:bg-rose-800/80 border border-rose-500/50 hover:border-rose-400 text-right transition-all cursor-pointer shadow-xs group"
+          >
+            <div className="flex items-center gap-2.5">
+              <ShieldCheck className="w-5 h-5 text-rose-400 group-hover:scale-110 transition-transform" />
+              <div>
+                <div className="text-xs font-black text-white">تصفير سجل الدرجات السحابي</div>
+                <div className="text-[10px] text-slate-400">مسح كافة درجات الشهور والفصول والنهائي</div>
               </div>
             </div>
+            <Trash2 className="w-4 h-4 text-rose-400" />
+          </button>
+
+          <button
+            onClick={() => handleClearTableDirectly('attendance', 'الغيابات المسجلة')}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-purple-900/40 hover:bg-purple-800/80 border border-purple-500/50 hover:border-purple-400 text-right transition-all cursor-pointer shadow-xs group"
+          >
+            <div className="flex items-center gap-2.5">
+              <Calendar className="w-5 h-5 text-purple-400 group-hover:scale-110 transition-transform" />
+              <div>
+                <div className="text-xs font-black text-white">تصفير سجل الغيابات السحابي</div>
+                <div className="text-[10px] text-slate-400">مسح سجلات الحضور والغياب اليومية</div>
+              </div>
+            </div>
+            <Trash2 className="w-4 h-4 text-purple-400" />
+          </button>
+
+          <button
+            onClick={() => handleClearTableDirectly('schedules', 'الجدول الأسبوعي')}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-amber-900/40 hover:bg-amber-800/80 border border-amber-500/50 hover:border-amber-400 text-right transition-all cursor-pointer shadow-xs group"
+          >
+            <div className="flex items-center gap-2.5">
+              <Calendar className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform" />
+              <div>
+                <div className="text-xs font-black text-white">تصفير جدول الحصص الأسبوعي</div>
+                <div className="text-[10px] text-slate-400">تفريغ خريطة الجدول السحابي لتوليد جدول جديد</div>
+              </div>
+            </div>
+            <Trash2 className="w-4 h-4 text-amber-400" />
+          </button>
+
+          <button
+            onClick={() => handleClearTableDirectly('students', 'الطلاب المسجلون')}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-emerald-900/40 hover:bg-emerald-800/80 border border-emerald-500/50 hover:border-emerald-400 text-right transition-all cursor-pointer shadow-xs group"
+          >
+            <div className="flex items-center gap-2.5">
+              <GraduationCap className="w-5 h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <div>
+                <div className="text-xs font-black text-white">تصفير سجل الطلاب السحابي</div>
+                <div className="text-[10px] text-slate-400">مسح قوائم الطلاب السحابية للعام الجديد</div>
+              </div>
+            </div>
+            <Trash2 className="w-4 h-4 text-emerald-400" />
+          </button>
+
+          <button
+            onClick={() => handleClearTableDirectly('subject_assignments', 'الرموز وتفويض الكادر')}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-indigo-900/40 hover:bg-indigo-800/80 border border-indigo-500/50 hover:border-indigo-400 text-right transition-all cursor-pointer shadow-xs group"
+          >
+            <div className="flex items-center gap-2.5">
+              <Key className="w-5 h-5 text-indigo-400 group-hover:scale-110 transition-transform" />
+              <div>
+                <div className="text-xs font-black text-white">تصفير الرموز السرية والتفويض</div>
+                <div className="text-[10px] text-slate-400">إلغاء أكواد الربط لتوليد تفويضات جديدة للكادر</div>
+              </div>
+            </div>
+            <Trash2 className="w-4 h-4 text-indigo-400" />
+          </button>
+
+          <button
+            onClick={handleDeepPurgeAndSync}
+            disabled={isSyncing}
+            className="flex items-center justify-between p-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 border border-amber-300/40 text-right transition-all cursor-pointer shadow-md group disabled:opacity-50"
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-5 h-5 text-yellow-300 group-hover:rotate-12 transition-transform" />
+              <div>
+                <div className="text-xs font-black text-white">تطهير جذري شامل ومزامنة نقية 🧼</div>
+                <div className="text-[10px] text-amber-100">مسح المكررات والحروف ثم إعادة رفع البيانات</div>
+              </div>
+            </div>
+            <RefreshCw className={`w-4 h-4 text-white ${isSyncing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Cloud Data Preview Modal with Editing & Deletion */}
+      {previewTableName && (
+        <Portal>
+          <div 
+            onClick={(e) => { if (e.target === e.currentTarget) setPreviewTableName(null); }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in"
+          >
+            <div className="bg-white w-full max-w-6xl max-h-[90vh] rounded-3xl border-4 border-indigo-600 shadow-2xl flex flex-col overflow-hidden">
+              
+              {/* Modal Header */}
+              <div className="p-5 bg-gradient-to-r from-indigo-900 to-blue-900 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <Database className="w-6 h-6 text-amber-400 shrink-0" />
+                  <div>
+                    <h3 className="text-base font-black">
+                      مستكشف وتعديل السجلات الحية: {previewTableTitle}
+                    </h3>
+                    <p className="text-xs text-indigo-200 font-mono">
+                      جدول: {previewTableName} | إجمالي المعروض: {previewRows.length} سجل
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-stretch sm:self-auto justify-between sm:justify-end">
+                  {previewTableName !== 'schools' && (
+                    <button
+                      onClick={handleClearEntireTable}
+                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs transition-all cursor-pointer shadow-sm"
+                      title="تفريغ هذا الجدول بالكامل من السحابة"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>تفريغ هذا الجدول بالكامل 🗑️</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => setPreviewTableName(null)}
+                    className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer transition-all"
+                    title="إغلاق النافذة"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
 
             {/* Notification message */}
             {actionMsg && (
@@ -786,6 +932,7 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
 
           </div>
         </div>
+      </Portal>
       )}
 
     </div>
