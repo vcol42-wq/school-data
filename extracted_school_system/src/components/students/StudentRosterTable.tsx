@@ -27,7 +27,42 @@ export const StudentRosterTable: React.FC<StudentRosterTableProps> = ({
 }) => {
   return (
     <div className="data-grid-shell bg-white rounded-2xl border-2 border-slate-400 shadow-xl overflow-hidden">
-      <div className="overflow-x-auto custom-scrollbar">
+      
+      {/* Quick Top Scroll Strip / Control Indicator */}
+      <div className="bg-slate-100 border-b border-slate-300 px-4 py-2 flex items-center justify-between text-xs text-slate-700 font-bold">
+        <div className="flex items-center gap-2">
+          <span className="bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-md text-[11px] font-black">
+            ↔️ شريط التمرير الجانبي المباشر:
+          </span>
+          <span className="text-slate-600 hidden sm:inline">
+            يمكنك التمرير يميناً ويساراً لتصفح كافة بيانات الطلاب أو استخدام الأزرار:
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('students-roster-scroll-container');
+              if (el) el.scrollBy({ left: -300, behavior: 'smooth' });
+            }}
+            className="px-3 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1 active:scale-95"
+          >
+            <span>⬅️ تمرير لليسار</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById('students-roster-scroll-container');
+              if (el) el.scrollBy({ left: 300, behavior: 'smooth' });
+            }}
+            className="px-3 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1 active:scale-95"
+          >
+            <span>➡️ تمرير لليمين</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="students-roster-scroll-container" className="overflow-x-auto custom-scrollbar">
         {activeTab === 'active' ? (
           <table className="data-grid w-full text-center border-collapse text-xs">
             <thead>

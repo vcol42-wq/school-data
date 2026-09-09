@@ -1,8 +1,11 @@
 package com.school.system.data
 
+import android.content.Intent
 import android.util.Log
 import com.school.system.data.dao.*
 import com.school.system.data.model.*
+import com.school.system.widget.DailyScheduleWidgetProvider
+import com.school.system.widget.FullScheduleWidgetProvider
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import retrofit2.Response
@@ -1758,6 +1761,21 @@ class SyncRepository @Inject constructor(
             if (scheduleJson != null) {
                 val prefs = context.getSharedPreferences("diyala_school_prefs", android.content.Context.MODE_PRIVATE)
                 prefs.edit().putString("synced_schedule", scheduleJson).apply()
+
+                try {
+                    val widgetIntent1 = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
+                        action = DailyScheduleWidgetProvider.ACTION_REFRESH_WIDGET
+                    }
+                    context.sendBroadcast(widgetIntent1)
+
+                    val widgetIntent2 = Intent(context, FullScheduleWidgetProvider::class.java).apply {
+                        action = FullScheduleWidgetProvider.ACTION_REFRESH_WIDGET
+                    }
+                    context.sendBroadcast(widgetIntent2)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
                 true
             } else {
                 false

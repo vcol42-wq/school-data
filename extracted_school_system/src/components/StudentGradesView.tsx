@@ -293,10 +293,32 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
     }
   };
 
+  // Sync students from localStorage if updated elsewhere
+  React.useEffect(() => {
+    const handleDataUpdate = () => {
+      try {
+        const saved = localStorage.getItem('diyala_school_students');
+        if (saved && saved !== 'undefined') {
+          const list = JSON.parse(saved);
+          if (Array.isArray(list) && list.length > 0) {
+            setStudents(list);
+          }
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('school_data_updated', handleDataUpdate);
+    window.addEventListener('storage', handleDataUpdate);
+    return () => {
+      window.removeEventListener('school_data_updated', handleDataUpdate);
+      window.removeEventListener('storage', handleDataUpdate);
+    };
+  }, [setStudents]);
+
   // Filtered and Alphabetically Sorted list with Smart Arabic & Grade matching
   const filteredStudents = students
     .filter(s => {
-      const isContinuing = ['active', 'مستمر', 'muted'].includes(s.status);
+      // Include student if status is continuing OR missing/empty (to ensure all added students appear)
+      const isContinuing = !s.status || ['active', 'مستمر', 'muted', 'نشط'].includes(s.status);
       if (!isContinuing) return false;
 
       const query = searchQuery.trim();
@@ -318,7 +340,8 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
 
         const matchesQuery = full.includes(cleanQuery) || 
                              (s.recordNumber && s.recordNumber.includes(cleanQuery));
-        if (!matchesQuery) return false;
+        // Global search across grades and sections when query is typed!
+        return matchesQuery;
       }
 
       if (selectedGrade !== 'الكل') {
@@ -498,11 +521,75 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
           </div>
 
         </div>
+
+        {/* Quick Grade & Section Pills */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => { setSelectedGrade('الكل'); setSelectedSection('الكل'); }}
+            className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+              selectedGrade === 'الكل' && selectedSection === 'الكل'
+                ? 'bg-amber-600 text-white border-amber-500 shadow-sm scale-105'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+            }`}
+          >
+            🌟 كافة الصفوف والشعب ({students.filter(s => !s.status || ['active', 'مستمر', 'muted', 'نشط'].includes(s.status)).length} طالب)
+          </button>
+          {uniqueGrades.map(g => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => { setSelectedGrade(g); }}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                selectedGrade === g
+                  ? 'bg-amber-100 text-amber-950 border-amber-300 font-black shadow-xs'
+                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Main Grades Matrix Table (جدول المواد المعتمدة ودرجة آخر شهر والنتيجة الآلية) */}
-      <div className="bg-white rounded-2xl border-2 border-slate-300 shadow-xl overflow-hidden">
-        <div className="overflow-x-auto custom-scrollbar">
+      <div className="data-grid-shell bg-white rounded-2xl border-2 border-slate-300 shadow-xl overflow-hidden">
+        
+        {/* Quick Top Scroll Strip / Control Indicator */}
+        <div className="bg-slate-100 border-b border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-700 font-bold">
+          <div className="flex items-center gap-2">
+            <span className="bg-amber-100 text-amber-900 px-2.5 py-0.5 rounded-md text-[11px] font-black">
+              ↔️ شريط التمرير الجانبي المباشر:
+            </span>
+            <span className="text-slate-600 hidden sm:inline">
+              يمكنك التمرير يميناً ويساراً لتصفح درجات كافة المواد أو استخدام الأزرار:
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('grades-table-scroll-container');
+                if (el) el.scrollBy({ left: -300, behavior: 'smooth' });
+              }}
+              className="px-3 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1 active:scale-95"
+            >
+              <span>⬅️ تمرير لليسار</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('grades-table-scroll-container');
+                if (el) el.scrollBy({ left: 300, behavior: 'smooth' });
+              }}
+              className="px-3 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1 active:scale-95"
+            >
+              <span>➡️ تمرير لليمين</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="grades-table-scroll-container" className="overflow-x-auto custom-scrollbar">
           <table className="data-grid w-full text-center border-collapse text-xs min-w-[980px]">
             <thead>
               <tr className="bg-gradient-to-r from-amber-700 via-amber-600 to-orange-700 text-white font-black border-b-2 border-amber-400 text-xs">

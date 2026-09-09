@@ -142,6 +142,29 @@ export default function App() {
   const [showScreensaver, setShowScreensaver] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
 
+  // Keep students state in sync whenever updated by any view or sync service
+  useEffect(() => {
+    const handleDataUpdate = () => {
+      try {
+        const saved = localStorage.getItem('diyala_school_students');
+        if (saved && saved !== 'undefined') {
+          const list = JSON.parse(saved);
+          if (Array.isArray(list)) {
+            setStudents(list);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to sync students from storage event:', e);
+      }
+    };
+    window.addEventListener('school_data_updated', handleDataUpdate);
+    window.addEventListener('storage', handleDataUpdate);
+    return () => {
+      window.removeEventListener('school_data_updated', handleDataUpdate);
+      window.removeEventListener('storage', handleDataUpdate);
+    };
+  }, []);
+
   // Auto-migrate older configs missing schoolId or pairingCode to clean school identity
   useEffect(() => {
     const targetSchoolId = config.schoolId || `SCH-${Math.floor(1000 + Math.random() * 9000)}`;

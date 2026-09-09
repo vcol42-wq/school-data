@@ -146,6 +146,7 @@ function normalizeForSearch(str: string): string {
     const updated = [...students, studentToAdd];
     setStudents(updated);
     localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+    window.dispatchEvent(new Event('school_data_updated'));
     const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
     quickSyncStudentsToSupabase(schoolId, updated);
 
@@ -273,6 +274,8 @@ function normalizeForSearch(str: string): string {
     });
 
     setStudents(updatedStudents);
+    localStorage.setItem('diyala_school_students', JSON.stringify(updatedStudents));
+    window.dispatchEvent(new Event('school_data_updated'));
     const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
     quickSyncStudentsToSupabase(schoolId, updatedStudents);
 
@@ -292,6 +295,7 @@ function normalizeForSearch(str: string): string {
     });
     setStudents(updated);
     localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+    window.dispatchEvent(new Event('school_data_updated'));
     const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
     quickSyncStudentsToSupabase(schoolId, updated);
   };
@@ -301,6 +305,7 @@ function normalizeForSearch(str: string): string {
       const updated = students.filter(s => s.id !== id);
       setStudents(updated);
       localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+      window.dispatchEvent(new Event('school_data_updated'));
       const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       quickSyncStudentsToSupabase(schoolId, updated);
     }
@@ -630,6 +635,7 @@ function normalizeForSearch(str: string): string {
           const updated = students.map(s => s.id === u.id ? u : s);
           setStudents(updated);
           localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+          window.dispatchEvent(new Event('school_data_updated'));
           const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
           quickSyncStudentsToSupabase(schoolId, updated);
         }}

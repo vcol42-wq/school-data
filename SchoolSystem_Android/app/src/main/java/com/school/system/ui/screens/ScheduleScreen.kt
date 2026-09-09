@@ -3,6 +3,7 @@ package com.school.system.ui.screens
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -229,6 +230,72 @@ fun ScheduleScreen(
                     .padding(innerPadding)
                     .background(currentTheme.backgroundColor)
             ) {
+                // Cloud Sync Banner & Button
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = currentTheme.surfaceColor,
+                    border = BorderStroke(1.dp, currentTheme.primaryColor.copy(alpha = 0.3f)),
+                    shadowElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "مزامنة جدول المدرسة السحابي ⚡",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = currentTheme.textPrimaryColor
+                            )
+                            Text(
+                                text = "تحديث الجدول والودجت مباشرة من السحابة",
+                                fontSize = 11.sp,
+                                color = currentTheme.textSecondaryColor
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                isRefreshing = true
+                                coroutineScope.launch {
+                                    val success = syncManager.downloadSchedule(context)
+                                    isRefreshing = false
+                                    if (success) {
+                                        rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
+                                        Toast.makeText(context, "تمت مزامنة الجدول وتحديث الودجت بنجاح! ⚡", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "تعذر الاتصال بالسحابة أو لم يتم رفع جدول جديد بعد", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
+                            enabled = !isRefreshing,
+                            colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            if (isRefreshing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text("جاري المزامنة...", fontSize = 12.sp, color = Color.White)
+                            } else {
+                                Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(Modifier.width(6.dp))
+                                Text("مزامنة ⚡", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
                 
                 // Mode Switch Tabs (1. جدولي الخاص من اليمين | 2. الجدول العام للمدرسة)
                 Surface(

@@ -590,13 +590,27 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={loadCloudStats}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black transition-all border cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStats ? 'animate-spin' : ''}`} />
-            <span>تحديث العدادات</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => {
+                const el = document.getElementById('cloud-purge-hub-section');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs font-black transition-all cursor-pointer shadow-xs active:scale-95"
+              title="الانتقال الفوري إلى لوحة التصفير والتفريغ السحابي"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>لوحة التصفير والمسح السحابي 🧹</span>
+            </button>
+
+            <button
+              onClick={loadCloudStats}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black transition-all border cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStats ? 'animate-spin' : ''}`} />
+              <span>تحديث العدادات</span>
+            </button>
+          </div>
         </div>
 
         {/* 8 Stats Cards */}
@@ -634,11 +648,11 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
                   {card.tableName !== 'schools' && (
                     <button
                       onClick={() => handleClearTableDirectly(card.tableName, card.title)}
-                      className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 text-xs font-black border border-rose-200 flex items-center justify-center gap-1 transition-all cursor-pointer shadow-xs"
+                      className="px-2.5 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-600 hover:text-white text-rose-800 text-xs font-black border border-rose-300 flex items-center justify-center gap-1 transition-all cursor-pointer shadow-xs active:scale-95"
                       title={`تصفير وتفريغ جدول (${card.title}) من السحابة`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>تصفير</span>
+                      <Trash2 className="w-3.5 h-3.5 text-rose-600 group-hover:text-white" />
+                      <span>تفريغ / مسح 🗑️</span>
                     </button>
                   )}
                 </div>
@@ -649,7 +663,7 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
       </div>
 
       {/* Cloud Purge & Reset Control Hub */}
-      <div className="bg-gradient-to-r from-rose-950 via-slate-900 to-indigo-950 p-6 rounded-3xl border-3 border-rose-500 shadow-xl text-white space-y-4">
+      <div id="cloud-purge-hub-section" className="bg-gradient-to-r from-rose-950 via-slate-900 to-indigo-950 p-6 rounded-3xl border-3 border-rose-500 shadow-xl text-white space-y-4 scroll-mt-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-rose-500 rounded-2xl shadow-md">
@@ -820,10 +834,20 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
                   <span>جاري جلب السجلات الحية مباشرة من خادم Supabase...</span>
                 </div>
               ) : previewRows.length === 0 ? (
-                <div className="py-16 text-center text-slate-400 font-bold text-sm border-2 border-dashed border-slate-200 rounded-2xl">
-                  لا توجد بيانات مخزنة حالياً في جدول <span className="font-mono text-indigo-600">{previewTableName}</span> لهذه المدرسة.
-                  <br />
-                  <span className="text-xs text-slate-500 mt-2 block">اضغط على "بدء الرفع السحابي الشامل" لرفع البيانات.</span>
+                <div className="py-16 text-center text-slate-400 font-bold text-sm border-2 border-dashed border-slate-200 rounded-2xl space-y-3">
+                  <p>لا توجد بيانات مخزنة حالياً في جدول <span className="font-mono text-indigo-600 font-bold">{previewTableName}</span> لهذه المدرسة.</p>
+                  <p className="text-xs text-slate-500">اضغط على "بدء الرفع السحابي الشامل" لرفع البيانات، أو اضغط أدناه لتأكيد تفريغ ومسح أي سجلات سحابية.</p>
+                  {previewTableName !== 'schools' && (
+                    <div className="pt-2">
+                      <button
+                        onClick={handleClearEntireTable}
+                        className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs inline-flex items-center gap-2 cursor-pointer shadow-md active:scale-95"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>تأكيد تفريغ ومسح هذا الجدول من السحابة 🗑️</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto border rounded-2xl shadow-sm">
@@ -917,17 +941,29 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
               )}
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 border-t flex items-center justify-between shrink-0">
+            {/* Modal Footer with Clear & Close Buttons */}
+            <div className="p-4 bg-slate-50 border-t flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
               <span className="text-xs text-slate-500 font-bold">
-                يمكنك تعديل أي قيمة وحفظها مباشرة أو حذف أي سجل غير مرغوب فيه من السحابة بنقرة واحدة.
+                يمكنك تعديل أي قيمة وحفظها مباشرة، أو تفريغ الجدول بالكامل من السحابة بنقرة واحدة.
               </span>
-              <button
-                onClick={() => setPreviewTableName(null)}
-                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs cursor-pointer transition-all"
-              >
-                إغلاق
-              </button>
+              <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+                {previewTableName !== 'schools' && (
+                  <button
+                    onClick={handleClearEntireTable}
+                    className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95"
+                    title="تفريغ هذا الجدول بالكامل من السحابة"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>تفريغ ومسح جدول ({previewTableTitle}) 🗑️</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setPreviewTableName(null)}
+                  className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-black text-xs cursor-pointer transition-all active:scale-95"
+                >
+                  إغلاق النافذة ✕
+                </button>
+              </div>
             </div>
 
           </div>
