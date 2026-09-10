@@ -9,8 +9,18 @@ if exist "%~dp0The_Principal_Portable\The Principal v6.0.exe" (
     exit /b
 )
 
+if exist "%~dp0The_Principal_Portable\The Principal v6.0 Super Edition.exe" (
+    start "" "%~dp0The_Principal_Portable\The Principal v6.0 Super Edition.exe"
+    exit /b
+)
+
 if exist "%~dp0LATEST_BUILDS\The_Principal_v6_Desktop_App\The Principal v6.0 Super Edition.exe" (
     start "" "%~dp0LATEST_BUILDS\The_Principal_v6_Desktop_App\The Principal v6.0 Super Edition.exe"
+    exit /b
+)
+
+if exist "%~dp0LATEST_BUILDS\The_Principal_v6_Desktop_App\The Principal v6.0.exe" (
+    start "" "%~dp0LATEST_BUILDS\The_Principal_v6_Desktop_App\The Principal v6.0.exe"
     exit /b
 )
 

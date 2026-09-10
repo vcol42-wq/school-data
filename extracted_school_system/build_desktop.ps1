@@ -24,16 +24,19 @@ Write-Host "[4/5] Preparing Binaries & Packing ASAR Archive (Synchronous)..."
 New-Item -ItemType Directory -Path "dist_electron\win-unpacked\resources" -Force | Out-Null
 Copy-Item -Path ".\node_modules\electron\dist\*" -Destination "dist_electron\win-unpacked\" -Recurse -Force -Exclude "default_app.asar"
 Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.0.exe" -Force
+Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.0 Super Edition.exe" -Force
 Start-Process -FilePath ".\node_modules\electron\dist\electron.exe" -ArgumentList ".\node_modules\@electron\asar\bin\asar.js pack .\app_staging .\dist_electron\win-unpacked\resources\app.asar" -Wait -NoNewWindow
 
 Write-Host "[5/5] Exporting Final Package to LATEST_BUILDS..."
-Stop-Process -Name "electron", "The Principal v6.0" -Force -ErrorAction SilentlyContinue
+Stop-Process -Name "electron", "The Principal v6.0", "The Principal v6.0 Super Edition" -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 Remove-Item -Path "..\LATEST_BUILDS\The_Principal_v6_Desktop_App" -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path "..\LATEST_BUILDS\The_Principal_v6_Desktop_App" -Force | Out-Null
 Copy-Item -Path "dist_electron\win-unpacked\*" -Destination "..\LATEST_BUILDS\The_Principal_v6_Desktop_App" -Recurse -Force
-if (Test-Path "..\The_Principal_Portable\resources") {
+if (Test-Path "..\The_Principal_Portable") {
     Copy-Item -Path "dist_electron\win-unpacked\resources\app.asar" -Destination "..\The_Principal_Portable\resources\app.asar" -Force
+    Copy-Item -Path "dist_electron\win-unpacked\The Principal v6.0.exe" -Destination "..\The_Principal_Portable\The Principal v6.0.exe" -Force
+    Copy-Item -Path "dist_electron\win-unpacked\The Principal v6.0 Super Edition.exe" -Destination "..\The_Principal_Portable\The Principal v6.0 Super Edition.exe" -Force
 }
 
 Write-Host "SUCCESS: Desktop App v6.0 completely built and packaged with 100% updated assets!"
