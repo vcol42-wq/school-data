@@ -91,9 +91,13 @@ fun ScheduleScreen(
                     if (dayData is List<*>) {
                         for (row in dayData) {
                             if (row is Map<*, *>) {
-                                val grade = row["grade"]?.toString() ?: ""
-                                val section = row["section"]?.toString() ?: ""
-                                val className = "$grade ($section)".trim()
+                                val grade = row["grade"]?.toString()?.trim().orEmpty()
+                                val section = row["section"]?.toString()?.trim().orEmpty()
+                                val className = row["className"]?.toString()?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: listOf(grade, section)
+                                        .filter { it.isNotEmpty() }
+                                        .joinToString(" ")
                                 val lessons = row["lessons"] as? Map<*, *>
                                 if (lessons != null) {
                                     for (i in 1..7) {

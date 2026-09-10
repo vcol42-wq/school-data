@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingTop="2dp"
+    android:paddingBottom="2dp">
+
+    <!-- Row Title (Class Name or Day) -->
+    <TextView
+        android:id="@+id/row_title_text"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
+        android:layout_weight="1.3"
+        android:background="@drawable/widget_item_bg"
+        android:padding="2dp"
+        android:text="الأول (أ)"
+        android:textColor="#38BDF8"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- Lesson 1 Cell -->
+    <TextView
+        android:id="@+id/cell_lesson_1"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
+        android:layout_weight="1"
+        android:layout_marginStart="2dp"
+        android:background="@drawable/widget_item_bg"
+        android:padding="1dp"
+        android:text="رياضيات"
+        android:textColor="#F8FAFC"
+        android:textSize="9.5sp"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- Lesson 2 Cell -->
+    <TextView
+        android:id="@+id/cell_lesson_2"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
+        android:layout_weight="1"
+        android:layout_marginStart="2dp"
+        android:background="@drawable/widget_item_bg"
+        android:padding="1dp"
+        android:text="علوم"
+        android:textColor="#F8FAFC"
+        android:textSize="9.5sp"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- Lesson 3 Cell -->
+    <TextView
+        android:id="@+id/cell_lesson_3"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
+        android:layout_weight="1"
+        android:layout_marginStart="2dp"
+        android:background="@drawable/widget_item_bg"
+        android:padding="1dp"
+        android:text="إسلامية"
+        android:textColor="#F8FAFC"
+        android:textSize="9.5sp"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- Lesson 4 Cell -->
+    <TextView
+        android:id="@+id/cell_lesson_4"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
+        android:layout_weight="1"
+        android:layout_marginStart="2dp"
+        android:background="@drawable/widget_item_bg"
+        android:padding="1dp"
+        android:text="إنجليزي"
+        android:textColor="#F8FAFC"
+        android:textSize="9.5sp"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- Lesson 5 Cell -->
+    <TextView
+        android:id="@+id/cell_lesson_5"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
+        android:layout_weight="1"
+        android:layout_marginStart="2dp"
+        android:background="@drawable/widget_item_bg"
+        android:padding="1dp"
+        android:text="عربي"
+        android:textColor="#F8FAFC"
+        android:textSize="9.5sp"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+    <!-- Lesson 6 Cell -->
+    <TextView
+        android:id="@+id/cell_lesson_6"
+        android:layout_width="0dp"
+        android:layout_height="38dp"
+        android:layout_weight="1"
+        android:layout_marginStart="2dp"
+        android:background="@drawable/widget_item_bg"
+        android:padding="1dp"
+        android:text="رياضة"
+        android:textColor="#F8FAFC"
+        android:textSize="9.5sp"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
+</LinearLayout>

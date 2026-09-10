@@ -11,5 +11,5 @@ package com.example.theboss.data.remote
  */
 object SupabaseConstants {
     // هذه قيم placeholder فقط — القيم الفعلية تُقرأ من SharedPreferences
-    const val PLACEHOLDER_BASE_URL = "https://YOUR_PROJECT.supabase.co/"
+    const val PLACEHOLDER_BASE_URL = "https://placeholder.supabase.co/"
 }

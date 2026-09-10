@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/compact_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_compact_normal_bg"
+    android:padding="8dp"
+    android:gravity="center">
+
+    <!-- Top Row: Badge & Refresh -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/compact_badge_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/widget_badge_bg"
+            android:paddingStart="6dp"
+            android:paddingEnd="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="الحصة 3"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <ImageView
+            android:id="@+id/compact_btn_refresh"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_widget_refresh"
+            android:padding="2dp"
+            android:layout_marginStart="4dp"
+            android:contentDescription="تحديث" />
+    </LinearLayout>
+
+    <!-- Center: Subject & Class -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
+
+        <TextView
+            android:id="@+id/compact_subject_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="الرياضيات"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:gravity="center" />
+
+        <TextView
+            android:id="@+id/compact_class_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="5/أ"
+            android:textColor="#E2E8F0"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:gravity="center" />
+    </LinearLayout>
+
+    <!-- Bottom: Countdown Timer / Status -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/compact_timer_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="⏳ متبقي 20m"
+            android:textColor="#FDE047"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+    </LinearLayout>
+
+</LinearLayout>

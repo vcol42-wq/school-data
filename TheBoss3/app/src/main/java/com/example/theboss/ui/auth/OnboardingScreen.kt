@@ -107,7 +107,7 @@ fun OnboardingScreen(
                             .putString("supabase_url", "https://pexehlvkpdhmpukjydwd.supabase.co")
                             .putString("supabase_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleGVobHZrcGRobXB1a2p5ZHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Njk4NDUsImV4cCI6MjEwMjQ0NTg0NX0.YFDRTLJnB56uD-rGtknex_NhycexP57WHhhTRVas5EY")
                             .apply()
-                        onNavigateToDashboard()
+                        onNavigateToJoin()
                     },
                     modifier = Modifier
                         .fillMaxWidth()

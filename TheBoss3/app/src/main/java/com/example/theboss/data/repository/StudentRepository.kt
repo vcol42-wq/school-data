@@ -6,6 +6,7 @@ import com.example.theboss.data.local.AppDao
 import com.example.theboss.data.local.SubjectEntity
 import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.remote.SupabaseApi
+import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.data.remote.JoinRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -14,6 +15,7 @@ import kotlinx.coroutines.withContext
 import java.net.UnknownHostException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableStateFlow
 
 @Singleton
 class StudentRepository @Inject constructor(
@@ -22,6 +24,8 @@ class StudentRepository @Inject constructor(
     private val sessionManager: SessionManager,
     @param:ApplicationContext private val context: Context
 ) {
+    private val _directives = MutableStateFlow<List<DirectiveDto>>(emptyList())
+    val directives = _directives
 
     suspend fun verifySchoolCode(enteredCode: String): Result<Boolean> {
         return try {
@@ -212,9 +216,44 @@ class StudentRepository @Inject constructor(
 
             // 3. مزامنة الواجبات والدروس اليومية وقنوات التقوية
             syncDailyAssignments(schoolId)
+            syncDirectives(schoolId)
         } catch (e: Exception) {
             // فشل المزامنة لا يوقف التطبيق، سيعتمد على البيانات المحلية
             e.printStackTrace()
+        }
+    }
+
+    /**
+     * مزامنة تعاميم الإدارة الموجهة للطلاب، مع إشعار المستخدم بالتعميم الجديد مرة واحدة.
+     */
+    suspend fun syncDirectives(schoolId: String): Result<List<DirectiveDto>> {
+            return try {
+                val response = api.getStudentDirectives(
+                    schoolFilter = "eq.$schoolId",
+                    roleFilter = "in.(all,student)"
+                )
+                if (!response.isSuccessful) {
+                    return Result.failure(Exception("تعذر جلب تعاميم المدرسة"))
+                }
+
+                val directives = response.body().orEmpty().filter { it.isActive }
+                _directives.value = directives
+                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                val seen = prefs.getStringSet("seen_directive_ids", emptySet()).orEmpty().toMutableSet()
+
+                directives.filter { it.id !in seen }.forEach { directive ->
+                    com.example.theboss.utils.NotificationHelper.showBroadcastNotification(
+                        context = context,
+                        title = directive.title,
+                        message = directive.content,
+                        priority = "للطلبة"
+                    )
+                    seen += directive.id
+                }
+                prefs.edit().putStringSet("seen_directive_ids", seen).apply()
+                Result.success(directives)
+            } catch (e: Exception) {
+                Result.failure(e)
         }
     }
 
@@ -387,4 +426,3 @@ class StudentRepository @Inject constructor(
     fun getSchoolName() = sessionManager.getSchoolName()
     fun getDeviceId() = sessionManager.getDeviceId()
 }
-

@@ -52,6 +52,16 @@ data class AssignmentDto(
     @SerializedName("due_date") val dueDate: Long
 )
 
+data class DirectiveDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("school_id") val schoolId: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("content") val content: String,
+    @SerializedName("target_role") val targetRole: String = "all",
+    @SerializedName("is_active") val isActive: Boolean = true,
+    @SerializedName("created_at") val createdAt: String? = null
+)
+
 data class DailyAssignmentDto(
     @SerializedName("id") val id: String? = null,
     @SerializedName("school_id") val schoolId: String,
@@ -105,6 +115,5 @@ data class AttendanceDto(
     @SerializedName("period_number") val periodNumber: Int = 1,
     @SerializedName("teacher_id") val teacherId: String? = null
 )
-
 
 

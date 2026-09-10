@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +37,7 @@ import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.local.AttendanceEntity
 import com.example.theboss.data.local.SubjectEntity
 import com.example.theboss.data.repository.StudentRepository
+import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.ui.workspace.WorkspaceAiScreen
 import com.example.theboss.ui.workspace.WorkspaceToolsScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -59,6 +61,8 @@ class DashboardViewModel @Inject constructor(
 
     val attendance: StateFlow<List<AttendanceEntity>> = dao.getAllAttendance()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val directives: StateFlow<List<DirectiveDto>> = repository.directives
 
     val schoolName = repository.getSchoolName() ?: "مدرستي الذكية"
 
@@ -103,9 +107,12 @@ fun MainDashboardScreen(
     val subjects by viewModel.subjects.collectAsState()
     val assignments by viewModel.assignments.collectAsState()
     val attendance by viewModel.attendance.collectAsState()
+    val directives by viewModel.directives.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
     var currentTab by remember { mutableIntStateOf(0) }
+    var compactAttendanceWidget by rememberSaveable { mutableStateOf(false) }
+    var compactScheduleWidget by rememberSaveable { mutableStateOf(false) }
     val todayDateStr = remember { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) }
 
     Scaffold(
@@ -194,19 +201,32 @@ fun MainDashboardScreen(
                                     onToggleComplete = { viewModel.toggleAssignment(it) }
                                 )
                             }
+
+                        }
+
+                        if (directives.isNotEmpty()) {
+                            item(span = { GridItemSpan(2) }) {
+                                StudentDirectivesCard(directives = directives)
+                            }
                         }
 
                         // 2. Parent Guardian Attendance Hub (متابعة ولي أمر الطالب)
                         item(span = { GridItemSpan(2) }) {
                             ParentGuardianAttendanceHubCard(
                                 attendanceList = attendance,
-                                onClick = onParentAttendanceClick
+                                onClick = onParentAttendanceClick,
+                                compact = compactAttendanceWidget,
+                                onToggleCompact = { compactAttendanceWidget = !compactAttendanceWidget }
                             )
                         }
 
                         // 3. Class Timetable & Schedule Hub (جدول دروس الشعبة الأسبوعي)
                         item(span = { GridItemSpan(2) }) {
-                            StudentScheduleViewerCard(onClick = onScheduleClick)
+                            StudentScheduleViewerCard(
+                                onClick = onScheduleClick,
+                                compact = compactScheduleWidget,
+                                onToggleCompact = { compactScheduleWidget = !compactScheduleWidget }
+                            )
                         }
 
                         // Smart Study Priority Advisor (المستشار الذكي ومؤشر التفوق)
@@ -324,6 +344,52 @@ fun MainDashboardScreen(
                     WorkspaceToolsScreen()
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StudentDirectivesCard(directives: List<DirectiveDto>) {
+    val latest = directives.first()
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF6EE7B7)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Color(0xFF10B981),
+                    shape = CircleShape,
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Campaign, contentDescription = null, tint = Color.White)
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("توجيهات الإدارة", fontWeight = FontWeight.Black, color = Color(0xFF065F46))
+                    Text(
+                        text = if (directives.size == 1) "تعميم جديد من المدرسة" else "${directives.size} تعاميم فعّالة",
+                        fontSize = 11.sp,
+                        color = Color(0xFF047857)
+                    )
+                }
+                Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color(0xFF059669))
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(latest.title, fontWeight = FontWeight.Bold, color = Color(0xFF064E3B))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                latest.content,
+                color = Color(0xFF14532D),
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -490,7 +556,9 @@ fun UrgentHomeworkCenter(
 @Composable
 fun ParentGuardianAttendanceHubCard(
     attendanceList: List<AttendanceEntity>,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    compact: Boolean = false,
+    onToggleCompact: () -> Unit = {}
 ) {
     val absentRecords = attendanceList.filter { it.status.equals("absent", ignoreCase = true) || it.status == "غياب" }
     val totalAbsentDays = absentRecords.map { it.dateString }.distinct().filter { it.isNotBlank() }.size
@@ -504,7 +572,30 @@ fun ParentGuardianAttendanceHubCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        if (compact) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    color = Color(0xFF0284C7).copy(alpha = 0.15f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.FamilyRestroom, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(19.dp))
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("متابعة ولي الأمر", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    Text(if (totalAbsentDays == 0) "السجل منضبط" else "$totalAbsentDays أيام غياب • $totalAbsentPeriods حصص", fontSize = 10.sp, color = Color.Gray)
+                }
+                IconButton(onClick = onToggleCompact, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.UnfoldMore, contentDescription = "توسيع الودجت", tint = Color(0xFF0284C7))
+                }
+            }
+        } else Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -532,6 +623,7 @@ fun ParentGuardianAttendanceHubCard(
                     }
                 }
 
+                Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = if (totalAbsentDays == 0) Color(0xFFD1FAE5) else Color(0xFFFEE2E2),
                     shape = RoundedCornerShape(8.dp)
@@ -543,6 +635,10 @@ fun ParentGuardianAttendanceHubCard(
                         fontSize = 11.sp,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
+                }
+                IconButton(onClick = onToggleCompact, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.UnfoldLess, contentDescription = "تصغير الودجت", tint = Color(0xFF0284C7))
+                }
                 }
             }
 
@@ -580,7 +676,11 @@ fun ParentGuardianAttendanceHubCard(
  * Class Timetable & Lessons Viewer Hub Card (جدول دروس الشعبة الأسبوعي والتوقيتات 📅)
  */
 @Composable
-fun StudentScheduleViewerCard(onClick: () -> Unit) {
+fun StudentScheduleViewerCard(
+    onClick: () -> Unit,
+    compact: Boolean = false,
+    onToggleCompact: () -> Unit = {}
+) {
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
@@ -593,6 +693,18 @@ fun StudentScheduleViewerCard(onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            if (compact) {
+                Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(25.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("الجدول اليومي", color = Color.White, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    Text("الحصص والتوقيتات الأسبوعية", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                }
+                IconButton(onClick = onToggleCompact, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Default.UnfoldMore, contentDescription = "توسيع الودجت", tint = Color(0xFF38BDF8))
+                }
+                return@Card
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
@@ -636,6 +748,9 @@ fun StudentScheduleViewerCard(onClick: () -> Unit) {
                         modifier = Modifier.size(20.dp)
                     )
                 }
+            }
+            IconButton(onClick = onToggleCompact, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Default.UnfoldLess, contentDescription = "تصغير الودجت", tint = Color(0xFF38BDF8))
             }
         }
     }

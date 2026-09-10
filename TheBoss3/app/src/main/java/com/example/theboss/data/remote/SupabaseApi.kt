@@ -58,6 +58,15 @@ interface SupabaseApi {
         @Query("select") select: String = "*"
     ): Response<List<AssignmentDto>>
 
+    @GET("directives")
+    suspend fun getStudentDirectives(
+        @Query("school_id") schoolFilter: String,
+        @Query("target_role") roleFilter: String? = null,
+        @Query("is_active") activeFilter: String = "eq.true",
+        @Query("order") order: String = "created_at.desc",
+        @Query("select") select: String = "*"
+    ): Response<List<DirectiveDto>>
+
     // جلب الواجبات والدروس اليومية
     @GET("daily_assignments")
     suspend fun getDailyAssignments(
@@ -108,5 +117,4 @@ interface SupabaseApi {
         @Query("select") select: String = "*"
     ): Response<List<TeacherDto>>
 }
-
 

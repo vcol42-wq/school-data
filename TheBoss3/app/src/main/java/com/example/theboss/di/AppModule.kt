@@ -5,15 +5,16 @@ import androidx.room.Room
 import com.example.theboss.data.local.AppDao
 import com.example.theboss.data.local.AppDatabase
 import com.example.theboss.data.remote.SupabaseApi
+import com.example.theboss.data.remote.SupabaseConstants
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import okhttp3.OkHttpClient
-import okhttp3.Interceptor
-import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
+import okhttp3.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import javax.inject.Singleton
@@ -24,13 +25,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        return Room.databaseBuilder(
-            context,
-            AppDatabase::class.java,
-            "the_boss_db"
-        ).fallbackToDestructiveMigration().build()
-    }
+    fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
+        Room.databaseBuilder(context, AppDatabase::class.java, "the_boss_db")
+            .fallbackToDestructiveMigration()
+            .build()
 
     @Provides
     fun provideAppDao(db: AppDatabase): AppDao = db.dao()
@@ -43,7 +41,7 @@ object AppModule {
             .build()
 
         return Retrofit.Builder()
-            .baseUrl("https://pexehlvkpdhmpukjydwd.supabase.co/rest/v1/")
+            .baseUrl("${SupabaseConstants.PLACEHOLDER_BASE_URL}rest/v1/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -55,36 +53,34 @@ class DynamicUrlInterceptor(private val context: Context) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-        
-        // استخدام بيانات السحابة الرسمية الموحدة
-        val url = prefs.getString("supabase_url", "https://pexehlvkpdhmpukjydwd.supabase.co")
-        val apiKey = prefs.getString("supabase_key", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleGVobHZrcGRobXB1a2p5ZHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Njk4NDUsImV4cCI6MjEwMjQ0NTg0NX0.YFDRTLJnB56uD-rGtknex_NhycexP57WHhhTRVas5EY")
+        val url = prefs.getString("supabase_url", null)
+        val apiKey = prefs.getString("supabase_key", null)
         val schoolId = prefs.getString("school_id", null)
-
         val builder = request.newBuilder()
-        
-        if (!apiKey.isNullOrEmpty()) {
+
+        if (!apiKey.isNullOrBlank()) {
             builder.header("apikey", apiKey)
             builder.header("Authorization", "Bearer $apiKey")
         }
-        
-        if (!schoolId.isNullOrEmpty()) {
+        if (!schoolId.isNullOrBlank()) {
             builder.header("x-school-id", schoolId)
         }
 
-        if (!url.isNullOrEmpty()) {
-            val originalUrl = request.url
+        if (!url.isNullOrBlank()) {
             val cleanedUrl = url.trim()
             val formattedUrl = if (cleanedUrl.endsWith("/")) cleanedUrl else "$cleanedUrl/"
             val restUrl = if (formattedUrl.endsWith("rest/v1/")) formattedUrl else "${formattedUrl}rest/v1/"
-            
             val newBaseUrl = restUrl.toHttpUrlOrNull()
             if (newBaseUrl != null) {
+                val originalUrl = request.url
                 val newUrl = originalUrl.newBuilder()
                     .scheme(newBaseUrl.scheme)
                     .host(newBaseUrl.host)
                     .port(newBaseUrl.port)
-                    .encodedPath(newBaseUrl.encodedPath + originalUrl.encodedPath.removePrefix("/rest/v1/").removePrefix("/"))
+                    .encodedPath(
+                        newBaseUrl.encodedPath +
+                            originalUrl.encodedPath.removePrefix("/rest/v1/").removePrefix("/")
+                    )
                     .build()
                 builder.url(newUrl)
             }

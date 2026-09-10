@@ -242,9 +242,18 @@ class GradeViewModel @Inject constructor(
         section: String,
         subject: String,
         rawNamesText: String,
+        onlyMatchExisting: Boolean = false,
         onDone: (Int) -> Unit = {}
     ) {
         viewModelScope.launch {
+            val existingStudents = studentDao.getStudentsForGradeAndSection(grade, section)
+            val existingByName = existingStudents
+                .groupBy { normalizeStudentName(it.fullName) }
+                .mapValues { (_, matches) -> matches.singleOrNull() }
+            val currentSubjectRecords = existingStudents
+                .filter { it.subject == subject }
+                .map { it.recordNumber }
+                .toSet()
             val lines = rawNamesText.split(Regex("[\r\n;,|]+"))
                 .map { it.trim() }
                 .filter { it.isNotEmpty() && !it.contains("الاسم") && !it.contains("تسلسل") && !it.contains("اسم الطالب") }
@@ -253,24 +262,48 @@ class GradeViewModel @Inject constructor(
             lines.forEach { name ->
                 val cleanName = name.replace(Regex("^[0-9]+[\\.\\-\\s]+"), "").trim()
                 if (cleanName.isNotEmpty()) {
+                    val matchedStudent = existingByName[normalizeStudentName(cleanName)]
+                    if (matchedStudent != null && matchedStudent.recordNumber in currentSubjectRecords) {
+                        return@forEach
+                    }
+                    if (onlyMatchExisting && matchedStudent == null) {
+                        return@forEach
+                    }
                     studentDao.insertStudent(
                         Student(
-                            recordNumber = (1000..9999).random().toString(),
-                            fullName = cleanName,
+                            // Preserve the cloud-issued record number when OCR/paste
+                            // reorders the roster; sequence is never an identity key.
+                            recordNumber = matchedStudent?.recordNumber
+                                ?: (1000..9999).random().toString(),
+                            fullName = matchedStudent?.fullName ?: cleanName,
                             grade = grade,
                             section = section,
-                            subject = subject
+                            subject = subject,
+                            historicalAbsences = matchedStudent?.historicalAbsences ?: 0
                         )
                     )
                     count++
                 }
             }
+
             if (count > 0) {
                 syncManager.propagateStudents()
                 syncManager.syncGrades(grade, section, subject)
             }
             onDone(count)
         }
+    }
+
+    private fun normalizeStudentName(value: String): String {
+        return value
+            .trim()
+            .replace(Regex("[ًٌٍَُِّْـ]"), "")
+            .replace(Regex("[أإآٱ]"), "ا")
+            .replace("ى", "ي")
+            .replace("ة", "ه")
+            .replace(Regex("[٠-٩]")) { (it.value[0].code - '٠'.code).toString() }
+            .replace(Regex("[^\\p{L}\\p{N}]"), "")
+            .lowercase()
     }
 
     fun updateStudentName(student: Student, newName: String) {
