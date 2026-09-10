@@ -37,6 +37,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.school.system.data.SyncManager
 import com.school.system.ui.theme.LocalAppTheme
+import com.school.system.widget.WidgetScheduleHelper
 import kotlinx.coroutines.launch
 
 data class TeacherLessonInfo(
@@ -67,6 +68,7 @@ fun ScheduleScreen(
 
     // Display Format for Personal Schedule: 0: جدول أسبوعي شبكي (Matrix Table), 1: بطاقات يومية (Cards)
     var personalViewType by remember { mutableIntStateOf(0) }
+    var isFullscreenTable by remember { mutableStateOf(false) }
 
     // Teacher Name for Personal Schedule filter
     var teacherNameInput by remember {
@@ -146,18 +148,27 @@ fun ScheduleScreen(
     // Filter personal lessons for teacher
     val myPersonalLessons: List<TeacherLessonInfo> = remember(parsedScheduleByDay, teacherNameInput) {
         val query = teacherNameInput.trim().lowercase()
+        val allLessons = parsedScheduleByDay.values.flatten()
         if (query.isEmpty()) {
-            parsedScheduleByDay.values.flatten()
+            allLessons
         } else {
-            parsedScheduleByDay.values.flatten().filter {
-                it.teacherName.lowercase().contains(query) || it.subject.lowercase().contains(query)
+            allLessons.filter {
+                val cleanTeacher = WidgetScheduleHelper.cleanTeacherFirstName(it.teacherName).lowercase()
+                val cleanSubj = WidgetScheduleHelper.cleanSubjectName(it.subject).lowercase()
+                it.teacherName.lowercase().contains(query) ||
+                it.subject.lowercase().contains(query) ||
+                cleanTeacher.contains(query) ||
+                cleanSubj.contains(query)
             }
         }
     }
 
     // Available classes for general schedule selector
     val availableClasses = remember(parsedScheduleByDay) {
-        parsedScheduleByDay.values.flatten().map { it.className }.distinct().sorted()
+        parsedScheduleByDay.values.flatten()
+            .map { it.className }
+            .distinct()
+            .sortedWith { c1, c2 -> WidgetScheduleHelper.compareClassNames(c1, c2) }
     }
 
     var selectedGeneralDay by remember { mutableStateOf("الأحد") }
@@ -224,12 +235,67 @@ fun ScheduleScreen(
                 }
             }
         ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(currentTheme.backgroundColor)
-            ) {
+            if (isFullscreenTable) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .background(currentTheme.backgroundColor)
+                        .padding(6.dp)
+                ) {
+                    Surface(
+                        color = currentTheme.primaryColor,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (selectedModeTab == 0) "جدولي الأسبوعي (ملء الشاشة) 📱" else "الجدول العام للمدرسة ($selectedGeneralDay)",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+
+                            Button(
+                                onClick = { isFullscreenTable = false },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.2f)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.FullscreenExit, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("تصغير الشاشة ⤢", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (selectedModeTab == 0) {
+                            WeeklyPersonalScheduleTable(daysList = daysList, lessons = myPersonalLessons)
+                        } else {
+                            GeneralDayScheduleGrid(
+                                day = selectedGeneralDay,
+                                classes = availableClasses,
+                                allLessons = parsedScheduleByDay[selectedGeneralDay] ?: emptyList()
+                            )
+                        }
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .background(currentTheme.backgroundColor)
+                ) {
                 // Cloud Sync Banner & Button
                 Surface(
                     modifier = Modifier
@@ -363,7 +429,7 @@ fun ScheduleScreen(
                                         color = currentTheme.textPrimaryColor
                                     )
 
-                                    // View Type Toggle: Grid vs Cards
+                                    // View Type Toggle & Fullscreen Button
                                     Row(
                                         modifier = Modifier
                                             .background(currentTheme.tableHeaderBg, RoundedCornerShape(8.dp))
@@ -390,12 +456,34 @@ fun ScheduleScreen(
                                             modifier = Modifier.clickable { personalViewType = 1 }
                                         ) {
                                             Text(
-                                                text = "قائمة بطاقات 📋",
+                                                text = "بطاقات 📋",
                                                 color = if (personalViewType == 1) Color.White else currentTheme.textSecondaryColor,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                             )
+                                        }
+
+                                        Spacer(Modifier.width(4.dp))
+
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = Color(0xFF059669),
+                                            modifier = Modifier.clickable { isFullscreenTable = true }
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Default.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                Spacer(Modifier.width(2.dp))
+                                                Text(
+                                                    text = "توسيع ⤢",
+                                                    color = Color.White,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -537,10 +625,10 @@ fun ScheduleScreen(
                         )
                     }
                 }
-
             }
         }
     }
+}
 }
 
 /**
@@ -553,60 +641,51 @@ fun WeeklyPersonalScheduleTable(
 ) {
     val currentTheme = LocalAppTheme.current
     val hScroll = rememberScrollState()
-    
-    val dayColW = 85.dp
-    val lessonColW = 105.dp
-    val rowH = 52.dp
 
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = currentTheme.surfaceColor,
-        border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.tableBorderColor),
-        shadowElevation = 2.dp,
+    BoxWithConstraints(
         modifier = Modifier.fillMaxSize()
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Table Header (من اليمين إلى اليسار)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(currentTheme.tableHeaderBg)
-                    .border(0.5.dp, currentTheme.tableBorderColor)
-            ) {
-                // Rightmost Fixed Header: اليوم
-                ScheduleHeaderCell("اليوم 📅", dayColW, 46.dp)
+        val totalAvailableW = this.maxWidth
+        val minDayColW = 80.dp
+        val minLessonColW = 105.dp
+        val totalMinW = minDayColW + (minLessonColW * 6)
 
-                // Scrollable Lesson Columns (1 إلى 6 من اليمين لليسار)
-                Row(modifier = Modifier.weight(1f).horizontalScroll(hScroll)) {
-                    for (i in 1..6) {
-                        ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i), lessonColW, 46.dp)
-                    }
-                }
-            }
+        val (dayColW, lessonColW) = if (totalAvailableW > totalMinW) {
+            val lessonW = (totalAvailableW - minDayColW) / 6
+            minDayColW to lessonW
+        } else {
+            minDayColW to minLessonColW
+        }
 
-            // Table Rows for 5 Days
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(daysList) { day ->
-                    val dayLessonsMap = remember(lessons, day) {
-                        lessons.filter { it.day == day }.associateBy { it.lessonNumber }
-                    }
-                    val isEven = daysList.indexOf(day) % 2 == 0
-                    val rowBg = if (isEven) currentTheme.tableCellBg else currentTheme.tableAltCellBg
+        val headerH = 48.dp
+        val rowH = 58.dp
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(rowBg)
-                            .border(0.5.dp, currentTheme.tableBorderColor)
-                    ) {
-                        // Day Label on Right
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = currentTheme.surfaceColor,
+            border = BorderStroke(1.dp, currentTheme.tableBorderColor),
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                // 1. Fixed Days Column on Right
+                Column(
+                    modifier = Modifier
+                        .width(dayColW)
+                        .background(currentTheme.tableHeaderBg)
+                ) {
+                    ScheduleHeaderCell("اليوم 📅", dayColW, headerH)
+
+                    daysList.forEachIndexed { index, day ->
+                        val isEven = index % 2 == 0
+                        val rowBg = if (isEven) currentTheme.tableCellBg else currentTheme.tableAltCellBg
                         Box(
                             modifier = Modifier
                                 .width(dayColW)
                                 .height(rowH)
-                                .background(currentTheme.primaryColor.copy(alpha = 0.08f))
+                                .background(rowBg)
                                 .border(0.5.dp, currentTheme.tableBorderColor)
-                                .padding(4.dp),
+                                .padding(horizontal = 2.dp, vertical = 4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -614,12 +693,40 @@ fun WeeklyPersonalScheduleTable(
                                 fontWeight = FontWeight.Black,
                                 fontSize = 12.5.sp,
                                 color = currentTheme.primaryColor,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
+                    }
+                }
 
-                        // Lesson Cells 1 to 6 (من اليمين إلى اليسار)
-                        Row(modifier = Modifier.weight(1f).horizontalScroll(hScroll)) {
+                // 2. Scrollable Lessons Matrix on Left
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(hScroll)
+                ) {
+                    // Header Row: Lessons 1 to 6
+                    Row(
+                        modifier = Modifier.background(currentTheme.tableHeaderBg)
+                    ) {
+                        for (i in 1..6) {
+                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i), lessonColW, headerH)
+                        }
+                    }
+
+                    // Days Rows
+                    daysList.forEachIndexed { index, day ->
+                        val dayLessonsMap = remember(lessons, day) {
+                            lessons.filter { it.day == day }.associateBy { it.lessonNumber }
+                        }
+                        val isEven = index % 2 == 0
+                        val rowBg = if (isEven) currentTheme.tableCellBg else currentTheme.tableAltCellBg
+
+                        Row(
+                            modifier = Modifier.background(rowBg)
+                        ) {
                             for (i in 1..6) {
                                 val item = dayLessonsMap[i]
                                 Box(
@@ -631,22 +738,24 @@ fun WeeklyPersonalScheduleTable(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (item != null) {
+                                        val cleanSubj = WidgetScheduleHelper.cleanSubjectName(item.subject)
+                                        val cleanCls = WidgetScheduleHelper.cleanClassName(item.className)
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                             verticalArrangement = Arrangement.Center
                                         ) {
                                             Text(
-                                                text = item.subject,
+                                                text = cleanSubj.ifEmpty { "درس مقرر" },
                                                 fontWeight = FontWeight.Black,
-                                                fontSize = 11.5.sp,
+                                                fontSize = 12.5.sp,
                                                 color = Color(0xFF059669),
                                                 maxLines = 1,
                                                 textAlign = TextAlign.Center
                                             )
                                             Text(
-                                                text = item.className,
+                                                text = cleanCls,
                                                 fontWeight = FontWeight.Bold,
-                                                fontSize = 10.sp,
+                                                fontSize = 11.sp,
                                                 color = currentTheme.textPrimaryColor,
                                                 maxLines = 1,
                                                 textAlign = TextAlign.Center
@@ -656,7 +765,7 @@ fun WeeklyPersonalScheduleTable(
                                         Text(
                                             text = "شاغر",
                                             fontWeight = FontWeight.Medium,
-                                            fontSize = 10.sp,
+                                            fontSize = 11.sp,
                                             color = Color(0xFF94A3B8),
                                             textAlign = TextAlign.Center
                                         )
@@ -682,10 +791,6 @@ fun GeneralDayScheduleGrid(
 ) {
     val currentTheme = LocalAppTheme.current
     val hScroll = rememberScrollState()
-    
-    val classColW = 100.dp
-    val lessonColW = 110.dp
-    val rowH = 50.dp
 
     if (classes.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -694,109 +799,135 @@ fun GeneralDayScheduleGrid(
         return
     }
 
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = currentTheme.surfaceColor,
-        border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.tableBorderColor),
-        shadowElevation = 2.dp,
-        modifier = Modifier.fillMaxSize()
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header: الصف والشعبة على اليمين ثم الحصص 1 إلى 6
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(currentTheme.tableHeaderBg)
-                    .border(0.5.dp, currentTheme.tableBorderColor)
-            ) {
-                ScheduleHeaderCell("الصف / الشعبة 🏫", classColW, 44.dp)
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val totalAvailableW = this.maxWidth
+        val minClassColW = 105.dp
+        val minLessonColW = 115.dp
+        val totalMinW = minClassColW + (minLessonColW * 6)
 
-                Row(modifier = Modifier.weight(1f).horizontalScroll(hScroll)) {
-                    for (i in 1..6) {
-                        ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i), lessonColW, 44.dp)
-                    }
-                }
-            }
+        val (classColW, lessonColW) = if (totalAvailableW > totalMinW) {
+            val lessonW = (totalAvailableW - minClassColW) / 6
+            minClassColW to lessonW
+        } else {
+            minClassColW to minLessonColW
+        }
 
-            // Rows for each class
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(classes) { clsName ->
-                    val classLessonsMap = remember(allLessons, clsName) {
-                        allLessons.filter { it.className == clsName }.associateBy { it.lessonNumber }
-                    }
-                    val isEven = classes.indexOf(clsName) % 2 == 0
-                    val rowBg = if (isEven) currentTheme.tableCellBg else currentTheme.tableAltCellBg
+        val rowH = 54.dp
+
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = currentTheme.surfaceColor,
+            border = BorderStroke(1.dp, currentTheme.tableBorderColor),
+            shadowElevation = 2.dp,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header: الصف والشعبة على اليمين ثم الحصص 1 إلى 6
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(currentTheme.tableHeaderBg)
+                        .border(0.5.dp, currentTheme.tableBorderColor)
+                ) {
+                    ScheduleHeaderCell("الصف / الشعبة 🏫", classColW, 46.dp)
 
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .background(rowBg)
-                            .border(0.5.dp, currentTheme.tableBorderColor)
+                            .weight(1f)
+                            .horizontalScroll(hScroll)
                     ) {
-                        // Class Label on Right
-                        Box(
-                            modifier = Modifier
-                                .width(classColW)
-                                .height(rowH)
-                                .background(currentTheme.primaryColor.copy(alpha = 0.06f))
-                                .border(0.5.dp, currentTheme.tableBorderColor)
-                                .padding(horizontal = 4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = clsName,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 11.sp,
-                                color = currentTheme.textPrimaryColor,
-                                textAlign = TextAlign.Center,
-                                maxLines = 2
-                            )
+                        for (i in 1..6) {
+                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i), lessonColW, 46.dp)
                         }
+                    }
+                }
 
-                        // Lessons 1 to 6
-                        Row(modifier = Modifier.weight(1f).horizontalScroll(hScroll)) {
-                            for (i in 1..6) {
-                                val item = classLessonsMap[i]
-                                Box(
-                                    modifier = Modifier
-                                        .width(lessonColW)
-                                        .height(rowH)
-                                        .border(0.5.dp, currentTheme.tableBorderColor)
-                                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (item != null) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(
-                                                text = item.subject.ifEmpty { "درس مقرر" },
-                                                fontWeight = FontWeight.Black,
-                                                fontSize = 11.sp,
-                                                color = if (currentTheme.isDark) Color(0xFF93C5FD) else Color(0xFF1E3A8A),
-                                                maxLines = 1,
-                                                textAlign = TextAlign.Center
-                                            )
-                                            if (item.teacherName.isNotEmpty()) {
+                // Rows for each class
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(classes) { clsName ->
+                        val classLessonsMap = remember(allLessons, clsName) {
+                            allLessons.filter { it.className == clsName }.associateBy { it.lessonNumber }
+                        }
+                        val isEven = classes.indexOf(clsName) % 2 == 0
+                        val rowBg = if (isEven) currentTheme.tableCellBg else currentTheme.tableAltCellBg
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(rowBg)
+                                .border(0.5.dp, currentTheme.tableBorderColor)
+                        ) {
+                            // Class Label on Right
+                            Box(
+                                modifier = Modifier
+                                    .width(classColW)
+                                    .height(rowH)
+                                    .background(currentTheme.primaryColor.copy(alpha = 0.06f))
+                                    .border(0.5.dp, currentTheme.tableBorderColor)
+                                    .padding(horizontal = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = WidgetScheduleHelper.cleanClassName(clsName),
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 11.5.sp,
+                                    color = currentTheme.textPrimaryColor,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2
+                                )
+                            }
+
+                            // Lessons 1 to 6
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .horizontalScroll(hScroll)
+                            ) {
+                                for (i in 1..6) {
+                                    val item = classLessonsMap[i]
+                                    Box(
+                                        modifier = Modifier
+                                            .width(lessonColW)
+                                            .height(rowH)
+                                            .border(0.5.dp, currentTheme.tableBorderColor)
+                                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (item != null) {
+                                            val cleanSubj = WidgetScheduleHelper.cleanSubjectName(item.subject)
+                                            val cleanTeacher = WidgetScheduleHelper.cleanTeacherFirstName(item.teacherName)
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
                                                 Text(
-                                                    text = item.teacherName,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 9.5.sp,
-                                                    color = if (currentTheme.isDark) Color(0xFFCBD5E1) else Color(0xFF64748B),
+                                                    text = cleanSubj.ifEmpty { "درس مقرر" },
+                                                    fontWeight = FontWeight.Black,
+                                                    fontSize = 11.5.sp,
+                                                    color = if (currentTheme.isDark) Color(0xFF93C5FD) else Color(0xFF1E3A8A),
                                                     maxLines = 1,
                                                     textAlign = TextAlign.Center
                                                 )
+                                                if (cleanTeacher.isNotEmpty()) {
+                                                    Text(
+                                                        text = cleanTeacher,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 10.sp,
+                                                        color = if (currentTheme.isDark) Color(0xFFCBD5E1) else Color(0xFF64748B),
+                                                        maxLines = 1,
+                                                        textAlign = TextAlign.Center
+                                                    )
+                                                }
                                             }
+                                        } else {
+                                            Text(
+                                                text = "شاغر",
+                                                fontWeight = FontWeight.Medium,
+                                                fontSize = 10.5.sp,
+                                                color = Color(0xFF94A3B8),
+                                                textAlign = TextAlign.Center
+                                            )
                                         }
-                                    } else {
-                                        Text(
-                                            text = "شاغر",
-                                            fontWeight = FontWeight.Medium,
-                                            fontSize = 10.sp,
-                                            color = Color(0xFF94A3B8),
-                                            textAlign = TextAlign.Center
-                                        )
                                     }
                                 }
                             }
@@ -892,6 +1023,9 @@ fun getLessonTiming(lessonNumber: Int): String {
 fun PersonalLessonCardRtl(lesson: TeacherLessonInfo) {
     val currentTheme = LocalAppTheme.current
     val timing = remember(lesson.lessonNumber) { getLessonTiming(lesson.lessonNumber) }
+    val cleanCls = remember(lesson.className) { WidgetScheduleHelper.cleanClassName(lesson.className) }
+    val cleanSubj = remember(lesson.subject) { WidgetScheduleHelper.cleanSubjectName(lesson.subject) }
+    val cleanTeacher = remember(lesson.teacherName) { WidgetScheduleHelper.cleanTeacherFirstName(lesson.teacherName) }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -952,7 +1086,7 @@ fun PersonalLessonCardRtl(lesson: TeacherLessonInfo) {
                 }
 
                 Text(
-                    text = "الصف والشعبة: ${lesson.className}",
+                    text = "الصف والشعبة: $cleanCls",
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.5.sp,
                     color = currentTheme.textPrimaryColor
@@ -965,14 +1099,14 @@ fun PersonalLessonCardRtl(lesson: TeacherLessonInfo) {
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
-                    text = lesson.subject.ifEmpty { "درس مقرر" },
+                    text = cleanSubj.ifEmpty { "درس مقرر" },
                     fontWeight = FontWeight.Black,
                     fontSize = 15.sp,
                     color = if (currentTheme.isDark) Color(0xFF34D399) else Color(0xFF059669)
                 )
-                if (lesson.teacherName.isNotEmpty()) {
+                if (cleanTeacher.isNotEmpty()) {
                     Text(
-                        text = lesson.teacherName,
+                        text = cleanTeacher,
                         fontSize = 11.sp,
                         color = currentTheme.textSecondaryColor,
                         fontWeight = FontWeight.SemiBold

@@ -41,6 +41,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -49,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import com.school.system.data.model.Student
@@ -60,6 +67,7 @@ import com.school.system.data.model.latestRecordedScoreInt
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.school.system.data.repository.SecureUploadResult
 import com.school.system.utils.BiometricHelper
+import com.school.system.utils.ImageTextExtractor
 
 data class ProgressiveEvaluationResult(
     val stageName: String,
@@ -764,6 +772,58 @@ fun GradeRegisterScreen(
             var selectedTab by remember { mutableIntStateOf(0) }
             var singleName by remember { mutableStateOf("") }
             var multiNamesText by remember { mutableStateOf("") }
+            var ocrNamesText by remember { mutableStateOf("") }
+            var isScanningImage by remember { mutableStateOf(false) }
+
+            val coroutineScope = rememberCoroutineScope()
+
+            // Function to process bitmap for OCR & Gemini AI
+            val processImageBitmap: (Bitmap?) -> Unit = { bitmap ->
+                if (bitmap != null) {
+                    isScanningImage = true
+                    viewModel.extractStudentNamesFromPhoto(bitmap) { names, rawText ->
+                        isScanningImage = false
+                        if (names.isNotEmpty()) {
+                            ocrNamesText = names.joinToString("\n")
+                            Toast.makeText(context, "تم استخراج ${names.size} اسم طالب بنجاح! 🎯", Toast.LENGTH_SHORT).show()
+                        } else if (rawText.isNotBlank()) {
+                            ocrNamesText = rawText
+                            Toast.makeText(context, "تم استخراج النص من الصورة", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "لم يتم العثور على أسماء واضحة، تأكد من وضوح الصورة والتركيز على القائمة", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+
+            // Gallery Launcher
+            val galleryLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri: Uri? ->
+                if (uri != null) {
+                    try {
+                        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                        }
+                        processImageBitmap(bitmap)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(context, "تعذر قراءة الصورة المختارة", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
+            // Camera Launcher
+            val cameraLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.TakePicturePreview()
+            ) { bitmap: Bitmap? ->
+                if (bitmap != null) {
+                    processImageBitmap(bitmap)
+                }
+            }
 
             AlertDialog(
                 onDismissRequest = { showAddStudentDialog = false },
@@ -778,10 +838,13 @@ fun GradeRegisterScreen(
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         TabRow(selectedTabIndex = selectedTab) {
                             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
-                                Text("طالب مفرد", modifier = Modifier.padding(8.dp), fontSize = 12.sp)
+                                Text("طالب مفرد", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
                             }
                             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
-                                Text("لصق قائمة (Word/Excel)", modifier = Modifier.padding(8.dp), fontSize = 12.sp)
+                                Text("لصق قائمة", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
+                            }
+                            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
+                                Text("مسح صورة 📷", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
                             }
                         }
 
@@ -793,7 +856,7 @@ fun GradeRegisterScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
-                        } else {
+                        } else if (selectedTab == 1) {
                             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
                                     "الصق قائمة الأسماء هنا (سطر لكل طالب من ملف Word أو Excel):",
@@ -808,6 +871,64 @@ fun GradeRegisterScreen(
                                     maxLines = 10
                                 )
                             }
+                        } else {
+                            // Tab 2: OCR Image Scan
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    "استخراج أسماء الطلاب أوفلاين مجاناً من صور القوائم الورقية 📷:",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF1E3A8A),
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Button(
+                                        onClick = { cameraLauncher.launch(null) },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                                    ) {
+                                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("الكاميرا 📸", fontSize = 11.sp)
+                                    }
+
+                                    Button(
+                                        onClick = { galleryLauncher.launch("image/*") },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                                    ) {
+                                        Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("المعرض 🖼️", fontSize = 11.sp)
+                                    }
+                                }
+
+                                if (isScanningImage) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center,
+                                        modifier = Modifier.fillMaxWidth().padding(8.dp)
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("جاري استخراج الأسماء من الصورة أوفلاين...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = ocrNamesText,
+                                    onValueChange = { ocrNamesText = it },
+                                    label = { Text("الأسماء المستخرجة من الصورة (يمكنك مراجعتها وتعديلها)") },
+                                    placeholder = { Text("تظهر الأسماء هنا بعد تصوير القائمة...") },
+                                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                                    maxLines = 12
+                                )
+                            }
                         }
                     }
                 },
@@ -819,10 +940,16 @@ fun GradeRegisterScreen(
                                     viewModel.addMockStudent(grade, section, subject, singleName.trim())
                                     Toast.makeText(context, "تمت إضافة الطالب بنجاح", Toast.LENGTH_SHORT).show()
                                 }
-                            } else {
+                            } else if (selectedTab == 1) {
                                 if (multiNamesText.isNotBlank()) {
                                     viewModel.importMultipleStudents(grade, section, subject, multiNamesText) { count ->
                                         Toast.makeText(context, "تم استيراد $count طالب بنجاح!", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            } else {
+                                if (ocrNamesText.isNotBlank()) {
+                                    viewModel.importMultipleStudents(grade, section, subject, ocrNamesText) { count ->
+                                        Toast.makeText(context, "تم استيراد $count طالب من الصورة بنجاح! 🚀", Toast.LENGTH_LONG).show()
                                     }
                                 }
                             }

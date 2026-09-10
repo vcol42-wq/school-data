@@ -1,10 +1,13 @@
 package com.school.system.data.network
 
+import android.graphics.Bitmap
+import android.util.Base64
 import com.school.system.data.dao.ConfigDao
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,6 +30,38 @@ class GeminiAssistantService @Inject constructor(
         val config = configDao.getConfig().first()
         val key = config?.geminiApiKey?.ifEmpty { config.cloudGeminiKey }?.ifEmpty { null }
         return key ?: "AIzaSyA92sLsbAsl9HXjEQb2fsADFeOTsvi6aGQ"
+    }
+
+    suspend fun extractArabicNamesFromImage(bitmap: Bitmap): String {
+        val apiKey = getEffectiveApiKey()
+        return try {
+            val byteArrayOutputStream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, byteArrayOutputStream)
+            val base64Image = Base64.encodeToString(byteArrayOutputStream.toByteArray(), Base64.NO_WRAP)
+
+            val prompt = "اقرأ أسماء الطلاب المكتوبة باللغة العربية بوضوح في هذه الصورة المرفقة (سواء كانت ورقة مطبوعة أو بخط اليد). اكتب كل اسم طالب رباعي أو ثلاثي في سطر مستقل فقط بدون أرقام تسلسلية وبدون كلمات إضافية."
+
+            val request = GeminiRequest(
+                contents = listOf(
+                    Content(
+                        parts = listOf(
+                            Part(text = prompt),
+                            Part(inlineData = InlineData(data = base64Image))
+                        )
+                    )
+                )
+            )
+
+            val response = geminiApi.generateContent(apiKey, request)
+            if (response.isSuccessful) {
+                val answer = response.body()?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!answer.isNullOrBlank()) return answer
+            }
+            ""
+        } catch (e: Exception) {
+            e.printStackTrace()
+            ""
+        }
     }
 
     suspend fun askGemini(prompt: String): String {

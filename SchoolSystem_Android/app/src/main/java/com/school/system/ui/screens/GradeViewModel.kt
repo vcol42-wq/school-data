@@ -1,5 +1,6 @@
 package com.school.system.ui.screens
 
+import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.school.system.data.SyncManager
@@ -19,8 +20,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.SharingStarted
 import com.school.system.data.local.SecureKeyStorage
+import com.school.system.data.network.GeminiAssistantService
 import com.school.system.data.repository.GradesRepository
 import com.school.system.data.repository.SecureUploadResult
+import com.school.system.utils.ImageTextExtractor
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -66,6 +69,30 @@ class GradeViewModel @Inject constructor(
         viewModelScope.launch {
             absenceDao.getAllAbsences().collectLatest {
                 _absences.value = it
+            }
+        }
+    }
+
+    fun extractStudentNamesFromPhoto(bitmap: Bitmap, onResult: (List<String>, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                // 1. Try Gemini Vision AI for Arabic handwritten or printed paper
+                val geminiService = GeminiAssistantService(configDao)
+                val visionText = geminiService.extractArabicNamesFromImage(bitmap)
+                var names = ImageTextExtractor.parseStudentNamesFromRawText(visionText)
+
+                if (names.isNotEmpty()) {
+                    onResult(names, visionText)
+                    return@launch
+                }
+
+                // 2. Fallback to local ML Kit
+                val localText = ImageTextExtractor.extractTextFromBitmap(bitmap)
+                names = ImageTextExtractor.parseStudentNamesFromRawText(localText)
+                onResult(names, if (localText.isNotBlank()) localText else visionText)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onResult(emptyList(), "")
             }
         }
     }
