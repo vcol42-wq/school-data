@@ -44,6 +44,12 @@ data class TimetableDto(
     @SerializedName("end_time") val endTime: String
 )
 
+data class ScheduleDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("schedule_map") val scheduleMap: Map<String, Any>? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null
+)
+
 data class AssignmentDto(
     @SerializedName("id") val id: String,
     @SerializedName("subject_id") val subjectId: String,
@@ -90,12 +96,22 @@ data class DirectMessageDto(
 )
 
 data class TeacherAssignmentDto(
-    @SerializedName("id") val id: String? = null,
-    @SerializedName("school_id") val schoolId: String,
-    @SerializedName("teacher_id") val teacherId: String,
-    @SerializedName("class_name") val className: String,
-    @SerializedName("section") val section: String,
-    @SerializedName("subject_name") val subjectName: String
+    @SerializedName("id") val id: Any? = null,
+    @SerializedName("school_id") val schoolId: String? = null,
+    @SerializedName("teacher_id") val teacherId: String? = null,
+    @SerializedName("class_name") val className: String? = null,
+    @SerializedName("section") val section: String? = null,
+    @SerializedName("subject_name") val subjectName: String? = null
+)
+
+data class SubjectAssignmentDto(
+    @SerializedName("id") val id: Any? = null,
+    @SerializedName("school_id") val schoolId: String? = null,
+    @SerializedName("grade") val grade: String? = null,
+    @SerializedName("section") val section: String? = null,
+    @SerializedName("subject") val subject: String? = null,
+    @SerializedName("teacher_name") val teacherName: String? = null,
+    @SerializedName("secret_code") val secretCode: String? = null
 )
 
 data class TeacherDto(

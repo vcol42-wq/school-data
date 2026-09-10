@@ -193,6 +193,20 @@ class SyncManager @Inject constructor(
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId.trim() else "SCH-KAB2-6884"
         val token = currentConfig.syncSealToken ?: ""
+
+        val localPackages = packageDao.getAllPackagesList()
+        if (localPackages.isNotEmpty()) {
+            val items = localPackages.map { pkg ->
+                SchoolClassSubjectItem(
+                    grade = pkg.grade,
+                    section = pkg.section,
+                    subject = pkg.subject,
+                    teacherName = currentConfig.managerName
+                )
+            }
+            return downloadSelectedClasses(items)
+        }
+
         return downloadClassRoster(schoolId, token)
     }
 
@@ -237,11 +251,11 @@ class SyncManager @Inject constructor(
                 if (isSupabase) {
                     syncRepository.downloadSimpleRoster(schoolId, cleanGrade, cleanSection).map {
                         StudentDto(
-                            recordNumber = it.record_number,
-                            fullName = it.full_name,
-                            grade = it.current_grade,
-                            section = it.section,
-                            historicalAbsences = it.absences_count
+                            recordNumber = it.record_number ?: "",
+                            fullName = it.full_name ?: "",
+                            grade = it.current_grade ?: "",
+                            section = it.section ?: "",
+                            historicalAbsences = it.absences_count ?: 0
                         )
                     }
                 } else {

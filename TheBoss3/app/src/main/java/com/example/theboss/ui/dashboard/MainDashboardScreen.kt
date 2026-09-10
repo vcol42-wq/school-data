@@ -79,10 +79,20 @@ class DashboardViewModel @Inject constructor(
             _isRefreshing.value = true
             repository.syncDailyAssignments(schoolId)
             repository.syncTimetableAndInstructions(schoolId)
+            repository.syncDirectives(schoolId)
+            repository.syncSchedule(schoolId)
             repository.syncDirectMessages()
             val deviceId = repository.getDeviceId()
             repository.syncAttendance(schoolId, deviceId)
             _isRefreshing.value = false
+        }
+    }
+
+    fun syncScheduleManual(onComplete: (Boolean) -> Unit = {}) {
+        val schoolId = repository.getSchoolId() ?: return
+        viewModelScope.launch {
+            val res = repository.syncSchedule(schoolId)
+            onComplete(res.isSuccess)
         }
     }
 

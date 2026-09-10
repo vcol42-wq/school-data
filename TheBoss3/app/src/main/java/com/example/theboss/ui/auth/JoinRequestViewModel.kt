@@ -65,6 +65,22 @@ class JoinRequestViewModel @Inject constructor(
             
             val result = repository.submitJoinRequest(request)
             if (result.isSuccess) {
+                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                val targetGrade = grade.trim().ifEmpty { stage.trim() }.ifEmpty { "الأول المتوسط" }
+                val targetSec = section.trim().ifEmpty { "أ" }
+                prefs.edit()
+                    .putString("student_name", name.trim())
+                    .putString("student_email", email.trim())
+                    .putString("student_grade", targetGrade)
+                    .putString("student_section", targetSec)
+                    .apply()
+
+                try {
+                    repository.syncTimetableAndInstructions(schoolId)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
                 _isSuccess.value = true
             } else {
                 _error.value = result.exceptionOrNull()?.message ?: "فشل إرسال طلب الانضمام"

@@ -58,17 +58,18 @@ data class SchoolClassSubjectItem(
 
 
 data class SupabaseStudentDto(
-    val school_id: String,
-    val record_number: String,
-    val first_name: String,
-    val second_name: String?,
-    val third_name: String?,
-    val fourth_name: String?,
-    val title_name: String?,
-    val full_name: String,
-    val current_grade: String,
-    val section: String,
-    val absences_count: Int
+    val school_id: String? = null,
+    val record_number: String? = null,
+    val first_name: String? = null,
+    val second_name: String? = null,
+    val third_name: String? = null,
+    val fourth_name: String? = null,
+    val title_name: String? = null,
+    val full_name: String? = null,
+    val current_grade: String? = null,
+    val section: String? = null,
+    val absences_count: Int? = 0,
+    val status: String? = "مستمر"
 )
 
 data class SupabaseGradeDto(
@@ -189,6 +190,22 @@ interface SupabaseApi {
         @Query("subject") subjectFilter: String? = null,
         @Query("secret_code") secretCodeFilter: String? = null
     ): Response<List<SupabaseSubjectAssignmentDto>>
+
+    @GET("rest/v1/classes")
+    suspend fun getClasses(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Query("school_id") schoolFilter: String
+    ): Response<List<Map<String, Any>>>
+
+    @GET("rest/v1/subjects")
+    suspend fun getSubjects(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Query("school_id") schoolFilter: String
+    ): Response<List<Map<String, Any>>>
 
     @GET("rest/v1/students")
     suspend fun getStudents(
@@ -1048,10 +1065,22 @@ class SyncRepository @Inject constructor(
             }
 
             if (assignments.isEmpty()) {
-                // Teacher is registered but has no assigned classes in timetable
-                packageDao.clearAll()
-                studentDao.clearAll()
-                return false
+                // Check if local packages already exist before deciding what to do
+                val localPkgs = packageDao.getAllPackagesList()
+                if (localPkgs.isNotEmpty()) {
+                    // Reconstruct assignments from existing packages
+                    assignments = localPkgs.map { pkg ->
+                        SupabaseAssignmentDto(
+                            school_id = schoolId,
+                            teacher_id = teacherId,
+                            class_name = pkg.grade,
+                            section = pkg.section,
+                            subject_name = pkg.subject
+                        )
+                    }
+                } else {
+                    return false
+                }
             }
 
             val studentsResponse = try { 
@@ -1084,8 +1113,8 @@ class SyncRepository @Inject constructor(
                 )
             }
 
-            // 3. Insert students strictly for this teacher's assigned classes & subjects (Cap: 60 students per section)
-            val maxStudentsPerSection = 60
+            // 3. Insert students strictly for this teacher's assigned classes & subjects
+            val maxStudentsPerSection = 100
             val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
                 strength = java.text.Collator.PRIMARY
             }
@@ -1096,30 +1125,34 @@ class SyncRepository @Inject constructor(
                 val targetSubjStd = standardizeSubjectName(assign.subject_name)
 
                 val matchedStudents = studentsList.filter { stdDto ->
-                    isGradeMatch(stdDto.current_grade, targetGradeStd) &&
-                    standardizeSectionName(stdDto.section) == targetSecStd
+                    val g = stdDto.current_grade ?: ""
+                    val s = stdDto.section ?: ""
+                    isGradeMatch(g, targetGradeStd) &&
+                    (standardizeSectionName(s) == targetSecStd || targetSecStd == "الكل" || (targetSecStd == "اللغة" && standardizeSectionName(s) == "أ"))
                 }.sortedWith { s1, s2 ->
-                    val n1 = s1.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
-                    val n2 = s2.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                    val n1 = s1.full_name?.trim()?.replace("^\\d+[\\.\\-\\s]+".toRegex(), "") ?: ""
+                    val n2 = s2.full_name?.trim()?.replace("^\\d+[\\.\\-\\s]+".toRegex(), "") ?: ""
                     collator.compare(n1, n2)
                 }.take(maxStudentsPerSection)
 
                 matchedStudents.forEach { stdDto ->
+                    val recNum = stdDto.record_number?.takeIf { it.isNotBlank() } ?: stdDto.full_name?.hashCode()?.toString() ?: "0"
+                    val fName = stdDto.full_name?.trim()?.takeIf { it.isNotBlank() } ?: "طالب"
                     val newStudent = Student(
-                        recordNumber = stdDto.record_number,
-                        fullName = stdDto.full_name,
+                        recordNumber = recNum,
+                        fullName = fName,
                         grade = targetGradeStd,
                         section = targetSecStd,
                         subject = targetSubjStd,
-                        historicalAbsences = stdDto.absences_count
+                        historicalAbsences = stdDto.absences_count ?: 0
                     )
 
                     val matchedOld = existingStudents.find { oldStd ->
                         isGradeMatch(oldStd.grade, targetGradeStd) &&
                         standardizeSectionName(oldStd.section) == targetSecStd &&
                         standardizeSubjectName(oldStd.subject) == targetSubjStd &&
-                        ((oldStd.recordNumber.isNotBlank() && oldStd.recordNumber == stdDto.record_number) ||
-                         (normalizeArabic(oldStd.fullName) == normalizeArabic(stdDto.full_name)))
+                        ((oldStd.recordNumber.isNotBlank() && oldStd.recordNumber == recNum) ||
+                         (normalizeArabic(oldStd.fullName) == normalizeArabic(fName)))
                     }
 
                     if (matchedOld != null) {
@@ -1198,11 +1231,17 @@ class SyncRepository @Inject constructor(
                 Log.w("SyncRepository", "getSubjectAssignments error: ${e.message}")
             }
 
-            // 3. Resolve teacher names from teachers table if any
+            // 3. Resolve teacher names and specializations from teachers table
+            var teacherMap = mapOf<String, SupabaseTeacherDto>()
+            var teacherBySpec = mapOf<String, SupabaseTeacherDto>()
             try {
                 val teachersRes = api.getAllTeachers(apiKey, authHeader, schoolId, "eq.$schoolId")
                 if (teachersRes.isSuccessful && !teachersRes.body().isNullOrEmpty()) {
-                    val teacherMap = teachersRes.body()!!.associateBy { it.id }
+                    val tList = teachersRes.body()!!
+                    teacherMap = tList.associateBy { it.id }
+                    teacherBySpec = tList.filter { !it.specialization.isNullOrBlank() }
+                        .associateBy { standardizeSubjectName(it.specialization!!) }
+
                     resultMap.values.forEach { item ->
                         if (item.teacherId != null && teacherMap.containsKey(item.teacherId)) {
                             val realName = teacherMap[item.teacherId]?.name
@@ -1214,6 +1253,41 @@ class SyncRepository @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.w("SyncRepository", "getAllTeachers error: ${e.message}")
+            }
+
+            // 4. Fetch distinct grades and sections from students table to ensure no section (ب, ج, د) is omitted!
+            try {
+                val studentsRes = api.getStudents(apiKey, authHeader, schoolId, "eq.$schoolId")
+                val distinctFromStudents = if (studentsRes.isSuccessful && !studentsRes.body().isNullOrEmpty()) {
+                    studentsRes.body()!!.mapNotNull { s ->
+                        val g = s.current_grade?.takeIf { it.isNotBlank() }
+                        val sec = s.section?.takeIf { it.isNotBlank() }
+                        if (g != null && sec != null) Pair(standardizeGradeName(g), standardizeSectionName(sec)) else null
+                    }.distinct()
+                } else emptyList()
+
+                val coreSubjects = listOf("الرياضيات", "اللغة العربية", "اللغة الإنجليزية", "التربية الإسلامية", "العلوم", "الاجتماعيات", "الحاسوب")
+                
+                distinctFromStudents.forEach { (grd, sec) ->
+                    coreSubjects.forEach { subj ->
+                        val stdGrd = standardizeGradeName(grd)
+                        val stdSec = standardizeSectionName(sec)
+                        val stdSubj = standardizeSubjectName(subj)
+                        val key = "$stdGrd-$stdSec-$stdSubj"
+                        if (!resultMap.containsKey(key)) {
+                            val matchedTeacher = teacherBySpec[stdSubj]
+                            resultMap[key] = SchoolClassSubjectItem(
+                                grade = stdGrd,
+                                section = stdSec,
+                                subject = stdSubj,
+                                teacherName = matchedTeacher?.name,
+                                teacherId = matchedTeacher?.id
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "Error discovering classes from students: ${e.message}")
             }
 
             resultMap.values.sortedWith(
@@ -1255,7 +1329,7 @@ class SyncRepository @Inject constructor(
             packageDao.clearAll()
             studentDao.clearAll()
 
-            val maxStudentsPerSection = 60
+            val maxStudentsPerSection = 100
             val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
                 strength = java.text.Collator.PRIMARY
             }
@@ -1275,30 +1349,34 @@ class SyncRepository @Inject constructor(
                 )
 
                 val matchedStudents = studentsList.filter { stdDto ->
-                    isGradeMatch(stdDto.current_grade, targetGradeStd) &&
-                    standardizeSectionName(stdDto.section) == targetSecStd
+                    val g = stdDto.current_grade ?: ""
+                    val s = stdDto.section ?: ""
+                    isGradeMatch(g, targetGradeStd) &&
+                    (standardizeSectionName(s) == targetSecStd || targetSecStd == "الكل" || (targetSecStd == "اللغة" && standardizeSectionName(s) == "أ"))
                 }.sortedWith { s1, s2 ->
-                    val n1 = s1.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
-                    val n2 = s2.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                    val n1 = s1.full_name?.trim()?.replace("^\\d+[\\.\\-\\s]+".toRegex(), "") ?: ""
+                    val n2 = s2.full_name?.trim()?.replace("^\\d+[\\.\\-\\s]+".toRegex(), "") ?: ""
                     collator.compare(n1, n2)
                 }.take(maxStudentsPerSection)
 
                 matchedStudents.forEach { stdDto ->
+                    val recNum = stdDto.record_number?.takeIf { it.isNotBlank() } ?: stdDto.full_name?.hashCode()?.toString() ?: "0"
+                    val fName = stdDto.full_name?.trim()?.takeIf { it.isNotBlank() } ?: "طالب"
                     val newStudent = Student(
-                        recordNumber = stdDto.record_number,
-                        fullName = stdDto.full_name,
+                        recordNumber = recNum,
+                        fullName = fName,
                         grade = targetGradeStd,
                         section = targetSecStd,
                         subject = targetSubjStd,
-                        historicalAbsences = stdDto.absences_count
+                        historicalAbsences = stdDto.absences_count ?: 0
                     )
 
                     val matchedOld = existingStudents.find { oldStd ->
                         isGradeMatch(oldStd.grade, targetGradeStd) &&
                         standardizeSectionName(oldStd.section) == targetSecStd &&
                         standardizeSubjectName(oldStd.subject) == targetSubjStd &&
-                        ((oldStd.recordNumber.isNotBlank() && oldStd.recordNumber == stdDto.record_number) ||
-                         (normalizeArabic(oldStd.fullName) == normalizeArabic(stdDto.full_name)))
+                        ((oldStd.recordNumber.isNotBlank() && oldStd.recordNumber == recNum) ||
+                         (normalizeArabic(oldStd.fullName) == normalizeArabic(fName)))
                     }
 
                     if (matchedOld != null) {
@@ -1707,8 +1785,8 @@ class SyncRepository @Inject constructor(
                 strength = java.text.Collator.PRIMARY
             }
             list.sortedWith { s1, s2 ->
-                val n1 = s1.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
-                val n2 = s2.full_name.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                val n1 = s1.full_name?.trim()?.replace("^\\d+[\\.\\-\\s]+".toRegex(), "") ?: ""
+                val n2 = s2.full_name?.trim()?.replace("^\\d+[\\.\\-\\s]+".toRegex(), "") ?: ""
                 collator.compare(n1, n2)
             }
         } catch (e: Exception) {

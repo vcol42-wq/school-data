@@ -51,6 +51,13 @@ interface SupabaseApi {
         @Query("select") select: String = "*"
     ): Response<List<TimetableDto>>
 
+    // جلب خريطة الجدول الأسبوعي للمدرسة من جدول schedules
+    @GET("schedules")
+    suspend fun getSchoolSchedule(
+        @Query("id") idFilter: String,
+        @Query("select") select: String = "*"
+    ): Response<List<ScheduleDto>>
+
     // جلب تعليمات الأساتذة والواجبات
     @GET("assignments")
     suspend fun getTeacherInstructions(
@@ -109,6 +116,13 @@ interface SupabaseApi {
         @Query("school_id") schoolFilter: String,
         @Query("select") select: String = "*"
     ): Response<List<TeacherAssignmentDto>>
+
+    // جلب تعيينات المواد والتخصصات
+    @GET("subject_assignments")
+    suspend fun getSubjectAssignments(
+        @Query("school_id") schoolFilter: String,
+        @Query("select") select: String = "*"
+    ): Response<List<SubjectAssignmentDto>>
 
     // جلب بيانات المعلمين
     @GET("teachers")

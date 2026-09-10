@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.launch
@@ -37,7 +38,8 @@ data class StudentLessonSlot(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StudentTimetableScreen(
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -46,6 +48,24 @@ fun StudentTimetableScreen(
     var studentGrade by remember { mutableStateOf(prefs.getString("student_grade", "الصف الأول") ?: "الصف الأول") }
     var studentSection by remember { mutableStateOf(prefs.getString("student_section", "أ") ?: "أ") }
     var rawScheduleJson by remember { mutableStateOf(prefs.getString("synced_schedule", "{}") ?: "{}") }
+    var isRefreshingSchedule by remember { mutableStateOf(false) }
+
+    fun norm(str: String): String = str
+        .replace("[أإآ]".toRegex(), "ا")
+        .replace("ة", "ه")
+        .replace("ى", "ي")
+        .replace("^(الصف|صف)\\s*".toRegex(), "")
+        .trim()
+
+    LaunchedEffect(Unit) {
+        if (rawScheduleJson == "{}" || rawScheduleJson.length < 10) {
+            isRefreshingSchedule = true
+            viewModel.syncScheduleManual {
+                isRefreshingSchedule = false
+                rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
+            }
+        }
+    }
 
     val daysList = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
     val lessonColumns = listOf("الدرس 1", "الدرس 2", "الدرس 3", "الدرس 4", "الدرس 5", "الدرس 6", "الدرس 7")
@@ -60,6 +80,9 @@ fun StudentTimetableScreen(
         try {
             val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
             if (rootObj != null) {
+                val stdG = norm(studentGrade)
+                val stdS = norm(studentSection)
+
                 for (day in daysList) {
                     val dayData = rootObj[day]
                     if (dayData is List<*>) {
@@ -67,9 +90,11 @@ fun StudentTimetableScreen(
                             if (row is Map<*, *>) {
                                 val g = row["grade"]?.toString() ?: ""
                                 val s = row["section"]?.toString() ?: ""
+                                val rowG = norm(g)
+                                val rowS = norm(s)
                                 
-                                val matchesGrade = g.contains(studentGrade) || studentGrade.contains(g) || g.isEmpty()
-                                val matchesSection = s.contains(studentSection) || studentSection.contains(s) || s.isEmpty()
+                                val matchesGrade = rowG.contains(stdG) || stdG.contains(rowG) || rowG.isEmpty()
+                                val matchesSection = rowS.contains(stdS) || stdS.contains(rowS) || rowS.isEmpty()
                                 
                                 if (matchesGrade && matchesSection) {
                                     val lessons = row["lessons"] as? Map<*, *>
@@ -123,11 +148,27 @@ fun StudentTimetableScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
-                            Toast.makeText(context, "تم تحديث الجدول بنجاح! ⚡", Toast.LENGTH_SHORT).show()
+                            isRefreshingSchedule = true
+                            viewModel.syncScheduleManual { success ->
+                                isRefreshingSchedule = false
+                                rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
+                                if (success) {
+                                    Toast.makeText(context, "تم تحديث الجدول بنجاح من السحابة! ⚡", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "تم قراءة الجدول المحلي المتاح", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         }
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "تحديث", tint = Color.White)
+                        if (isRefreshingSchedule) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = "تحديث", tint = Color.White)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

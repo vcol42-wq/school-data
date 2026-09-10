@@ -53,12 +53,14 @@ class DynamicUrlInterceptor(private val context: Context) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-        val url = prefs.getString("supabase_url", null)
-        val apiKey = prefs.getString("supabase_key", null)
+        val defaultUrl = "https://pexehlvkpdhmpukjydwd.supabase.co"
+        val defaultKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleGVobHZrcGRobXB1a2p5ZHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Njk4NDUsImV4cCI6MjEwMjQ0NTg0NX0.YFDRTLJnB56uD-rGtknex_NhycexP57WHhhTRVas5EY"
+        val url = prefs.getString("supabase_url", null)?.takeIf { it.isNotBlank() } ?: defaultUrl
+        val apiKey = prefs.getString("supabase_key", null)?.takeIf { it.isNotBlank() } ?: defaultKey
         val schoolId = prefs.getString("school_id", null)
         val builder = request.newBuilder()
 
-        if (!apiKey.isNullOrBlank()) {
+        if (apiKey.isNotBlank()) {
             builder.header("apikey", apiKey)
             builder.header("Authorization", "Bearer $apiKey")
         }
