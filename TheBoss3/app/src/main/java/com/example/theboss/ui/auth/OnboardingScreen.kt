@@ -68,7 +68,7 @@ fun OnboardingScreen(
                     textAlign = TextAlign.Center
                 )
                 Text(
-                    text = "متابعة الدرجات والغيابات والواجبات والمساعد الذكي Gemini",
+                    text = "متابعة الدرجات والغيابات وجدول الحصص والتحضيرات المدرسية",
                     color = Color(0xFFC7D2FE),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,

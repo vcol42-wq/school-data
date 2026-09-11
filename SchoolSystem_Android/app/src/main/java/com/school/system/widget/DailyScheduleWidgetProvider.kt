@@ -73,13 +73,7 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
             val upcoming = WidgetScheduleHelper.calculateUpcomingTeacherLesson(context)
             val activeLessonNum = if (upcoming.isOngoing) upcoming.lessonNumber else 0
 
-            val headerText = when {
-                upcoming.isOngoing -> "⏱️ ${upcoming.remainingMinutes}m"
-                upcoming.isFutureDay -> "${upcoming.nextDayName}\n${upcoming.formattedTime}"
-                !upcoming.hasNoMoreLessons -> "⏳ ${upcoming.remainingMinutes}m"
-                else -> dayName
-            }
-            views.setTextViewText(R.id.strip_header_day, headerText)
+            views.setTextViewText(R.id.strip_header_day, dayName)
 
             val lessons = WidgetScheduleHelper.getTodayTeacherLessons(context)
             val lessonsByNum = lessons.associateBy { it.lessonNumber }

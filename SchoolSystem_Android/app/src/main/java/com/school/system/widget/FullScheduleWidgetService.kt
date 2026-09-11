@@ -65,12 +65,7 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             val subj = lessonPair?.first ?: "-"
             val teacher = lessonPair?.second ?: ""
 
-            val display = if (subj != "-" && teacher.isNotEmpty()) {
-                "$subj\n$teacher"
-            } else {
-                subj
-            }
-
+            val display = subj
             views.setTextViewText(cellViewId, display)
 
             val isTeacherLesson = if (teacherName.isNotEmpty() && subj != "-") {

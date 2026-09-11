@@ -5,9 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.theboss.data.local.*
 import com.example.theboss.utils.alarm.StudyAlarmScheduler
-import com.example.theboss.utils.audio.AudioHelper
-import com.example.theboss.utils.audio.AudioPlayerManager
-import com.example.theboss.utils.audio.AudioRecorderManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,8 +17,8 @@ import kotlin.random.Random
 
 data class GpaCourse(
     val name: String,
-    val grade: Double, // الدرجة من 100
-    val credits: Int // عدد الساعات المعتمدة
+    val grade: Double,
+    val credits: Int
 )
 
 @HiltViewModel
@@ -31,7 +28,6 @@ class WorkspaceToolsViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    // 1. تدفقات البيانات من قاعدة البيانات
     val notes: StateFlow<List<NoteEntity>> = workspaceDao.getAllNotes()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -44,60 +40,13 @@ class WorkspaceToolsViewModel @Inject constructor(
     val alarms: StateFlow<List<AlarmEntity>> = workspaceDao.getAllAlarms()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // 2. إدارة تشغيل وتسجيل الملاحظات الصوتية
-    private val recorderManager = AudioRecorderManager(context)
-    private val playerManager = AudioPlayerManager(context)
-
-    private val _isRecording = MutableStateFlow(false)
-    val isRecording: StateFlow<Boolean> = _isRecording
-
-    private val _isPlayingPath = MutableStateFlow<String?>(null)
-    val isPlayingPath: StateFlow<String?> = _isPlayingPath
-
-    private var currentRecordingPath: String? = null
-
-    // 3. إدارة حاسبة المعدل GPA
     private val _gpaCourses = MutableStateFlow<List<GpaCourse>>(emptyList())
     val gpaCourses: StateFlow<List<GpaCourse>> = _gpaCourses
 
     private val _calculatedGpa = MutableStateFlow(0.0)
     val calculatedGpa: StateFlow<Double> = _calculatedGpa
 
-    // ==================== عمليات الملاحظات ====================
-    fun startVoiceRecording() {
-        viewModelScope.launch {
-            val path = recorderManager.startRecording("voice_note")
-            if (path != null) {
-                currentRecordingPath = path
-                _isRecording.value = true
-            }
-        }
-    }
-
-    fun stopVoiceRecording(title: String) {
-        viewModelScope.launch {
-            _isRecording.value = false
-            val path = recorderManager.stopRecording()
-            if (path != null && currentRecordingPath == path) {
-                val duration = AudioHelper.getDurationInSeconds(path)
-                val note = NoteEntity(
-                    title = if (title.isBlank()) "ملاحظة صوتية" else title,
-                    content = "تسجيل صوتي محلي",
-                    audioPath = path,
-                    audioDurationSeconds = duration
-                )
-                workspaceDao.insertNote(note)
-            }
-            currentRecordingPath = null
-        }
-    }
-
-    fun cancelRecording() {
-        recorderManager.cancelRecording()
-        _isRecording.value = false
-        currentRecordingPath = null
-    }
-
+    // ==================== عمليات الملاحظات النصية ====================
     fun addTextNote(title: String, content: String) {
         viewModelScope.launch {
             val note = NoteEntity(title = title, content = content)
@@ -109,18 +58,6 @@ class WorkspaceToolsViewModel @Inject constructor(
         viewModelScope.launch {
             workspaceDao.deleteNote(note)
         }
-    }
-
-    fun playAudio(path: String) {
-        _isPlayingPath.value = path
-        playerManager.playAudio(path) {
-            _isPlayingPath.value = null
-        }
-    }
-
-    fun stopAudio() {
-        playerManager.stopAudio()
-        _isPlayingPath.value = null
     }
 
     // ==================== عمليات المهام ====================

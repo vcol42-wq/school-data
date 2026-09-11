@@ -222,9 +222,9 @@ class SyncManager @Inject constructor(
             val cleanSubject = subject.trim().ifEmpty { "المادة العامة" }
 
             val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-            val url = currentConfig.cloudUrl
-            val schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
-            val isSupabase = url.contains("supabase.co")
+            val url = currentConfig.cloudUrl.ifEmpty { SyncRepository.DEFAULT_SUPABASE_URL }
+            val schoolId = currentConfig.schoolId.ifEmpty { "SCH-KAB2-6884" }
+            val isSupabase = url.contains("supabase")
 
             // 1. Ensure ClassPackage exists without creating duplicates
             val allPackages = packageDao.getAllPackagesList()
@@ -246,7 +246,7 @@ class SyncManager @Inject constructor(
                 )
             }
 
-            // 2. Fetch students from Cloud if URL is configured
+            // 2. Fetch students from Cloud
             val studentsFromCloud = if (url.isNotEmpty()) {
                 if (isSupabase) {
                     syncRepository.downloadSimpleRoster(schoolId, cleanGrade, cleanSection).map {

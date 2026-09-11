@@ -223,6 +223,7 @@ fun GradeRegisterScreen(
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val coroutineScope = rememberCoroutineScope()
     var isUploadingGrades by remember { mutableStateOf(false) }
+    var isRefreshingStudentsFromCloud by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(java.time.LocalDate.now()) }
     var selectedPeriod by remember { mutableIntStateOf(1) }
 
@@ -393,6 +394,33 @@ fun GradeRegisterScreen(
                                         tint = currentTheme.primaryColor,
                                         modifier = Modifier.size(19.dp)
                                     )
+                                }
+                                Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
+                                IconButton(
+                                    onClick = {
+                                        if (isRefreshingStudentsFromCloud) return@IconButton
+                                        isRefreshingStudentsFromCloud = true
+                                        viewModel.refreshStudentsFromCloud(grade, section, subject) { success, msg ->
+                                            isRefreshingStudentsFromCloud = false
+                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                        }
+                                    },
+                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                ) {
+                                    if (isRefreshingStudentsFromCloud) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF0EA5E9)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "استدعاء وتحديث قائمة الأسماء والبيانات من السحابة 🔄",
+                                            tint = Color(0xFF0EA5E9),
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
                                 }
                                 Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
                                 IconButton(

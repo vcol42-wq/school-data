@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.View
 import android.widget.RemoteViews
 import com.school.system.MainActivity
 import com.school.system.R
@@ -62,35 +63,7 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             }
 
             views.setTextViewText(R.id.widget_day_text, "اليوم: $dayName")
-
-            // Update live countdown banner
-            val upcoming = WidgetScheduleHelper.calculateUpcomingTeacherLesson(context)
-            when {
-                upcoming.isOngoing -> {
-                    views.setTextViewText(
-                        R.id.widget_countdown_banner,
-                        "⏱️ جاري الآن: الحصة ${upcoming.lessonNumber} (${upcoming.subject}) • باقي ${upcoming.remainingMinutes}m"
-                    )
-                }
-                upcoming.isFutureDay -> {
-                    views.setTextViewText(
-                        R.id.widget_countdown_banner,
-                        "📌 درسك القادم: يوم ${upcoming.nextDayName} - الحصة ${upcoming.lessonNumber} (${upcoming.subject} - ${upcoming.className}) الساعة ${upcoming.formattedTime}"
-                    )
-                }
-                !upcoming.hasNoMoreLessons -> {
-                    views.setTextViewText(
-                        R.id.widget_countdown_banner,
-                        "⏳ القادمة اليوم: الحصة ${upcoming.lessonNumber} (${upcoming.subject}) • باقي ${upcoming.remainingMinutes}m"
-                    )
-                }
-                else -> {
-                    views.setTextViewText(
-                        R.id.widget_countdown_banner,
-                        "✨ اكتملت جميع دروس اليوم"
-                    )
-                }
-            }
+            views.setViewVisibility(R.id.widget_countdown_banner, View.GONE)
 
             // Service Intent for RemoteViews ListView
             val serviceIntent = Intent(context, FullScheduleWidgetService::class.java).apply {

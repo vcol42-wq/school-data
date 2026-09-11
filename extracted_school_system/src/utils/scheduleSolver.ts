@@ -70,14 +70,31 @@ DAYS_OF_WEEK.forEach((day, dIdx) => {
   });
 });
 
+export const VACANT_SLOT_SEQUENCE: { day: DayOfWeek; dayIndex: number; periodIndex: number; slotIndex: number }[] = [
+  { day: 'الخميس', dayIndex: 4, periodIndex: 5, slotIndex: 29 }, // الخميس - الدرس السادس
+  { day: 'الأربعاء', dayIndex: 3, periodIndex: 5, slotIndex: 23 }, // الأربعاء - الدرس السادس
+  { day: 'الثلاثاء', dayIndex: 2, periodIndex: 5, slotIndex: 17 }, // الثلاثاء - الدرس السادس
+  { day: 'الإثنين', dayIndex: 1, periodIndex: 5, slotIndex: 11 }, // الإثنين - الدرس السادس
+  { day: 'الأحد', dayIndex: 0, periodIndex: 5, slotIndex: 5 },  // الأحد - الدرس السادس
+  // Overflow in Period 5 only if vacancies exceed 5 (extremely rare)
+  { day: 'الخميس', dayIndex: 4, periodIndex: 4, slotIndex: 28 },
+  { day: 'الأربعاء', dayIndex: 3, periodIndex: 4, slotIndex: 22 },
+  { day: 'الثلاثاء', dayIndex: 2, periodIndex: 4, slotIndex: 16 },
+  { day: 'الإثنين', dayIndex: 1, periodIndex: 4, slotIndex: 10 },
+  { day: 'الأحد', dayIndex: 0, periodIndex: 4, slotIndex: 4 },
+];
+
 /**
  * Evaluates whether a subject is forbidden from Period 6 by pedagogical guidelines.
- * تمنع المواد العلمية (الفيزياء، الكيمياء، الأحياء، العلوم) والمواد الدينية والأخلاقية من الدرس السادس
+ * تمنع المواد العلمية (الفيزياء، الكيمياء، الأحياء، العلوم) والمواد الدينية والأخلاقية والمواد ذات النصاب <= 2 من الدرس السادس
  */
-export function isForbiddenInPeriod6(subjectName: string): boolean {
+export function isForbiddenInPeriod6(subjectName: string, weeklyQuota?: number): boolean {
   if (!subjectName) return false;
   const s = subjectName.trim().toLowerCase();
   if (s === 'شاغر' || s.includes('شاغر') || s.includes('نشاط')) return false;
+
+  // Rule 1: Subjects with quota <= 2 are forbidden in Period 6
+  if (weeklyQuota !== undefined && weeklyQuota <= 2) return true;
 
   const isScience =
     s.includes('فيز') ||
@@ -250,9 +267,23 @@ export function auditScheduleMathematicalCorrectness(
         errors.push(`الشعبة [${sec.grade} - ${sec.section}]: المادة [${sName}] تكررت (${cnt}) مرات في الدرس السادس والحد الأقصى هو مرة واحدة.`);
       }
     });
+
+    // 4. Strict Vacancy Audit (Rule 3): الحصص الشاغرة محصورة حصراً في الدرس السادس ويمنع وجود أي شاغر في الدروس (1 إلى 5)
+    DAYS_OF_WEEK.forEach(day => {
+      const row = (scheduleMap[day] || []).find(r => r.grade === sec.grade && r.section === sec.section);
+      if (row) {
+        LESSON_KEYS.forEach((lKey, pIdx) => {
+          const cell = row.lessons[lKey];
+          const isCellVacant = !cell || cell.isOff || !cell.subject || cell.subject.includes('شاغر') || cell.teacherName === 'شاغر';
+          if (pIdx < 5 && isCellVacant) {
+            errors.push(`الشعبة [${sec.grade} - ${sec.section}]: الحصة الشاغرة وُضعت في (${LESSON_LABELS[lKey]}) ليوم (${day})، وهذا مخالف لميثاق الجدول حيث يجب حصر الشواغر في الدرس السادس.`);
+          }
+        });
+      }
+    });
   });
 
-  // 4. Check teacher collisions
+  // 5. Check teacher collisions
   const collisions = checkScheduleCollisions(scheduleMap);
   if (collisions.length > 0) {
     collisions.forEach(col => {
@@ -439,20 +470,38 @@ function solveWithCSP(
   // Solve section by section using CSP
   for (const sec of sortedSections) {
     const sKey = `${sec.grade}_${sec.section}`;
-    const deck = [...(sectionDecks.get(sKey) || [])];
+    const fullDeck = [...(sectionDecks.get(sKey) || [])];
 
-    // Order deck: Heaviest teacher loads & science & non-vacant first
-    deck.sort((a, b) => {
-      if (a.isVacant !== b.isVacant) return a.isVacant ? 1 : -1;
+    const vacantCards = fullDeck.filter(c => c.isVacant);
+    const realCards = fullDeck.filter(c => !c.isVacant);
+
+    // Rule 3: Pre-allocate all vacant cards directly to their strictly designated Lesson 6 slots
+    // (Always in Lesson 6, starting Thursday, then Wednesday, then Tuesday, then Monday, then Sunday)
+    vacantCards.forEach((vCard, idx) => {
+      const vSlot = VACANT_SLOT_SEQUENCE[idx];
+      if (vSlot) {
+        assignment[sKey][vSlot.slotIndex] = vCard;
+        dailySubjectCount[sKey][vSlot.dayIndex][vCard.subject] = (dailySubjectCount[sKey][vSlot.dayIndex][vCard.subject] || 0) + 1;
+        if (vSlot.periodIndex === 5) {
+          period6SubjectCount[sKey][vCard.subject] = (period6SubjectCount[sKey][vCard.subject] || 0) + 1;
+        }
+      }
+    });
+
+    // Order real deck: Heaviest teacher loads & science first
+    realCards.sort((a, b) => {
       const tLoadA = teacherTotalLoads.get(a.teacher) || 0;
       const tLoadB = teacherTotalLoads.get(b.teacher) || 0;
       if (tLoadA !== tLoadB) return tLoadB - tLoadA;
+      const aSci = isForbiddenInPeriod6(a.subject, a.weeklyQuota);
+      const bSci = isForbiddenInPeriod6(b.subject, b.weeklyQuota);
+      if (aSci !== bSci) return aSci ? -1 : 1;
       return (Math.sin(seed + a.id.length * 7) - 0.5);
     });
 
     const success = backtrackSection(
       0,
-      deck,
+      realCards,
       sKey,
       assignment[sKey],
       teacherOccupancyMap,
@@ -482,7 +531,7 @@ function solveWithCSP(
             row.lessons[lKey] = {
               subject: card.subject,
               teacherName: card.teacher,
-              isOff: false
+              isOff: card.isVacant
             };
           }
         });
@@ -517,7 +566,12 @@ function backtrackSection(
   const candidateSlots: { slot: TimeSlot; penalty: number }[] = [];
 
   for (const slot of ALL_SLOTS) {
-    if (grid[slot.slotIndex] !== null) continue; // Already occupied
+    if (grid[slot.slotIndex] !== null) continue; // Already occupied (including pre-assigned vacant slots)
+
+    // Hard Constraint: Vacant cards are forbidden from Periods 1 to 5 (Rule 3)
+    if (card.isVacant && slot.periodIndex !== 5) {
+      continue;
+    }
 
     // 1. HARD CONSTRAINT: Teacher clash in another section
     if (card.isSpecialTeacher) {
@@ -534,80 +588,35 @@ function backtrackSection(
       continue; // Strictly no duplicate subject on the same day
     }
 
-    // 3. HARD CONSTRAINT: Thursday Lesson 6 (سادس الخميس شاغر حتماً للنشاط الحر أو نهاية الدوام)
-    if (slot.day === 'الخميس' && slot.periodIndex === 5) {
-      if (!card.isVacant && deck.some(c => c.isVacant)) {
-        continue;
-      }
-    }
-
-    // 4. PERIOD 6 RULES & EXACT QUOTA ALLOCATION:
+    // 3. PERIOD 6 CONSTRAINTS (المواد العلمية وذات النصاب <= 2 ممنوعة قطعاً، والحد الأقصى حصة واحدة للمادة)
     if (slot.periodIndex === 5) {
-      // 4a. Forbidden subjects: Science (physics, chem, bio, general science), Islamic, Ethics, or quota <= 2
-      if (isForbiddenInPeriod6(card.subject) || (!card.isVacant && card.weeklyQuota <= 2)) {
+      // 3a. Forbidden in Period 6: Science (physics, chem, bio, general science), Islamic, Ethics, or quota <= 2
+      if (isForbiddenInPeriod6(card.subject, card.weeklyQuota) || (!card.isVacant && card.weeklyQuota <= 2)) {
         continue; // Strictly forbidden in Period 6
       }
 
-      // 4b. Max 1 lesson in Period 6 per subject (مولد الجدول يختار درس واحد فقط في الدرس السادس)
+      // 3b. Max 1 lesson in Period 6 per subject (الحد الأقصى حصة واحدة للمادة في الدرس السادس)
       const currentInP6 = period6SubjectCount[card.subject] || 0;
       if (!card.isVacant && currentInP6 >= 1) {
         continue; // No subject can have more than 1 lesson in Period 6
       }
-
-      // 4c. Thursday Period 6 should not take core academic subjects if other days are available
-      if (slot.day === 'الخميس' && !card.isVacant && (card.weeklyQuota === 5 || card.weeklyQuota === 4)) {
-        if (deck.some(c => c.isVacant)) {
-          continue;
-        }
-      }
-    } else {
-      // PERIODS 1 TO 5 (الدروس من 1 إلى 5):
-      const currentIn1to5 = period1to5SubjectCount[card.subject] || 0;
-
-      // 4d. For Quota 5 subjects: EXACTLY 4 lessons in Periods 1-5!
-      // (يختار درس واحد في السادس ويبقى أربعة ضمن الخمس دروس)
-      if (!card.isVacant && card.weeklyQuota === 5 && currentIn1to5 >= 4) {
-        continue; // Must save the 5th lesson for Period 6!
-      }
-
-      // 4e. For Quota 4 subjects: EXACTLY 3 lessons in Periods 1-5!
-      // (ويختار من 4 ليكون ثلاثة ضمن الخمس دروس)
-      if (!card.isVacant && card.weeklyQuota === 4 && !isForbiddenInPeriod6(card.subject) && currentIn1to5 >= 3) {
-        continue; // Must save the 4th lesson for Period 6!
-      }
     }
 
-    // 5. Scoring & Heuristic Penalties
+    // 4. Scoring & Heuristic Penalties
     let penalty = 0;
-    if (card.isVacant) {
-      if (slot.periodIndex !== 5) {
-        penalty += 15000; // Never put vacant in lessons 1-5 unless no other choice
-      }
-      // Thursday lesson 6 is highest preference for vacant
-      if (slot.day === 'الخميس' && slot.periodIndex === 5) {
-        penalty -= 1000;
+    if (slot.periodIndex === 5) {
+      // Priority for non-science quota 5 and 4 subjects in available Period 6 slots
+      if (card.weeklyQuota >= 4) {
+        penalty -= 400;
       }
     } else {
-      if (slot.periodIndex === 5) {
-        // Priority for non-science quota 5 and 4 subjects in Period 6 (Sun, Mon, Tue, Wed)
-        if (card.weeklyQuota === 5 && slot.day !== 'الخميس') {
-          const curP6 = period6SubjectCount[card.subject] || 0;
-          if (curP6 === 0) penalty -= 600; // Strongly guide 1 card to Period 6
-        } else if (card.weeklyQuota === 4 && !isForbiddenInPeriod6(card.subject) && slot.day !== 'الخميس') {
-          const curP6 = period6SubjectCount[card.subject] || 0;
-          if (curP6 === 0) penalty -= 500; // Strongly guide 1 card to Period 6
-        } else {
-          penalty += 200;
-        }
-      } else {
-        // In Periods 1-5: give prime morning slots to heavy sciences and core subjects
-        if (isForbiddenInPeriod6(card.subject)) {
-          penalty -= 200;
-        }
+      // In Periods 1 to 5: Give prime earlier morning slots to heavy sciences and quota <= 2 subjects
+      if (isForbiddenInPeriod6(card.subject, card.weeklyQuota) || card.weeklyQuota <= 2) {
+        penalty -= (5 - slot.periodIndex) * 50;
       }
     }
 
-    // 6. Natural dispersion: Add tie-breaking noise for rotation
+    // 5. Natural dispersion: Add tie-breaking noise for rotation
     const noise = (Math.sin(seed + cardIndex * 13 + slot.slotIndex * 17) - 0.5) * 40;
     candidateSlots.push({ slot, penalty: penalty + noise });
   }
@@ -665,7 +674,7 @@ function backtrackSection(
 }
 
 /**
- * Deterministic Fallback Builder (Ensures exactly 30 lessons per section without omissions)
+ * Deterministic Fallback Builder (Ensures exactly 30 lessons per section with vacancies strictly in Lesson 6)
  */
 function buildDeterministicFallback(
   sections: SmartScheduleSection[],
@@ -677,76 +686,93 @@ function buildDeterministicFallback(
     const sKey = `${sec.grade}_${sec.section}`;
     const cards = [...(sectionDecks.get(sKey) || [])];
 
-    // Partition cards: Period 6 candidates (quota 5, quota 4, vacant) vs Periods 1-5 cards (sciences, etc.)
-    const period6Cards: LessonCard[] = [];
-    const periods1to5Cards: LessonCard[] = [];
+    const vacantCards = cards.filter(c => c.isVacant);
+    const realCards = cards.filter(c => !c.isVacant);
 
-    const seenP6Subjects = new Set<string>();
-
-    // 1. Pick vacant for Thursday period 6
-    const vacantIdx = cards.findIndex(c => c.isVacant);
-    if (vacantIdx >= 0) {
-      period6Cards.push(cards.splice(vacantIdx, 1)[0]);
-    }
-
-    // 2. Pick 1 card from each quota-5 subject for Period 6
-    for (let i = cards.length - 1; i >= 0 && period6Cards.length < 5; i--) {
-      const c = cards[i];
-      if (c.weeklyQuota === 5 && !seenP6Subjects.has(c.subject) && !isForbiddenInPeriod6(c.subject)) {
-        period6Cards.push(cards.splice(i, 1)[0]);
-        seenP6Subjects.add(c.subject);
+    // Rule 3: Pre-place all vacant cards in designated Lesson 6 slots
+    // (Thursday 6, Wednesday 6, Tuesday 6, Monday 6, Sunday 6)
+    vacantCards.forEach((vCard, idx) => {
+      const vSlot = VACANT_SLOT_SEQUENCE[idx];
+      if (vSlot) {
+        const row = scheduleMap[vSlot.day].find(r => r.grade === sec.grade && r.section === sec.section);
+        if (row) {
+          const lKey = LESSON_KEYS[vSlot.periodIndex];
+          row.lessons[lKey] = {
+            subject: vCard.subject || 'شاغر / نشاط حر',
+            teacherName: 'شاغر',
+            isOff: true
+          };
+        }
       }
-    }
+    });
 
-    // 3. Pick 1 card from quota-4 subjects for Period 6
-    for (let i = cards.length - 1; i >= 0 && period6Cards.length < 5; i--) {
-      const c = cards[i];
-      if (c.weeklyQuota === 4 && !seenP6Subjects.has(c.subject) && !isForbiddenInPeriod6(c.subject)) {
-        period6Cards.push(cards.splice(i, 1)[0]);
-        seenP6Subjects.add(c.subject);
-      }
-    }
+    // Partition real cards: eligible for Period 6 (quota >= 3, not science) vs restricted to Periods 1-5
+    const eligibleP6Cards: LessonCard[] = [];
+    const restrictedTo1to5Cards: LessonCard[] = [];
 
-    // Fill remaining Period 6 up to 5 if needed with non-forbidden subjects
-    while (period6Cards.length < 5 && cards.length > 0) {
-      const candidateIdx = cards.findIndex(c => !isForbiddenInPeriod6(c.subject) && !seenP6Subjects.has(c.subject));
-      if (candidateIdx >= 0) {
-        period6Cards.push(cards.splice(candidateIdx, 1)[0]);
-        seenP6Subjects.add(cards[candidateIdx]?.subject || '');
+    realCards.forEach(c => {
+      if (isForbiddenInPeriod6(c.subject, c.weeklyQuota) || c.weeklyQuota <= 2) {
+        restrictedTo1to5Cards.push(c);
       } else {
-        period6Cards.push(cards.pop()!);
+        eligibleP6Cards.push(c);
+      }
+    });
+
+    // Sort eligible cards by highest quota
+    eligibleP6Cards.sort((a, b) => b.weeklyQuota - a.weeklyQuota);
+
+    // Identify days where Period 6 is still empty (not occupied by a vacant card)
+    const remainingP6Days: DayOfWeek[] = [];
+    DAYS_OF_WEEK.forEach(day => {
+      const row = scheduleMap[day].find(r => r.grade === sec.grade && r.section === sec.section);
+      if (row && (!row.lessons.lesson6.subject || row.lessons.lesson6.subject === '')) {
+        remainingP6Days.push(day);
+      }
+    });
+
+    // Fill remaining Period 6 slots with at most 1 lesson per eligible subject
+    const seenP6Subjects = new Set<string>();
+    for (const day of remainingP6Days) {
+      const row = scheduleMap[day].find(r => r.grade === sec.grade && r.section === sec.section);
+      if (!row) continue;
+
+      const cardIdx = eligibleP6Cards.findIndex(c => !seenP6Subjects.has(c.subject));
+      if (cardIdx >= 0) {
+        const picked = eligibleP6Cards.splice(cardIdx, 1)[0];
+        seenP6Subjects.add(picked.subject);
+        row.lessons.lesson6 = {
+          subject: picked.subject,
+          teacherName: picked.teacher,
+          isOff: false
+        };
       }
     }
 
-    // All remaining cards are for Periods 1 to 5
-    periods1to5Cards.push(...cards);
+    // All remaining cards (restricted + leftover eligible cards) are placed in Periods 1 to 5
+    const remainingRealCards = [...restrictedTo1to5Cards, ...eligibleP6Cards];
+    // Sort so heavy sciences get prime earlier morning periods
+    remainingRealCards.sort((a, b) => {
+      const aSci = isForbiddenInPeriod6(a.subject, a.weeklyQuota);
+      const bSci = isForbiddenInPeriod6(b.subject, b.weeklyQuota);
+      if (aSci !== bSci) return aSci ? -1 : 1;
+      return b.weeklyQuota - a.weeklyQuota;
+    });
 
-    // Populate schedule slots
-    DAYS_OF_WEEK.forEach((day, dIdx) => {
+    DAYS_OF_WEEK.forEach(day => {
       const row = scheduleMap[day].find(r => r.grade === sec.grade && r.section === sec.section);
       if (row) {
-        // Fill Periods 1 to 5
         for (let p = 0; p < 5; p++) {
           const lKey = LESSON_KEYS[p];
-          if (periods1to5Cards.length > 0) {
-            const c = periods1to5Cards.shift()!;
-            row.lessons[lKey] = {
-              subject: c.subject,
-              teacherName: c.teacher,
-              isOff: c.isVacant
-            };
+          if (!row.lessons[lKey].subject || row.lessons[lKey].subject === '') {
+            if (remainingRealCards.length > 0) {
+              const c = remainingRealCards.shift()!;
+              row.lessons[lKey] = {
+                subject: c.subject,
+                teacherName: c.teacher,
+                isOff: false
+              };
+            }
           }
-        }
-
-        // Fill Period 6
-        const p6Key = LESSON_KEYS[5];
-        if (period6Cards.length > 0) {
-          const c = period6Cards.shift()!;
-          row.lessons[p6Key] = {
-            subject: c.subject,
-            teacherName: c.teacher,
-            isOff: c.isVacant
-          };
         }
       }
     });

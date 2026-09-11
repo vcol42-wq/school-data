@@ -25,6 +25,7 @@ import com.school.system.data.repository.GradesRepository
 import com.school.system.data.repository.SecureUploadResult
 import com.school.system.utils.ImageTextExtractor
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.round
@@ -103,6 +104,32 @@ class GradeViewModel @Inject constructor(
     fun updateDailyColumnSettings(setting: DailyColumnSetting) {
         viewModelScope.launch {
             dailyColumnDao.insertSetting(setting)
+        }
+    }
+
+    fun refreshStudentsFromCloud(grade: String, section: String, subject: String, onComplete: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val ok = syncManager.downloadSimpleRosterForClass(grade, section, subject)
+                if (ok) {
+                    val count = studentDao.getStudentsListForClass(grade, section, subject).size
+                    onComplete(true, "تم استدعاء قائمة الطلبة والمعلومات الجديدة من السحابة بنجاح! ⚡ (العدد: $count)")
+                } else {
+                    val currentConfig = configDao.getConfig().first()
+                    val token = currentConfig?.syncSealToken ?: ""
+                    val schoolId = currentConfig?.schoolId ?: ""
+                    val rosterOk = syncManager.downloadClassRoster(schoolId, token)
+                    if (rosterOk) {
+                        val count = studentDao.getStudentsListForClass(grade, section, subject).size
+                        onComplete(true, "تم تحديث القائمة والمعلومات من السحابة بنجاح! ⚡ (العدد: $count)")
+                    } else {
+                        onComplete(false, "تأكد من وجود الاتصال بالسحابة أو رفع القوائم من النظام المكتبي.")
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false, "خطأ أثناء الاتصال بالسحابة: ${e.localizedMessage}")
+            }
         }
     }
 

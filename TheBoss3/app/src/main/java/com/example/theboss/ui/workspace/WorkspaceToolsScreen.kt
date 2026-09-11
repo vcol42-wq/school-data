@@ -59,12 +59,10 @@ fun WorkspaceToolsScreen(
     }
 }
 
-// 1. تبويب الملاحظات
+// 1. تبويب الملاحظات النصية
 @Composable
 fun NotesTab(viewModel: WorkspaceToolsViewModel) {
     val notes by viewModel.notes.collectAsState()
-    val isRecording by viewModel.isRecording.collectAsState()
-    val isPlayingPath by viewModel.isPlayingPath.collectAsState()
 
     var noteTitle by remember { mutableStateOf("") }
     var noteContent by remember { mutableStateOf("") }
@@ -77,64 +75,6 @@ fun NotesTab(viewModel: WorkspaceToolsViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Voice recorder action panel
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = "تسجيل ملاحظة صوتية سريعة",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-
-                if (isRecording) {
-                    Text(
-                        text = "جاري تسجيل صوتك الآن...",
-                        color = MaterialTheme.colorScheme.error,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Button(
-                            onClick = { viewModel.stopVoiceRecording(noteTitle) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                        ) {
-                            Icon(Icons.Default.Check, contentDescription = "حفظ")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("حفظ")
-                        }
-                        Button(
-                            onClick = { viewModel.cancelRecording() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "إلغاء")
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("إلغاء")
-                        }
-                    }
-                } else {
-                    OutlinedTextField(
-                        value = noteTitle,
-                        onValueChange = { noteTitle = it },
-                        label = { Text("اسم الملاحظة الصوتية") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Button(
-                        onClick = { viewModel.startVoiceRecording() },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Mic, contentDescription = "تسجيل")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("ابدأ التسجيل")
-                    }
-                }
-            }
-        }
 
         // Toggle Manual Text Note
         if (isAddingTextNote) {
@@ -214,9 +154,6 @@ fun NotesTab(viewModel: WorkspaceToolsViewModel) {
             items(notes) { note ->
                 NoteCard(
                     note = note,
-                    isPlaying = isPlayingPath == note.audioPath,
-                    onPlayClick = { note.audioPath?.let { viewModel.playAudio(it) } },
-                    onStopClick = { viewModel.stopAudio() },
                     onDeleteClick = { viewModel.deleteNote(note) }
                 )
             }
@@ -227,9 +164,6 @@ fun NotesTab(viewModel: WorkspaceToolsViewModel) {
 @Composable
 fun NoteCard(
     note: NoteEntity,
-    isPlaying: Boolean,
-    onPlayClick: () -> Unit,
-    onStopClick: () -> Unit,
     onDeleteClick: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -243,27 +177,13 @@ fun NoteCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(note.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
-                if (note.audioPath != null) {
-                    Text("ملاحظة صوتية - المدة: ${note.audioDurationSeconds} ثانية", style = MaterialTheme.typography.bodySmall)
-                } else {
-                    Text(note.content, style = MaterialTheme.typography.bodyMedium)
-                }
+                Text(note.content, style = MaterialTheme.typography.bodyMedium)
                 Spacer(modifier = Modifier.height(4.dp))
                 val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(note.createdAt))
                 Text(date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
             }
-            Row {
-                if (note.audioPath != null) {
-                    IconButton(onClick = if (isPlaying) onStopClick else onPlayClick) {
-                        Icon(
-                            if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                            contentDescription = "تشغيل/إيقاف"
-                        )
-                    }
-                }
-                IconButton(onClick = onDeleteClick) {
-                    Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
-                }
+            IconButton(onClick = onDeleteClick) {
+                Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
             }
         }
     }

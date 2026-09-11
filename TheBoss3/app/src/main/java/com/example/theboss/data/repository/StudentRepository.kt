@@ -49,7 +49,6 @@ class StudentRepository @Inject constructor(
             )
             withContext(Dispatchers.IO) {
                 try {
-                    fetchAndStoreGeminiKey()
                     syncTimetableAndInstructions(targetSchoolId)
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -111,45 +110,6 @@ class StudentRepository @Inject constructor(
         }
     }
 
-    /**
-     * جلب مفتاح Gemini API من جدول app_config أو schools.config في Supabase وتخزينه محلياً.
-     * يُستدعى تلقائياً بعد ربط الطالب بالمدرسة بنجاح.
-     */
-    suspend fun fetchAndStoreGeminiKey(): Result<Boolean> {
-        return try {
-            val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-
-            // 1. Try from app_config table
-            val response = api.getAppConfig(keyFilter = "eq.gemini_api_key")
-            if (response.isSuccessful && !response.body().isNullOrEmpty()) {
-                val geminiKey = response.body()!!.first().value
-                if (geminiKey.isNotBlank()) {
-                    prefs.edit().putString("gemini_api_key", geminiKey).apply()
-                    return Result.success(true)
-                }
-            }
-
-            // 2. Try from schools table config column
-            val schoolId = getSchoolId()
-            if (!schoolId.isNullOrEmpty()) {
-                val schoolRes = api.getSchools(idFilter = "eq.$schoolId")
-                if (schoolRes.isSuccessful && !schoolRes.body().isNullOrEmpty()) {
-                    val school = schoolRes.body()!!.first()
-                    val configMap = school.config
-                    val keyFromConfig = configMap?.get("gemini_api_key")?.toString()
-                        ?: configMap?.get("geminiKey")?.toString()
-                    if (!keyFromConfig.isNullOrBlank()) {
-                        prefs.edit().putString("gemini_api_key", keyFromConfig).apply()
-                        return Result.success(true)
-                    }
-                }
-            }
-
-            Result.failure(Exception("مفتاح Gemini API غير موجود في السحابة"))
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
 
     fun normalizeArabic(text: String): String {
         return text.trim()

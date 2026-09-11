@@ -38,7 +38,6 @@ import com.example.theboss.data.local.AttendanceEntity
 import com.example.theboss.data.local.SubjectEntity
 import com.example.theboss.data.repository.StudentRepository
 import com.example.theboss.data.remote.DirectiveDto
-import com.example.theboss.ui.workspace.WorkspaceAiScreen
 import com.example.theboss.ui.workspace.WorkspaceToolsScreen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -140,8 +139,7 @@ fun MainDashboardScreen(
                         Text(
                             text = when (currentTab) {
                                 0 -> viewModel.schoolName
-                                1 -> "المعلم الدراسي الذكي (AI)"
-                                else -> "مساحة الأدوات المستقلة"
+                                else -> "مساحة الأدوات المدرسية"
                             },
                             fontWeight = FontWeight.Black,
                             fontSize = 17.sp
@@ -175,12 +173,6 @@ fun MainDashboardScreen(
                 NavigationBarItem(
                     selected = currentTab == 1,
                     onClick = { currentTab = 1 },
-                    icon = { Icon(Icons.Default.AutoAwesome, contentDescription = "المساعد الذكي") },
-                    label = { Text("المساعد الذكي") }
-                )
-                NavigationBarItem(
-                    selected = currentTab == 2,
-                    onClick = { currentTab = 2 },
                     icon = { Icon(Icons.Default.Apps, contentDescription = "أدواتي") },
                     label = { Text("أدواتي") }
                 )
@@ -256,16 +248,16 @@ fun MainDashboardScreen(
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Surface(
-                                                color = Color(0xFF8B5CF6).copy(alpha = 0.15f),
+                                                color = Color(0xFF0284C7).copy(alpha = 0.15f),
                                                 shape = CircleShape,
                                                 modifier = Modifier.size(34.dp)
                                             ) {
                                                 Box(contentAlignment = Alignment.Center) {
-                                                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(18.dp))
+                                                    Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(18.dp))
                                                 }
                                             }
                                             Spacer(Modifier.width(10.dp))
-                                            Text("المستشار الذكي للتفوق 🎯", fontWeight = FontWeight.Black, fontSize = 14.sp)
+                                            Text("مؤشر إنجاز الواجبات والتفوق 🎯", fontWeight = FontWeight.Black, fontSize = 14.sp)
                                         }
                                         Surface(
                                             color = Color(0xFFEDE9FE),
@@ -348,9 +340,6 @@ fun MainDashboardScreen(
                     }
                 }
                 1 -> {
-                    WorkspaceAiScreen()
-                }
-                2 -> {
                     WorkspaceToolsScreen()
                 }
             }
@@ -825,7 +814,7 @@ fun MotivationalCard() {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    Icons.Default.AutoAwesome,
+                    Icons.Default.FormatQuote,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
                     modifier = Modifier.size(20.dp)

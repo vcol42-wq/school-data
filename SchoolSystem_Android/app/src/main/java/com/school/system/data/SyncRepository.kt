@@ -1739,6 +1739,26 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    fun matchGradeFlexible(cloudGrade: String?, targetGrade: String): Boolean {
+        if (cloudGrade.isNullOrBlank() || targetGrade.isBlank()) return true
+        val c1 = standardizeGradeName(cloudGrade)
+        val c2 = standardizeGradeName(targetGrade)
+        if (c1 == c2) return true
+        val digits1 = cloudGrade.filter { it.isDigit() }
+        val digits2 = targetGrade.filter { it.isDigit() }
+        if (digits1.isNotEmpty() && digits2.isNotEmpty() && digits1 == digits2) return true
+        return normalizeArabic(cloudGrade).contains(normalizeArabic(targetGrade)) ||
+               normalizeArabic(targetGrade).contains(normalizeArabic(cloudGrade))
+    }
+
+    fun matchSectionFlexible(cloudSection: String?, targetSection: String): Boolean {
+        if (cloudSection.isNullOrBlank() || targetSection.isBlank()) return true
+        val s1 = standardizeSectionName(cloudSection)
+        val s2 = standardizeSectionName(targetSection)
+        if (s1 == s2) return true
+        return normalizeArabic(cloudSection) == normalizeArabic(targetSection)
+    }
+
     suspend fun downloadSimpleRoster(
         schoolId: String,
         grade: String,
@@ -1748,37 +1768,57 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
+            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-6884" }
             val stdGrade = standardizeGradeName(grade)
             val stdSection = standardizeSectionName(section)
 
-            val response = api.getStudents(
-                apiKey = apiKey,
-                auth = authHeader,
-                schoolId = schoolId,
-                schoolFilter = "eq.$schoolId",
-                gradeFilter = "eq.$stdGrade",
-                sectionFilter = "eq.$stdSection"
-            )
-
-            val initialList = if (response.isSuccessful) response.body() ?: emptyList() else emptyList()
-            val list = if (initialList.isNotEmpty()) {
-                initialList
-            } else {
-                // Robust Fallback: fetch all school students and match with standardizeGradeName & standardizeSectionName
-                val allResponse = api.getStudents(
+            // Stage 1: Try strict school_id + grade + section
+            var list = try {
+                val response = api.getStudents(
                     apiKey = apiKey,
                     auth = authHeader,
-                    schoolId = schoolId,
-                    schoolFilter = "eq.$schoolId"
+                    schoolId = cleanSchoolId,
+                    schoolFilter = "eq.$cleanSchoolId",
+                    gradeFilter = "eq.$stdGrade",
+                    sectionFilter = "eq.$stdSection"
                 )
-                if (allResponse.isSuccessful && !allResponse.body().isNullOrEmpty()) {
-                    allResponse.body()!!.filter {
-                        standardizeGradeName(it.current_grade) == stdGrade &&
-                        standardizeSectionName(it.section) == stdSection
-                    }
-                } else {
-                    emptyList()
-                }
+                if (response.isSuccessful && !response.body().isNullOrEmpty()) response.body()!! else emptyList()
+            } catch (e: Exception) { emptyList() }
+
+            // Stage 2: If empty, fetch all students for school_id and match locally with flexible grade & section
+            if (list.isEmpty()) {
+                list = try {
+                    val allResponse = api.getStudents(
+                        apiKey = apiKey,
+                        auth = authHeader,
+                        schoolId = cleanSchoolId,
+                        schoolFilter = "eq.$cleanSchoolId"
+                    )
+                    if (allResponse.isSuccessful && !allResponse.body().isNullOrEmpty()) {
+                        allResponse.body()!!.filter {
+                            matchGradeFlexible(it.current_grade, grade) &&
+                            matchSectionFlexible(it.section, section)
+                        }
+                    } else emptyList()
+                } catch (e: Exception) { emptyList() }
+            }
+
+            // Stage 3: Robust Fallback - fetch all school students without strict school_id constraint and match locally
+            if (list.isEmpty()) {
+                list = try {
+                    val fallbackRes = api.getStudents(
+                        apiKey = apiKey,
+                        auth = authHeader,
+                        schoolId = cleanSchoolId,
+                        schoolFilter = "neq.__none__"
+                    )
+                    if (fallbackRes.isSuccessful && !fallbackRes.body().isNullOrEmpty()) {
+                        fallbackRes.body()!!.filter {
+                            matchGradeFlexible(it.current_grade, grade) &&
+                            matchSectionFlexible(it.section, section)
+                        }
+                    } else emptyList()
+                } catch (e: Exception) { emptyList() }
             }
 
             val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
