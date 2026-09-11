@@ -346,16 +346,19 @@ class StudentRepository @Inject constructor(
      */
     suspend fun syncSchedule(schoolId: String): Result<Boolean> {
         return try {
-            val response = api.getSchoolSchedule(idFilter = "eq.$schoolId")
-            if (response.isSuccessful && !response.body().isNullOrEmpty()) {
-                val scheduleDto = response.body()!!.first()
-                if (scheduleDto.scheduleMap != null) {
-                    val gson = com.google.gson.Gson()
-                    val scheduleJson = gson.toJson(scheduleDto.scheduleMap)
-                    val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putString("synced_schedule", scheduleJson).apply()
-                    return Result.success(true)
-                }
+            val cleanSchoolId = schoolId.trim()
+            if (cleanSchoolId.isBlank()) return Result.failure(Exception("معرف المدرسة غير محدد"))
+
+            val response = api.getSchoolSchedule(idFilter = "eq.$cleanSchoolId")
+            val list = if (response.isSuccessful && !response.body().isNullOrEmpty()) response.body()!! else emptyList()
+            
+            val scheduleDto = list.firstOrNull { it.scheduleMap != null }
+            if (scheduleDto?.scheduleMap != null) {
+                val gson = com.google.gson.Gson()
+                val scheduleJson = gson.toJson(scheduleDto.scheduleMap)
+                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("synced_schedule", scheduleJson).apply()
+                return Result.success(true)
             }
             Result.failure(Exception("لم يتم العثور على جدول مرفوع للمدرسة"))
         } catch (e: Exception) {
@@ -399,19 +402,30 @@ class StudentRepository @Inject constructor(
     }
 
     /**
-     * جلب ومزامنة الواجبات اليومية من المعلمين وتحديث الشارة العاجلة (Hot Badge)
+     * جلب ومزامنة الواجبات اليومية من المعلمين وتحديث الشارة العاجلة (Hot Badge) مخصصة فقط لصف وشعبة الطالب الفعالية
      */
     suspend fun syncDailyAssignments(schoolId: String) {
         try {
+            val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+            val studentGrade = prefs.getString("student_grade", "الأول المتوسط") ?: "الأول المتوسط"
+            val studentSection = prefs.getString("student_section", "أ") ?: "أ"
+            val stdSec = standardizeSectionName(studentSection)
+
             val response = api.getDailyAssignments(schoolFilter = "eq.$schoolId")
             if (response.isSuccessful) {
                 val remoteAssignments = response.body() ?: emptyList()
                 val existingIds = dao.getAllAssignments().firstOrNull()?.map { it.id }?.toSet() ?: emptySet()
 
-                val assignmentEntities = remoteAssignments.map { dto ->
+                // تصفية دقيقة جداً لحصر الواجبات فقط بصف وشعبة الطالب (مثلاً: الأول أ - 29 طالب)
+                val filteredAssignments = remoteAssignments.filter { dto ->
+                    val matchesGrade = isGradeMatch(dto.className, studentGrade) || dto.className.isBlank() || dto.className == "الكل"
+                    val matchesSection = standardizeSectionName(dto.section) == stdSec || dto.section.isBlank() || dto.section == "الكل" || dto.section == "اللغة"
+                    matchesGrade && matchesSection
+                }
+
+                val assignmentEntities = filteredAssignments.map { dto ->
                     val id = dto.id ?: "assign_${System.currentTimeMillis()}_${(100..999).random()}"
-                    
-                    // إذا كان واجباً جديداً لم يكن موجوداً محلياً، نرسل إشعاراً فورياً
+
                     if (id !in existingIds && !dto.title.isNullOrBlank()) {
                         com.example.theboss.utils.NotificationHelper.showUrgentHomeworkNotification(
                             context = context,
@@ -429,11 +443,13 @@ class StudentRepository @Inject constructor(
                         description = dto.description ?: "",
                         dueDateString = dto.dueDate ?: "اليوم",
                         isCompleted = false,
-                        isHot = true, // شارة واجب جديد 🔥
+                        isHot = true,
                         isPrivateTutoring = dto.isPrivateTutoring,
                         teacherName = dto.teacherId
                     )
                 }
+
+                dao.clearAssignments()
                 if (assignmentEntities.isNotEmpty()) {
                     dao.insertAssignments(assignmentEntities)
                 }

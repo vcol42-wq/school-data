@@ -184,7 +184,7 @@ fun StudentTimetableScreen(
     val directives by viewModel.directives.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
-    var studentGrade by remember { mutableStateOf(prefs.getString("student_grade", "الصف الثالث المتوسط") ?: "الصف الثالث المتوسط") }
+    var studentGrade by remember { mutableStateOf(prefs.getString("student_grade", "الصف الأول المتوسط") ?: "الصف الأول المتوسط") }
     var studentSection by remember { mutableStateOf(prefs.getString("student_section", "أ") ?: "أ") }
     var rawScheduleJson by remember { mutableStateOf(prefs.getString("synced_schedule", "{}") ?: "{}") }
     var customOverridesJson by remember { mutableStateOf(prefs.getString("custom_subject_overrides", "{}") ?: "{}") }
@@ -374,7 +374,97 @@ fun StudentTimetableScreen(
         }
     }
 
-    val daysList = listOf("الأحد", "الأثنين", "الثلاثاء", "الأربعاء", "الخميس")
+    fun standardizeGradeName(gradeStr: String?): String {
+        if (gradeStr.isNullOrBlank()) return "الأول المتوسط"
+        val clean = gradeStr.trim().replace("^(الصف|صف)\\s+".toRegex(), "").trim()
+        val norm = clean.replace("[أإآ]".toRegex(), "ا").replace("ة", "ه").replace("ى", "ي").lowercase()
+
+        var base = "الأول"
+        if (norm.contains("سادس") || norm.contains("6") || norm.contains("٦")) base = "السادس"
+        else if (norm.contains("خامس") || norm.contains("5") || norm.contains("٥")) base = "الخامس"
+        else if (norm.contains("رابع") || norm.contains("4") || norm.contains("٤")) base = "الرابع"
+        else if (norm.contains("ثالث") || norm.contains("3") || norm.contains("٣")) base = "الثالث"
+        else if (norm.contains("ثاني") || norm.contains("2") || norm.contains("٢")) base = "الثاني"
+        else if (norm.contains("اول") || norm.contains("1") || norm.contains("١")) base = "الأول"
+
+        var branch = ""
+        if (norm.contains("احيائ") || norm.contains("تطبيق") || norm.contains("علم")) branch = "العلمي"
+        else if (norm.contains("ادب")) branch = "الأدبي"
+        else if (norm.contains("صناع")) branch = "الصناعي"
+        else if (norm.contains("تجار")) branch = "التجاري"
+        else if (norm.contains("متوسط")) branch = "المتوسط"
+        else if (norm.contains("اعداد") || norm.contains("ثانوي")) branch = "الإعدادي"
+        else if (norm.contains("ابتدائ")) branch = "الابتدائي"
+
+        if (branch.isEmpty()) {
+            if (base == "الأول" || base == "الثاني" || base == "الثالث") {
+                branch = "المتوسط"
+            } else if (base == "الرابع" || base == "الخامس" || base == "السادس") {
+                branch = "الإعدادي"
+            }
+        }
+
+        return if (branch.isNotEmpty()) "$base $branch" else base
+    }
+
+    fun isGradeMatch(g1: String?, g2: String?): Boolean {
+        if (g1.isNullOrBlank() || g2.isNullOrBlank()) return false
+        val std1 = standardizeGradeName(g1)
+        val std2 = standardizeGradeName(g2)
+        if (std1 == std2) return true
+
+        fun normStr(s: String) = s.replace("[أإآ]".toRegex(), "ا").replace("ة", "ه").replace("ى", "ي").lowercase()
+        val n1 = normStr(g1)
+        val n2 = normStr(g2)
+
+        fun extractBase(norm: String): String {
+            return when {
+                norm.contains("سادس") || norm.contains("6") || norm.contains("٦") -> "سادس"
+                norm.contains("خامس") || norm.contains("5") || norm.contains("٥") -> "خامس"
+                norm.contains("رابع") || norm.contains("4") || norm.contains("٤") -> "رابع"
+                norm.contains("ثالث") || norm.contains("3") || norm.contains("٣") -> "ثالث"
+                norm.contains("ثاني") || norm.contains("2") || norm.contains("٢") -> "ثاني"
+                norm.contains("اول") || norm.contains("1") || norm.contains("١") -> "اول"
+                else -> norm
+            }
+        }
+
+        val b1 = extractBase(n1)
+        val b2 = extractBase(n2)
+        if (b1 != b2) return false
+
+        val hasBranch1 = n1.contains("متوسط") || n1.contains("اعداد") || n1.contains("ابتدائ") || n1.contains("ثانوي") || n1.contains("علم") || n1.contains("ادب")
+        val hasBranch2 = n2.contains("متوسط") || n2.contains("اعداد") || n2.contains("ابتدائ") || n2.contains("ثانوي") || n2.contains("علم") || n2.contains("ادب")
+
+        if (!hasBranch1 || !hasBranch2) return true
+        return std1 == std2
+    }
+
+    fun standardizeSectionName(secStr: String?): String {
+        if (secStr.isNullOrBlank()) return "أ"
+        val clean = secStr.trim().replace("^(شعبة|الشعبة|ش)\\s*".toRegex(), "").trim()
+        val lower = clean.lowercase()
+
+        val letterOnly = clean
+            .replace("(الصف|صف|الأول|الاول|الثاني|الثالث|الرابع|الخامس|السادس|المتوسط|الإعدادي|الاعدادي|الابتدائي|العلمي|الأدبي|الادبي)".toRegex(), "")
+            .trim()
+        val target = if (letterOnly.isNotBlank()) letterOnly else clean
+        val targetLower = target.lowercase()
+
+        if (target == "ا" || target == "أ" || target == "إ" || target == "آ" || targetLower == "a" || targetLower == "1" || targetLower == "١") return "أ"
+        if (target == "ب" || targetLower == "b" || targetLower == "2" || targetLower == "٢") return "ب"
+        if (target == "ج" || targetLower == "c" || targetLower == "3" || targetLower == "٣") return "ج"
+        if (target == "د" || targetLower == "d" || targetLower == "4" || targetLower == "٤") return "د"
+        if (target == "ه" || target == "هـ" || targetLower == "e" || targetLower == "5" || targetLower == "٥") return "هـ"
+        if (target == "و" || targetLower == "f" || targetLower == "6" || targetLower == "٦") return "و"
+        if (target == "ز" || targetLower == "z" || targetLower == "7" || targetLower == "٧") return "ز"
+        if (target == "ح" || targetLower == "h" || targetLower == "8" || targetLower == "٨") return "ح"
+        if (target == "ط" || targetLower == "9" || targetLower == "٩") return "ط"
+        if (target == "خ") return "خ"
+        return if (target.length == 1 && target[0].isLetter()) target else "أ"
+    }
+
+    val daysList = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
 
     fun norm(str: String): String = str
         .replace("[أإآ]".toRegex(), "ا")
@@ -399,7 +489,7 @@ fun StudentTimetableScreen(
                 5 to StudentLessonSlot("إنكليزي", "أ. عمر الفاروق"),
                 6 to StudentLessonSlot("اجتماعيات", "أ. جاسم محمد")
             ),
-            "الأثنين" to mapOf(
+            "الإثنين" to mapOf(
                 1 to StudentLessonSlot("عربي", "أ. علي الحسين"),
                 2 to StudentLessonSlot("رياضيات", "أ. محمد الموسوي"),
                 3 to StudentLessonSlot("علوم", "أ. حيدر عباس"),
@@ -464,21 +554,20 @@ fun StudentTimetableScreen(
         try {
             val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
             if (rootObj != null) {
-                val stdG = norm(studentGrade)
-                val stdS = norm(studentSection)
+                val stdS = standardizeSectionName(studentSection)
 
+                // Pass 1: Strict Grade + Section match
                 for (day in daysList) {
-                    val dayData = rootObj[day] ?: rootObj[normDay(day)] ?: rootObj[day.replace("الأثنين", "الاثنين")]
-                    if (dayData is List<*>) {
+                    val dayData = rootObj.entries.find { normDay(it.key) == normDay(day) }?.value as? List<*>
+                    if (dayData != null) {
                         for (row in dayData) {
                             if (row is Map<*, *>) {
                                 val g = row["grade"]?.toString() ?: ""
                                 val s = row["section"]?.toString() ?: ""
-                                val rowG = norm(g)
-                                val rowS = norm(s)
+                                val rowS = standardizeSectionName(s)
 
-                                val matchesGrade = rowG.contains(stdG) || stdG.contains(rowG) || rowG.isEmpty()
-                                val matchesSection = rowS.contains(stdS) || stdS.contains(rowS) || rowS.isEmpty()
+                                val matchesGrade = isGradeMatch(g, studentGrade)
+                                val matchesSection = (rowS == stdS || stdS == "الكل" || rowS.isEmpty())
 
                                 if (matchesGrade && matchesSection) {
                                     val lessons = row["lessons"] as? Map<*, *>
@@ -494,6 +583,30 @@ fun StudentTimetableScreen(
                                                 parsedAny = true
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Pass 2: Fallback to first available schedule row in school JSON if pass 1 found no matches
+                if (!parsedAny) {
+                    for (day in daysList) {
+                        val dayData = rootObj.entries.find { normDay(it.key) == normDay(day) }?.value as? List<*>
+                        if (dayData != null && dayData.isNotEmpty()) {
+                            val firstRow = dayData.firstOrNull { it is Map<*, *> } as? Map<*, *>
+                            val lessons = firstRow?.get("lessons") as? Map<*, *>
+                            if (lessons != null) {
+                                for (i in 1..6) {
+                                    val lessonObj = lessons["lesson$i"] as? Map<*, *>
+                                    val rawSubj = lessonObj?.get("subject")?.toString() ?: ""
+                                    val teacher = lessonObj?.get("teacherName")?.toString() ?: ""
+                                    val isOff = lessonObj?.get("isOff") as? Boolean ?: false
+                                    if (!isOff && (rawSubj.isNotEmpty() || teacher.isNotEmpty())) {
+                                        val subj = shortenSubject(rawSubj)
+                                        result[day]?.put(i, StudentLessonSlot(subj, teacher))
+                                        parsedAny = true
                                     }
                                 }
                             }

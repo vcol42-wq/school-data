@@ -44,7 +44,7 @@ class StudentSettingsViewModel @Inject constructor(
 
     private val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
 
-    val studentGrade = prefs.getString("student_grade", "الصف الثالث المتوسط") ?: "الصف الثالث المتوسط"
+    val studentGrade = prefs.getString("student_grade", "الصف الأول المتوسط") ?: "الصف الأول المتوسط"
     val studentSection = prefs.getString("student_section", "أ") ?: "أ"
     val studentName = prefs.getString("student_name", "الطالب") ?: "الطالب"
 

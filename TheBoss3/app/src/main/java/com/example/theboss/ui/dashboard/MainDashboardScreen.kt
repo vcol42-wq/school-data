@@ -73,25 +73,47 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun refreshData() {
-        val schoolId = repository.getSchoolId() ?: return
+        val schoolId = repository.getSchoolId()
+        if (schoolId.isNullOrBlank()) {
+            _isRefreshing.value = false
+            return
+        }
         viewModelScope.launch {
             _isRefreshing.value = true
-            repository.syncDailyAssignments(schoolId)
-            repository.syncTimetableAndInstructions(schoolId)
-            repository.syncDirectives(schoolId)
-            repository.syncSchedule(schoolId)
-            repository.syncDirectMessages()
-            val deviceId = repository.getDeviceId()
-            repository.syncAttendance(schoolId, deviceId)
-            _isRefreshing.value = false
+            try {
+                repository.syncDailyAssignments(schoolId)
+                repository.syncTimetableAndInstructions(schoolId)
+                repository.syncDirectives(schoolId)
+                repository.syncSchedule(schoolId)
+                repository.syncDirectMessages()
+                val deviceId = repository.getDeviceId()
+                repository.syncAttendance(schoolId, deviceId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 
     fun syncScheduleManual(onComplete: (Boolean) -> Unit = {}) {
-        val schoolId = repository.getSchoolId() ?: return
+        val schoolId = repository.getSchoolId()
+        if (schoolId.isNullOrBlank()) {
+            _isRefreshing.value = false
+            onComplete(false)
+            return
+        }
         viewModelScope.launch {
-            val res = repository.syncSchedule(schoolId)
-            onComplete(res.isSuccess)
+            _isRefreshing.value = true
+            try {
+                val res = repository.syncSchedule(schoolId)
+                onComplete(res.isSuccess)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
     }
 

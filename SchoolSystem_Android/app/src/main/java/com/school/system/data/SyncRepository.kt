@@ -677,22 +677,24 @@ class SyncRepository @Inject constructor(
         val clean = secStr.trim().replace("^(شعبة|الشعبة|ش)\\s*".toRegex(), "").trim()
         val lower = clean.lowercase()
 
-        // منع الكلمات التي تدل على الصف من التحول إلى شعبة
-        if (clean.contains("متوسط") || clean.contains("اول") || clean.contains("ثاني") || clean.contains("ثالث") || clean.contains("صف")) {
-            return "أ"
-        }
+        // Strip stage and grade names first so "الصف الأول ب" converts to "ب" properly
+        val letterOnly = clean
+            .replace("(الصف|صف|الأول|الاول|الثاني|الثالث|الرابع|الخامس|السادس|المتوسط|الإعدادي|الاعدادي|الابتدائي|العلمي|الأدبي|الادبي)".toRegex(), "")
+            .trim()
+        val target = if (letterOnly.isNotBlank()) letterOnly else clean
+        val targetLower = target.lowercase()
 
-        if (clean == "ا" || clean == "أ" || clean == "إ" || clean == "آ" || lower == "a" || lower == "1" || lower == "١") return "أ"
-        if (clean == "ب" || lower == "b" || lower == "2" || lower == "٢") return "ب"
-        if (clean == "ج" || lower == "c" || lower == "3" || lower == "٣") return "ج"
-        if (clean == "د" || lower == "d" || lower == "4" || lower == "٤") return "د"
-        if (clean == "ه" || clean == "هـ" || lower == "e" || lower == "5" || lower == "٥") return "هـ"
-        if (clean == "و" || lower == "f" || lower == "6" || lower == "٦") return "و"
-        if (clean == "ز" || lower == "z" || lower == "7" || lower == "٧") return "ز"
-        if (clean == "ح" || lower == "h" || lower == "8" || lower == "٨") return "ح"
-        if (clean == "ط" || lower == "9" || lower == "٩") return "ط"
-        if (clean == "خ") return "خ"
-        return if (clean.length == 1 && clean[0].isLetter()) clean else "أ"
+        if (target == "ا" || target == "أ" || target == "إ" || target == "آ" || targetLower == "a" || targetLower == "1" || targetLower == "١") return "أ"
+        if (target == "ب" || targetLower == "b" || targetLower == "2" || targetLower == "٢") return "ب"
+        if (target == "ج" || targetLower == "c" || targetLower == "3" || targetLower == "٣") return "ج"
+        if (target == "د" || targetLower == "d" || targetLower == "4" || targetLower == "٤") return "د"
+        if (target == "ه" || target == "هـ" || targetLower == "e" || targetLower == "5" || targetLower == "٥") return "هـ"
+        if (target == "و" || targetLower == "f" || targetLower == "6" || targetLower == "٦") return "و"
+        if (target == "ز" || targetLower == "z" || targetLower == "7" || targetLower == "٧") return "ز"
+        if (target == "ح" || targetLower == "h" || targetLower == "8" || targetLower == "٨") return "ح"
+        if (target == "ط" || targetLower == "9" || targetLower == "٩") return "ط"
+        if (target == "خ") return "خ"
+        return if (target.length == 1 && target[0].isLetter()) target else "أ"
     }
 
     /**
@@ -1011,7 +1013,14 @@ class SyncRepository @Inject constructor(
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
 
-            val isSupervisor = teacherId == "__supervisor__" || teacherId == "__all__"
+            val isSupervisor = teacherId == "__supervisor__" || teacherId == "__all__" || teacherId == "__school_paired__"
+
+            // 0. Resolve teacher name & ID for robust matching
+            val allTeachers = try { 
+                api.getAllTeachers(apiKey, authHeader, schoolId, "eq.$schoolId").body() ?: emptyList() 
+            } catch(e: Exception) { emptyList() }
+            val matchedT = allTeachers.find { it.id == teacherId || normalizeArabic(it.name) == normalizeArabic(teacherId) || it.name.contains(teacherId) }
+            val teacherName = matchedT?.name ?: teacherId
 
             // 1. Fetch assignments: If supervisor or all, fetch ALL assignments without teacher filter!
             val assignmentsResponse = try { 
@@ -1025,6 +1034,24 @@ class SyncRepository @Inject constructor(
             var assignments = if (assignmentsResponse?.isSuccessful == true) {
                 assignmentsResponse.body() ?: emptyList()
             } else emptyList()
+
+            // Fallback: If filtered query returned empty, try fetching all assignments and match locally by ID or Name
+            if (assignments.isEmpty() && !isSupervisor) {
+                val allAssignRes = try {
+                    api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
+                } catch (e: Exception) { null }
+
+                if (allAssignRes?.isSuccessful == true && !allAssignRes.body().isNullOrEmpty()) {
+                    val allList = allAssignRes.body()!!
+                    val filtered = allList.filter { 
+                        it.teacher_id == teacherId || 
+                        it.teacher_id == matchedT?.id ||
+                        normalizeArabic(it.teacher_id) == normalizeArabic(teacherName) ||
+                        normalizeArabic(it.teacher_id) == normalizeArabic(teacherId)
+                    }
+                    assignments = if (filtered.isNotEmpty()) filtered else allList
+                }
+            }
 
             // If empty, fallback to subject_assignments (where desktop app also stores assignments)
             if (assignments.isEmpty()) {
@@ -1047,8 +1074,12 @@ class SyncRepository @Inject constructor(
                         }
                     } else {
                         val filtered = subList.filter { 
-                            it.teacher_name?.trim() == teacherId.trim() || 
-                            normalizeArabic(it.teacher_name ?: "") == normalizeArabic(teacherId)
+                            val tName = it.teacher_name?.trim() ?: ""
+                            tName == teacherId.trim() || 
+                            tName == teacherName.trim() ||
+                            normalizeArabic(tName) == normalizeArabic(teacherId) ||
+                            normalizeArabic(tName) == normalizeArabic(teacherName) ||
+                            (tName.length >= 3 && normalizeArabic(teacherName).contains(normalizeArabic(tName)))
                         }
                         (if (filtered.isNotEmpty()) filtered else subList).map {
                             SupabaseAssignmentDto(
@@ -1064,6 +1095,13 @@ class SyncRepository @Inject constructor(
                 }
             }
 
+            val studentsResponse = try { 
+                api.getStudents(apiKey, authHeader, schoolId, "eq.$schoolId") 
+            } catch (e: Exception) { null }
+            val studentsList = if (studentsResponse?.isSuccessful == true) {
+                studentsResponse.body() ?: emptyList()
+            } else emptyList()
+
             if (assignments.isEmpty()) {
                 // Check if local packages already exist before deciding what to do
                 val localPkgs = packageDao.getAllPackagesList()
@@ -1078,17 +1116,24 @@ class SyncRepository @Inject constructor(
                             subject_name = pkg.subject
                         )
                     }
+                } else if (studentsList.isNotEmpty()) {
+                    // Reconstruct assignments directly from cloud students list
+                    assignments = studentsList.mapNotNull { s ->
+                        if (s.current_grade.isNullOrBlank()) null
+                        else Pair(standardizeGradeName(s.current_grade), standardizeSectionName(s.section))
+                    }.distinct().map { (grd, sec) ->
+                        SupabaseAssignmentDto(
+                            school_id = schoolId,
+                            teacher_id = teacherId,
+                            class_name = grd,
+                            section = sec,
+                            subject_name = "عام"
+                        )
+                    }
                 } else {
                     return false
                 }
             }
-
-            val studentsResponse = try { 
-                api.getStudents(apiKey, authHeader, schoolId, "eq.$schoolId") 
-            } catch (e: Exception) { null }
-            val studentsList = if (studentsResponse?.isSuccessful == true) {
-                studentsResponse.body() ?: emptyList()
-            } else emptyList()
 
             // Save old student marks to merge back
             val existingStudents = studentDao.getAllStudentsList()
@@ -1740,23 +1785,35 @@ class SyncRepository @Inject constructor(
     }
 
     fun matchGradeFlexible(cloudGrade: String?, targetGrade: String): Boolean {
-        if (cloudGrade.isNullOrBlank() || targetGrade.isBlank()) return true
+        if (cloudGrade.isNullOrBlank() || targetGrade.isBlank()) return false
         val c1 = standardizeGradeName(cloudGrade)
         val c2 = standardizeGradeName(targetGrade)
-        if (c1 == c2) return true
+        if (c1.isNotBlank() && c2.isNotBlank() && c1 == c2) return true
+
         val digits1 = cloudGrade.filter { it.isDigit() }
         val digits2 = targetGrade.filter { it.isDigit() }
-        if (digits1.isNotEmpty() && digits2.isNotEmpty() && digits1 == digits2) return true
-        return normalizeArabic(cloudGrade).contains(normalizeArabic(targetGrade)) ||
-               normalizeArabic(targetGrade).contains(normalizeArabic(cloudGrade))
+        if (digits1.isNotEmpty() && digits2.isNotEmpty()) {
+            return digits1 == digits2
+        }
+
+        val normCloud = normalizeArabic(cloudGrade)
+        val normTarget = normalizeArabic(targetGrade)
+        if (normCloud.isBlank() || normTarget.isBlank()) return false
+
+        return normCloud == normTarget || normCloud.contains(normTarget) || normTarget.contains(normCloud)
     }
 
     fun matchSectionFlexible(cloudSection: String?, targetSection: String): Boolean {
-        if (cloudSection.isNullOrBlank() || targetSection.isBlank()) return true
+        if (cloudSection.isNullOrBlank() || targetSection.isBlank()) return false
         val s1 = standardizeSectionName(cloudSection)
         val s2 = standardizeSectionName(targetSection)
-        if (s1 == s2) return true
-        return normalizeArabic(cloudSection) == normalizeArabic(targetSection)
+        if (s1.isNotBlank() && s2.isNotBlank() && s1 == s2) return true
+
+        val normCloud = normalizeArabic(cloudSection)
+        val normTarget = normalizeArabic(targetSection)
+        if (normCloud.isBlank() || normTarget.isBlank()) return false
+
+        return normCloud == normTarget
     }
 
     suspend fun downloadSimpleRoster(
