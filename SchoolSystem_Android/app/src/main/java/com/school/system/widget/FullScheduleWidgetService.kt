@@ -119,17 +119,7 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             val upcoming = WidgetScheduleHelper.calculateUpcomingTeacherLesson(context)
             activeLessonNumber = if (upcoming.isOngoing) upcoming.lessonNumber else 0
 
-            val calendar = Calendar.getInstance()
-            val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-
-            val currentDayArabic = when (dayOfWeek) {
-                Calendar.SUNDAY -> "الأحد"
-                Calendar.MONDAY -> "الإثنين"
-                Calendar.TUESDAY -> "الثلاثاء"
-                Calendar.WEDNESDAY -> "الأربعاء"
-                Calendar.THURSDAY -> "الخميس"
-                else -> "الأحد"
-            }
+            val currentDayArabic = WidgetScheduleHelper.getEffectiveDayArabic(context)
 
             val gson = Gson()
             val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)

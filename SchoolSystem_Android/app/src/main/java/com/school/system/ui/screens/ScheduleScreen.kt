@@ -662,29 +662,22 @@ fun GeneralDayScheduleGrid(
                                     ) {
                                         if (item != null) {
                                             val cleanSubj = WidgetScheduleHelper.cleanSubjectName(item.subject)
-                                            val cleanTeacher = WidgetScheduleHelper.cleanTeacherFirstName(item.teacherName)
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center
-                                            ) {
+                                            val dynamicFontSize = when {
+                                                cleanSubj == "اجتماعيات" -> if (isLandscape) 7.5.sp else 8.5.sp
+                                                cleanSubj.length > 8 -> if (isLandscape) 8.5.sp else 9.5.sp
+                                                cleanSubj.length > 5 -> if (isLandscape) 9.5.sp else 10.5.sp
+                                                else -> if (isLandscape) 11.sp else 12.5.sp
+                                            }
+                                            Box(contentAlignment = Alignment.Center) {
                                                 Text(
                                                     text = cleanSubj.ifEmpty { "درس مقرر" },
                                                     fontWeight = FontWeight.Black,
-                                                    fontSize = if (isLandscape) 10.5.sp else 11.5.sp,
+                                                    fontSize = dynamicFontSize,
                                                     color = if (isTeacherLesson) currentTheme.primaryColor else if (currentTheme.isDark) Color(0xFF93C5FD) else Color(0xFF1E3A8A),
                                                     maxLines = 1,
+                                                    softWrap = false,
                                                     textAlign = TextAlign.Center
                                                 )
-                                                if (cleanTeacher.isNotEmpty()) {
-                                                    Text(
-                                                        text = cleanTeacher,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = if (isLandscape) 8.5.sp else 10.sp,
-                                                        color = if (currentTheme.isDark) Color(0xFFCBD5E1) else Color(0xFF64748B),
-                                                        maxLines = 1,
-                                                        textAlign = TextAlign.Center
-                                                    )
-                                                }
                                             }
                                         } else {
                                             Box(contentAlignment = Alignment.Center) {

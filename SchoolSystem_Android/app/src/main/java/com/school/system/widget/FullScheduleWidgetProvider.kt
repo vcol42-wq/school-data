@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
 import android.view.View
 import android.widget.RemoteViews
@@ -36,11 +37,26 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             for (appWidgetId in appWidgetIds) {
                 updateAppWidget(context, appWidgetManager, appWidgetId)
             }
+        } else if (intent.action == ACTION_SELECT_DAY) {
+            val dayIdx = intent.getIntExtra(EXTRA_DAY_INDEX, 0)
+            val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putInt("widget_selected_day_idx", dayIdx).apply()
+
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val componentName = ComponentName(context, FullScheduleWidgetProvider::class.java)
+            val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
+
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_list_view)
+            for (appWidgetId in appWidgetIds) {
+                updateAppWidget(context, appWidgetManager, appWidgetId)
+            }
         }
     }
 
     companion object {
         const val ACTION_REFRESH_WIDGET = "com.school.system.widget.ACTION_REFRESH_FULL"
+        const val ACTION_SELECT_DAY = "com.school.system.widget.ACTION_SELECT_DAY"
+        const val EXTRA_DAY_INDEX = "extra_day_index"
 
         fun updateAppWidget(
             context: Context,
@@ -49,21 +65,42 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
         ) {
             val views = RemoteViews(context.packageName, R.layout.widget_full_schedule)
 
-            val calendar = Calendar.getInstance()
-            val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-            val dayName = when (dayOfWeek) {
-                Calendar.SUNDAY -> "الأحد"
-                Calendar.MONDAY -> "الإثنين"
-                Calendar.TUESDAY -> "الثلاثاء"
-                Calendar.WEDNESDAY -> "الأربعاء"
-                Calendar.THURSDAY -> "الخميس"
-                Calendar.FRIDAY -> "الجمعة (عطلة)"
-                Calendar.SATURDAY -> "السبت (عطلة)"
-                else -> "الأحد"
-            }
-
-            views.setTextViewText(R.id.widget_day_text, "اليوم: $dayName")
+            val currentDayName = WidgetScheduleHelper.getEffectiveDayArabic(context)
             views.setViewVisibility(R.id.widget_countdown_banner, View.GONE)
+
+            val dayButtons = listOf(
+                R.id.btn_day_sun,
+                R.id.btn_day_mon,
+                R.id.btn_day_tue,
+                R.id.btn_day_wed,
+                R.id.btn_day_thu
+            )
+            val daysArabic = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
+
+            for (idx in 0..4) {
+                val btnId = dayButtons[idx]
+                val isSelected = (daysArabic[idx] == currentDayName)
+
+                if (isSelected) {
+                    views.setInt(btnId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
+                    views.setTextColor(btnId, Color.parseColor("#FEF08A"))
+                } else {
+                    views.setInt(btnId, "setBackgroundResource", R.drawable.widget_item_bg)
+                    views.setTextColor(btnId, Color.parseColor("#94A3B8"))
+                }
+
+                val dayIntent = Intent(context, FullScheduleWidgetProvider::class.java).apply {
+                    action = ACTION_SELECT_DAY
+                    putExtra(EXTRA_DAY_INDEX, idx)
+                }
+                val dayPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    200 + idx,
+                    dayIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                views.setOnClickPendingIntent(btnId, dayPendingIntent)
+            }
 
             // Dynamic Lesson Timings for Headers from Cloud Schedule
             val (startHourStr, lessonDur, breakDur) = WidgetScheduleHelper.getTimingFromScheduleJson(context)

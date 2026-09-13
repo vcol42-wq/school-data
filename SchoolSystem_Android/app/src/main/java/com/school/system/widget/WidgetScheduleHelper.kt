@@ -38,8 +38,8 @@ object WidgetScheduleHelper {
         if (text.contains("انكليز") || text.contains("إنجليز") || text.contains("انجليز") || text.lowercase().contains("english")) {
             return "E"
         }
-        if (text.contains("اجتماعيات") || text.contains("إجتماعيات")) {
-            return "اجتماع"
+        if (text.contains("اجتماعيات") || text.contains("إجتماعيات") || text == "اجتماع") {
+            return "اجتماعيات"
         }
         text = text.replace("التربية ", "")
             .replace("تربية ", "")
