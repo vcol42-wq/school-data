@@ -1,7 +1,16 @@
 import { Student, StaffMember, SchoolStage } from '../types';
 import * as XLSX from 'xlsx';
-import { canonicalSubject, normalizeText } from './subjectHelper';
-import { standardizeSectionName } from './syncEngine';
+import { standardizeSectionName, standardizeGradeName } from './syncEngine';
+import { normalizeText, canonicalSubject } from './subjectHelper';
+
+export interface ExcelSheetPreview {
+  sheetName: string;
+  grade: string;
+  section: string;
+  studentCount: number;
+  sampleNames: string[];
+  students: Student[];
+}
 
 // List of Grades per School Stage
 export const STAGE_GRADES: Record<SchoolStage, string[]> = {
@@ -84,61 +93,517 @@ export const ALL_SUBJECTS = Array.from(new Set([
 ]));
 
 
+// Helper to extract grade and section from any text (sheet name, cell, title, etc.)
+export function extractGradeAndSection(text: string): { grade: string; section?: string } {
+  if (!text) return { grade: 'الأول المتوسط' };
+  const raw = String(text).trim();
+  let clean = raw;
+
+  let section: string | undefined = undefined;
+
+  // 1. Check for explicit section keywords like "شعبة ب", "الشعبة (ب)", "ش: ب", "ش/ب", "فرع ب"
+  const secKeywordMatch = clean.match(/(?:شعبة|الشعبة|ش|الفرع|فرع)\s*[:\-\/\\]?\s*[\(\[]?([أ-يa-zA-Z0-9]+)[\)\]]?/i);
+  if (secKeywordMatch && secKeywordMatch[1]) {
+    section = standardizeSectionName(secKeywordMatch[1]);
+  } else {
+    // 2. Check for bracketed section: e.g. "الأول متوسط (ب)" or "[ج]"
+    const bracketMatch = clean.match(/[\(\[\{]([أ-يa-zA-Z0-9]+)[\)\]\}]/);
+    if (bracketMatch && bracketMatch[1]) {
+      const candidate = standardizeSectionName(bracketMatch[1]);
+      if (candidate && (candidate !== 'أ' || /^[أ-يa-zA-Z0-9]$/.test(bracketMatch[1].trim()))) {
+        section = candidate;
+      }
+    }
+  }
+
+  // 3. Check for slash / dash format at end: "1/2", "1-ب", "الصف الأول / ب"
+  if (!section) {
+    const slashMatch = clean.match(/[\/\-]\s*([أ-يa-zA-Z0-9]+)\s*$/);
+    if (slashMatch && slashMatch[1]) {
+      section = standardizeSectionName(slashMatch[1]);
+    }
+  }
+
+  // 4. Check for trailing standalone letter: "الأول متوسط ب" or "الثاني أ" or "الثاني ب" or "ثاني ج"
+  if (!section) {
+    const trailingMatch = clean.match(/[\s\_\-\/]([أ-يa-zA-Z0-9])\s*$/);
+    if (trailingMatch && trailingMatch[1]) {
+      section = standardizeSectionName(trailingMatch[1]);
+    }
+  }
+
+  // 5. If clean is just a single section letter or token (e.g. sheet named "ب" or "ج" or "B")
+  if (!section && (/^[أ-يa-zA-Z0-9]$/.test(clean) || clean.startsWith('شعبة') || clean.startsWith('الشعبة'))) {
+    section = standardizeSectionName(clean);
+  }
+
+  // Cleanly isolate grade text by stripping the detected section token
+  let gradeText = clean;
+  if (section) {
+    gradeText = clean
+      .replace(new RegExp(`(?:شعبة|الشعبة|ش|الفرع|فرع)?\\s*[:\\-\\/\\]\\[\\(\\)\\{\\}]?\\s*${section}\\s*[\\]\\)\\}\\>]*$`, 'i'), '')
+      .trim();
+  }
+
+  // Standardize the resulting grade string
+  const grade = standardizeGradeName(gradeText || clean);
+
+  return { grade, section };
+}
+
+
 // Parse raw text or file lines into student records
 export function parseStudentsFromRawInput(rawText: string, startingSequence: number = 1): Student[] {
   const lines = rawText.split(/\r?\n/).filter(line => line.trim().length > 0);
   const results: Student[] = [];
 
-  lines.forEach((line, index) => {
-    // Check tab, pipe, or comma separator
+  if (lines.length === 0) return results;
+
+  // Check if first line is a header
+  const firstLine = lines[0];
+  const firstDelimiter = firstLine.includes('\t') ? '\t' : firstLine.includes('|') ? '|' : ',';
+  const firstParts = firstLine.split(firstDelimiter).map(p => p.trim());
+  const isHeader = firstParts.some(p => p.includes('الاسم') || p.includes('تسلسل') || p.includes('الصف') || p.includes('الشعبة') || p.includes('الطالب') || p === 'ت');
+
+  let nameIdx = 0;
+  let gradeIdx = -1;
+  let sectionIdx = -1;
+  let recIdx = -1;
+
+  if (isHeader) {
+    firstParts.forEach((p, idx) => {
+      const norm = normalizeText(p);
+      if (norm.includes('اسم') && !norm.includes('ام') && !norm.includes('مدرس') && !norm.includes('اب') && !norm.includes('جد')) {
+        nameIdx = idx;
+      } else if (norm.includes('صف') && (norm.includes('شعب') || norm.includes('فرع'))) {
+        gradeIdx = idx;
+        if (sectionIdx === -1) sectionIdx = idx;
+      } else if (norm.includes('صف') || norm.includes('مرحل')) {
+        gradeIdx = idx;
+      } else if (norm.includes('شعب') || norm.includes('فرع') || norm === 'ش') {
+        sectionIdx = idx;
+      } else if (norm.includes('قيد') || norm.includes('رقم') || norm === 'ت') {
+        recIdx = idx;
+      }
+    });
+  }
+
+  const startLineIdx = isHeader ? 1 : 0;
+
+  for (let index = startLineIdx; index < lines.length; index++) {
+    const line = lines[index];
     const delimiter = line.includes('\t') ? '\t' : line.includes('|') ? '|' : ',';
     const parts = line.split(delimiter).map(p => p.trim());
-
-    if (parts.length === 0 || (index === 0 && (parts[0].includes('الاسم') || parts[0].includes('تسلسل')))) {
-      // Skip header line
-      return;
-    }
+    if (parts.length === 0 || !parts.some(p => p.length > 0)) continue;
 
     const seq = startingSequence + results.length;
-    
-    // Extract name or combined string
-    const namePart = parts[0] || `طالب ${seq}`;
-    const nameTokens = namePart.split(/\s+/);
-    
+
+    let fullName = '';
+    let currentGrade = 'الصف الأول';
+    let section = 'أ';
+    let recordNumber = `${1000 + seq}`;
+
+    if (isHeader) {
+      fullName = parts[nameIdx] || `طالب ${seq}`;
+      if (gradeIdx >= 0 && parts[gradeIdx]) {
+        const ext = extractGradeAndSection(parts[gradeIdx]);
+        currentGrade = ext.grade;
+        if (ext.section && sectionIdx === gradeIdx) section = ext.section;
+      }
+      if (sectionIdx >= 0 && parts[sectionIdx] && sectionIdx !== gradeIdx) {
+        section = standardizeSectionName(parts[sectionIdx]);
+      }
+      if (recIdx >= 0 && parts[recIdx]) {
+        recordNumber = parts[recIdx];
+      }
+    } else {
+      // Dynamic detection for unformatted or simple tables
+      if (parts.length >= 2 && /^\d+$/.test(parts[0]) && parts[1].length > 2) {
+        recordNumber = parts[0];
+        fullName = parts[1];
+        const remaining = parts.slice(2);
+        remaining.forEach(part => {
+          if (part.includes('صف') || part.includes('أول') || part.includes('ثاني') || part.includes('ثالث') || part.includes('رابع') || part.includes('خامس') || part.includes('سادس') || part.includes('متوسط')) {
+            const ext = extractGradeAndSection(part);
+            currentGrade = ext.grade;
+            if (ext.section) section = ext.section;
+          } else if (
+            part.includes('شعب') || 
+            part.startsWith('ش ') ||
+            /^[أ-يa-zA-Z0-9]$/.test(part) || 
+            /^[\(\[][أ-يa-zA-Z0-9][\)\]]$/.test(part)
+          ) {
+            section = standardizeSectionName(part);
+          }
+        });
+      } else {
+        let bestNameIdx = 0;
+        let maxArabic = 0;
+        parts.forEach((p, idx) => {
+          const arCount = (p.match(/[\u0600-\u06FF]/g) || []).length;
+          if (arCount > maxArabic && !p.includes('شعبة') && !p.startsWith('الصف') && arCount > 4) {
+            maxArabic = arCount;
+            bestNameIdx = idx;
+          }
+        });
+
+        fullName = parts[bestNameIdx] || parts[0] || `طالب ${seq}`;
+
+        parts.forEach((p, idx) => {
+          if (idx === bestNameIdx) return;
+          if (p.includes('صف') || p.includes('أول') || p.includes('ثاني') || p.includes('ثالث') || p.includes('رابع') || p.includes('خامس') || p.includes('سادس') || p.includes('متوسط')) {
+            const ext = extractGradeAndSection(p);
+            currentGrade = ext.grade;
+            if (ext.section) section = ext.section;
+          } else if (
+            p.includes('شعب') || 
+            p.startsWith('ش ') ||
+            /^[أ-يa-zA-Z0-9]$/.test(p) || 
+            /^[\(\[][أ-يa-zA-Z0-9][\)\]]$/.test(p)
+          ) {
+            section = standardizeSectionName(p);
+          } else if (/^\d{1,6}$/.test(p) && !recordNumber) {
+            recordNumber = p;
+          }
+        });
+      }
+    }
+
+    // Parse sub-names from fullName
+    const nameTokens = fullName.split(/\s+/).filter(Boolean);
     const firstName = nameTokens[0] || 'طالب';
-    const secondName = nameTokens[1] || 'محمد';
-    const thirdName = nameTokens[2] || 'علي';
-    const fourthName = nameTokens[3] || 'حسن';
-    const titleName = nameTokens[4] || 'المحمداوي';
-
-    const recordNumber = parts[1] || `${1000 + seq}`;
-    const registerPage = parts[2] || `${20 + seq}`;
-    const wasatiPage = parts[3] || `${15 + seq}`;
-    const regYear = parts[4] || '2025-2026';
-    const prevResult = parts[5] || 'ناجح';
-    const currentGrade = parts[6] || 'الصف الأول';
-    const section = parts[7] || 'أ';
-    const absences = parseInt(parts[8] || '0', 10) || 0;
-    const status = (parts[9] as Student['status']) || 'مستمر';
-    const healthStatus = parts[10] || 'سليم';
-    const motherName = parts[11] || 'فاطمة كريم';
-    const nationalCardNumber = parts[12] || `1998203040${seq}`;
-
-    const fullName = [firstName, secondName, thirdName, fourthName, titleName].filter(Boolean).join(' ').trim();
+    const secondName = nameTokens[1] || '';
+    const thirdName = nameTokens[2] || '';
+    const fourthName = nameTokens[3] || '';
+    const titleName = nameTokens.slice(4).join(' ') || '';
 
     results.push({
       id: `std-imp-${Date.now()}-${index}`,
       sequence: seq,
       recordNumber,
-      registerPageNumber: registerPage,
-      wasatiPageNumber: wasatiPage,
-      registrationYear: regYear,
-      previousYearResult: prevResult,
+      registerPageNumber: `${20 + seq}`,
+      wasatiPageNumber: `${15 + seq}`,
+      registrationYear: '2025-2026',
+      previousYearResult: 'ناجح',
+      currentGrade,
+      section,
+      absencesCount: 0,
+      status: 'مستمر',
+      healthStatus: 'سليم',
+      firstName,
+      secondName,
+      thirdName,
+      fourthName,
+      titleName,
+      fullName: [firstName, secondName, thirdName, fourthName, titleName].filter(Boolean).join(' ').trim(),
+      motherName: 'فاطمة كريم',
+      nationalCardNumber: `1998203040${seq}`,
+      conductScore: 'جيد جداً',
+      marksHistory: [],
+      notesLog: [
+        { id: `note-${Date.now()}`, date: new Date().toISOString().split('T')[0], type: 'ملاحظة عامة', text: 'تمت إضافة الطالب عبر أداة الاستيراد الذكي' }
+      ]
+    });
+  }
+
+  return results;
+}
+
+// Parse a single worksheet's rows into Student records
+export function parseSingleSheetRows(sheetName: string, rawRows: any[][], startingSeq: number = 1): Student[] {
+  if (!rawRows || rawRows.length === 0) return [];
+
+  // 1. Infer grade and section from sheet name!
+  const fromSheet = extractGradeAndSection(sheetName);
+  let inferredGrade = fromSheet.grade;
+  let inferredSection = fromSheet.section || '';
+
+  // 2. Scan top banner rows (rows 0 to 15) for title text if section/grade not yet determined
+  for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
+    const row = rawRows[r];
+    if (!Array.isArray(row)) continue;
+    const rowText = row.map(c => String(c || '').trim()).join(' ');
+    if (rowText.includes('شعب') || rowText.includes('الصف') || rowText.includes('مرحل') || rowText.includes('متوسط')) {
+      const fromBanner = extractGradeAndSection(rowText);
+      if (fromBanner.section && !inferredSection) {
+        inferredSection = fromBanner.section;
+      }
+      if (fromBanner.grade && !fromSheet.section && (inferredGrade === 'الصف الأول' || inferredGrade === 'الأول المتوسط')) {
+        inferredGrade = fromBanner.grade;
+      }
+    }
+  }
+
+  // 3. Find the Header Row (among top 25 rows)
+  let headerRowIndex = -1;
+  let nameColIndex = -1;
+  let firstNameColIndex = -1;
+  let secondNameColIndex = -1;
+  let thirdNameColIndex = -1;
+  let fourthNameColIndex = -1;
+  let titleColIndex = -1;
+  let recordNumColIndex = -1;
+  let gradeColIndex = -1;
+  let sectionColIndex = -1;
+  let isCombinedGradeSection = false;
+  let motherColIndex = -1;
+  let nationalIdColIndex = -1;
+  let absencesColIndex = -1;
+  let statusColIndex = -1;
+
+  for (let r = 0; r < Math.min(rawRows.length, 25); r++) {
+    const row = rawRows[r];
+    if (!Array.isArray(row)) continue;
+
+    const rowStr = row.map(c => String(c || '').trim()).join(' ');
+    
+    // Check if this row looks like a header row
+    if (
+      rowStr.includes('الاسم') || 
+      rowStr.includes('اسم الطالب') || 
+      rowStr.includes('اسم التلميذ') || 
+      rowStr.includes('الرباعي') ||
+      rowStr.includes('الثلاثي') ||
+      rowStr.includes('اسم الاب') ||
+      (rowStr.includes('ت') && (rowStr.includes('الصف') || rowStr.includes('الشعبة') || rowStr.includes('الرقم')))
+    ) {
+      headerRowIndex = r;
+      
+      // Map columns
+      row.forEach((cell, cIdx) => {
+        const colHeader = String(cell || '').trim();
+        if (!colHeader) return;
+        const normHeader = normalizeText(colHeader);
+
+        if (normHeader.includes('اب الجد') || normHeader.includes('الرابع') || normHeader.includes('جد رابع')) {
+          fourthNameColIndex = cIdx;
+        } else if (normHeader.includes('اسم الجد') || normHeader.includes('الجد') || normHeader === 'جد') {
+          thirdNameColIndex = cIdx;
+        } else if (normHeader.includes('اسم الاب') || normHeader.includes('اسم الوالد') || normHeader.includes('الاب') || normHeader === 'اب' || normHeader === 'والد') {
+          secondNameColIndex = cIdx;
+        } else if (normHeader.includes('لقب') || normHeader.includes('عشير') || normHeader.includes('شهر')) {
+          titleColIndex = cIdx;
+        } else if (
+          (normHeader.includes('اسم اول') || normHeader.includes('الاسم الاول') || normHeader.includes('اسم التلميذ') || normHeader.includes('اسم الطالب') || normHeader === 'اسم' || normHeader === 'الاسم') &&
+          !normHeader.includes('ام') && !normHeader.includes('مدرس') && !normHeader.includes('معلم')
+        ) {
+          firstNameColIndex = cIdx;
+          if (nameColIndex === -1) nameColIndex = cIdx;
+        } else if (
+          (normHeader.includes('رباعي') || normHeader.includes('ثلاثي') || normHeader.includes('كامل')) &&
+          !normHeader.includes('ام')
+        ) {
+          nameColIndex = cIdx;
+        } else if (normHeader.includes('قيد') || normHeader.includes('سجل') || normHeader.includes('امتحاني') || normHeader.includes('رقم الطالب') || normHeader === 'ت') {
+          recordNumColIndex = cIdx;
+        } else if (normHeader.includes('صف') && (normHeader.includes('شعب') || normHeader.includes('فرع'))) {
+          gradeColIndex = cIdx;
+          sectionColIndex = cIdx;
+          isCombinedGradeSection = true;
+        } else if (normHeader.includes('صف') || normHeader.includes('مرحل')) {
+          gradeColIndex = cIdx;
+        } else if (
+          normHeader.includes('شعب') || normHeader.includes('شعبه') || 
+          normHeader === 'ش' || normHeader.startsWith('ش ') || normHeader.startsWith('ش/') ||
+          normHeader.includes('فرع') || normHeader.includes('رمز') || normHeader.includes('قسم') ||
+          normHeader === 'sec' || normHeader.includes('section')
+        ) {
+          sectionColIndex = cIdx;
+        } else if (normHeader.includes('ام') || normHeader.includes('والده')) {
+          motherColIndex = cIdx;
+        } else if (normHeader.includes('وطني') || normHeader.includes('موحد') || normHeader.includes('هوي') || normHeader.includes('بطاق')) {
+          nationalIdColIndex = cIdx;
+        } else if (normHeader.includes('غياب')) {
+          absencesColIndex = cIdx;
+        } else if (normHeader.includes('حال') || normHeader.includes('مستمر')) {
+          statusColIndex = cIdx;
+        }
+      });
+      break;
+    }
+  }
+
+  // Fallback: If no explicit header row was identified, auto-detect the student names column
+  if (headerRowIndex === -1 || (nameColIndex === -1 && firstNameColIndex === -1)) {
+    headerRowIndex = 0;
+    let bestColIdx = 0;
+    let maxArabicNames = 0;
+
+    const maxCols = Math.max(...rawRows.map(r => Array.isArray(r) ? r.length : 0));
+    for (let c = 0; c < maxCols; c++) {
+      let arabicCount = 0;
+      rawRows.forEach(r => {
+        const val = String(r[c] || '').trim();
+        if (val.length > 5 && /^[\u0600-\u06FF\s]+$/.test(val) && val.split(/\s+/).length >= 2) {
+          arabicCount++;
+        }
+      });
+      if (arabicCount > maxArabicNames) {
+        maxArabicNames = arabicCount;
+        bestColIdx = c;
+      }
+    }
+    nameColIndex = bestColIdx;
+  }
+
+  // Fallback: Auto-detect section column ONLY if not already known from sheetName and not in headers
+  if (sectionColIndex === -1 && !inferredSection) {
+    const maxCols = Math.max(...rawRows.map(r => Array.isArray(r) ? r.length : 0));
+    for (let c = 0; c < maxCols; c++) {
+      if (
+        c === nameColIndex || 
+        c === firstNameColIndex || 
+        c === secondNameColIndex || 
+        c === thirdNameColIndex || 
+        c === gradeColIndex ||
+        c === recordNumColIndex
+      ) continue;
+      let matchCount = 0;
+      let sampleCount = 0;
+      for (let r = headerRowIndex + 1; r < Math.min(rawRows.length, headerRowIndex + 25); r++) {
+        const cellVal = String(rawRows[r]?.[c] || '').trim();
+        if (!cellVal) continue;
+        sampleCount++;
+        if (
+          /^[أ-ي]$/.test(cellVal) ||
+          cellVal.startsWith('شعبة') ||
+          cellVal.startsWith('ش ') ||
+          /^[\(\[][أ-ي][\)\]]$/.test(cellVal)
+        ) {
+          matchCount++;
+        }
+      }
+      if (sampleCount >= 3 && (matchCount / sampleCount) >= 0.6) {
+        sectionColIndex = c;
+        break;
+      }
+    }
+  }
+
+  const students: Student[] = [];
+
+  // 4. Process student rows
+  for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
+    const row = rawRows[r];
+    if (!Array.isArray(row)) continue;
+
+    let firstName = '';
+    let secondName = '';
+    let thirdName = '';
+    let fourthName = '';
+    let titleName = '';
+
+    if (secondNameColIndex >= 0 || thirdNameColIndex >= 0) {
+      firstName = String(row[firstNameColIndex >= 0 ? firstNameColIndex : nameColIndex] || '').trim();
+      secondName = String(row[secondNameColIndex] || '').trim();
+      thirdName = String(row[thirdNameColIndex] || '').trim();
+      fourthName = fourthNameColIndex >= 0 ? String(row[fourthNameColIndex] || '').trim() : '';
+      titleName = titleColIndex >= 0 ? String(row[titleColIndex] || '').trim() : '';
+
+      if (firstName.split(/\s+/).length > 1) {
+        const parts = firstName.split(/\s+/);
+        firstName = parts[0];
+        if (!secondName) secondName = parts[1] || '';
+        if (!thirdName && parts[2]) thirdName = parts[2];
+        if (!fourthName && parts[3]) fourthName = parts[3];
+        if (!titleName && parts[4]) titleName = parts[4];
+      }
+    } else {
+      const nameStr = String(row[nameColIndex >= 0 ? nameColIndex : 0] || '').trim();
+      if (
+        !nameStr || 
+        nameStr.length < 2 ||
+        nameStr.includes('الاسم') || 
+        nameStr.includes('المجموع') || 
+        nameStr.includes('العدد') || 
+        nameStr.includes('مدير') || 
+        nameStr.includes('المشرف') ||
+        nameStr.includes('وزارة التربية') ||
+        nameStr.includes('جمهورية العراق')
+      ) {
+        continue;
+      }
+
+      const tokens = nameStr.split(/\s+/).filter(t => t.length > 0);
+      if (tokens.length < 1) continue;
+
+      firstName = tokens[0] || 'طالب';
+      secondName = tokens[1] || '';
+      thirdName = tokens[2] || '';
+      fourthName = tokens[3] || '';
+      titleName = tokens.slice(4).join(' ') || (titleColIndex >= 0 ? String(row[titleColIndex] || '').trim() : '');
+    }
+
+    if (!firstName || firstName.includes('الاسم') || firstName.includes('المجموع')) {
+      continue;
+    }
+
+    const seq = startingSeq + students.length;
+
+    const recordNumber = recordNumColIndex >= 0 && row[recordNumColIndex] 
+      ? String(row[recordNumColIndex]).trim() 
+      : `${1000 + seq}`;
+
+    // Resolve Grade & Section for this specific row
+    let currentGrade = inferredGrade;
+    let section = inferredSection || 'أ';
+
+    const rawGradeVal = gradeColIndex >= 0 && row[gradeColIndex] ? String(row[gradeColIndex]).trim() : '';
+    const rawSectionVal = sectionColIndex >= 0 && row[sectionColIndex] ? String(row[sectionColIndex]).trim() : '';
+
+    if (isCombinedGradeSection && rawGradeVal) {
+      const ext = extractGradeAndSection(rawGradeVal);
+      currentGrade = ext.grade;
+      if (ext.section) section = ext.section;
+    } else {
+      if (rawGradeVal) {
+        const ext = extractGradeAndSection(rawGradeVal);
+        currentGrade = ext.grade;
+        // If section was embedded in grade cell and no separate section column exists
+        if (ext.section && (!rawSectionVal || sectionColIndex === -1)) {
+          section = ext.section;
+        }
+      }
+      if (rawSectionVal && !isCombinedGradeSection) {
+        section = standardizeSectionName(rawSectionVal);
+      }
+    }
+
+    // Standardize to official Iraqi stages
+    currentGrade = standardizeGradeName(currentGrade);
+    section = standardizeSectionName(section);
+
+    const motherName = motherColIndex >= 0 && row[motherColIndex] 
+      ? String(row[motherColIndex]).trim() 
+      : 'مريم جاسم';
+
+    const nationalCardNumber = nationalIdColIndex >= 0 && row[nationalIdColIndex] 
+      ? String(row[nationalIdColIndex]).trim() 
+      : `200012345${seq}`;
+
+    const absences = absencesColIndex >= 0 && row[absencesColIndex] 
+      ? parseInt(String(row[absencesColIndex]), 10) || 0 
+      : 0;
+
+    const status = statusColIndex >= 0 && String(row[statusColIndex]).includes('غادر') 
+      ? 'غادر المدرسة' 
+      : 'مستمر';
+
+    const fullName = [firstName, secondName, thirdName, fourthName, titleName].filter(Boolean).join(' ').trim();
+
+    students.push({
+      id: `std-xls-${Date.now()}-${students.length}`,
+      sequence: seq,
+      recordNumber,
+      registerPageNumber: `${10 + seq}`,
+      wasatiPageNumber: `${5 + seq}`,
+      registrationYear: '2025-2026',
+      previousYearResult: 'ناجح',
       currentGrade,
       section,
       absencesCount: absences,
-      status,
-      healthStatus,
+      status: status as Student['status'],
+      healthStatus: 'سليم',
       firstName,
       secondName,
       thirdName,
@@ -147,23 +612,24 @@ export function parseStudentsFromRawInput(rawText: string, startingSequence: num
       fullName,
       motherName,
       nationalCardNumber,
-      conductScore: 'جيد جداً',
-      marksHistory: [
-        { year: '2024-2025', subject: 'اللغة العربية', midterm: 45, final: 48, total: 93 },
-        { year: '2024-2025', subject: 'الرياضيات', midterm: 42, final: 46, total: 88 },
-        { year: '2024-2025', subject: 'العلوم العامة', midterm: 44, final: 47, total: 91 },
-      ],
+      conductScore: 'ممتاز',
+      marksHistory: [],
       notesLog: [
-        { id: `note-${Date.now()}`, date: new Date().toISOString().split('T')[0], type: 'ملاحظة عامة', text: 'تمت إضافة الطالب عبر أداة الاستيراد الذكي' }
+        { 
+          id: `note-${Date.now()}`, 
+          date: new Date().toISOString().split('T')[0], 
+          type: 'ملاحظة عامة', 
+          text: `تم استيراد الطالب من ملف الإكسل (ورقة: ${sheetName} - شعبة: ${section})` 
+        }
       ]
     });
-  });
+  }
 
-  return results;
+  return students;
 }
 
-// Parse Excel binary or CSV file into Student records across ALL sheets/pages
-export async function parseExcelFileForStudents(file: File, startingSeq: number = 1): Promise<Student[]> {
+// Inspect an Excel file and return metadata/preview per sheet
+export async function inspectExcelWorkbookForStudents(file: File, startingSeq: number = 1): Promise<ExcelSheetPreview[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -171,255 +637,32 @@ export async function parseExcelFileForStudents(file: File, startingSeq: number 
         const data = new Uint8Array(e.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         
-        const allStudents: Student[] = [];
-        let globalIndex = 0;
+        const previews: ExcelSheetPreview[] = [];
+        let runningSeq = startingSeq;
 
         // Iterate through EVERY sheet/page in the file
         workbook.SheetNames.forEach((sheetName) => {
           const worksheet = workbook.Sheets[sheetName];
           if (!worksheet) return;
 
-          // Convert sheet to 2D array of rows
           const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
           if (!rawRows || rawRows.length === 0) return;
 
-          // 1. Find the Header Row (among top 20 rows)
-          let headerRowIndex = -1;
-          let nameColIndex = -1;
-          let firstNameColIndex = -1;
-          let secondNameColIndex = -1;
-          let thirdNameColIndex = -1;
-          let fourthNameColIndex = -1;
-          let titleColIndex = -1;
-          let recordNumColIndex = -1;
-          let gradeColIndex = -1;
-          let sectionColIndex = -1;
-          let motherColIndex = -1;
-          let nationalIdColIndex = -1;
-          let absencesColIndex = -1;
-          let statusColIndex = -1;
-
-          for (let r = 0; r < Math.min(rawRows.length, 20); r++) {
-            const row = rawRows[r];
-            if (!Array.isArray(row)) continue;
-
-            const rowStr = row.map(c => String(c || '').trim()).join(' ');
-            
-            // Check if this row looks like a header row
-            if (
-              rowStr.includes('الاسم') || 
-              rowStr.includes('اسم الطالب') || 
-              rowStr.includes('اسم التلميذ') || 
-              rowStr.includes('الرباعي') ||
-              rowStr.includes('الثلاثي') ||
-              rowStr.includes('اسم الاب') ||
-              (rowStr.includes('ت') && (rowStr.includes('الصف') || rowStr.includes('الشعبة')))
-            ) {
-              headerRowIndex = r;
-              
-              // Map columns
-              row.forEach((cell, cIdx) => {
-                const colHeader = String(cell || '').trim();
-                if (!colHeader) return;
-                const normHeader = normalizeText(colHeader);
-
-                if (normHeader.includes('اب الجد') || normHeader.includes('الرابع') || normHeader.includes('جد رابع')) {
-                  fourthNameColIndex = cIdx;
-                } else if (normHeader.includes('اسم الجد') || normHeader.includes('الجد') || normHeader === 'جد') {
-                  thirdNameColIndex = cIdx;
-                } else if (normHeader.includes('اسم الاب') || normHeader.includes('اسم الوالد') || normHeader.includes('الاب') || normHeader === 'اب' || normHeader === 'والد') {
-                  secondNameColIndex = cIdx;
-                } else if (normHeader.includes('لقب') || normHeader.includes('عشير') || normHeader.includes('شهر')) {
-                  titleColIndex = cIdx;
-                } else if (
-                  (normHeader.includes('اسم اول') || normHeader.includes('الاسم الاول') || normHeader.includes('اسم التلميذ') || normHeader.includes('اسم الطالب') || normHeader === 'اسم' || normHeader === 'الاسم') &&
-                  !normHeader.includes('ام') && !normHeader.includes('مدرس') && !normHeader.includes('معلم')
-                ) {
-                  firstNameColIndex = cIdx;
-                  if (nameColIndex === -1) nameColIndex = cIdx;
-                } else if (
-                  (normHeader.includes('رباعي') || normHeader.includes('ثلاثي') || normHeader.includes('كامل')) &&
-                  !normHeader.includes('ام')
-                ) {
-                  nameColIndex = cIdx;
-                } else if (normHeader.includes('قيد') || normHeader.includes('سجل') || normHeader.includes('امتحاني') || normHeader.includes('رقم الطالب')) {
-                  recordNumColIndex = cIdx;
-                } else if (normHeader.includes('صف') || normHeader.includes('مرحل')) {
-                  gradeColIndex = cIdx;
-                } else if (normHeader.includes('شعب') || normHeader.includes('فرع')) {
-                  sectionColIndex = cIdx;
-                } else if (normHeader.includes('ام') || normHeader.includes('والده')) {
-                  motherColIndex = cIdx;
-                } else if (normHeader.includes('وطني') || normHeader.includes('موحد') || normHeader.includes('هوي') || normHeader.includes('بطاق')) {
-                  nationalIdColIndex = cIdx;
-                } else if (normHeader.includes('غياب')) {
-                  absencesColIndex = cIdx;
-                } else if (normHeader.includes('حال') || normHeader.includes('مستمر')) {
-                  statusColIndex = cIdx;
-                }
-              });
-              break;
-            }
-          }
-
-          // Fallback: If no explicit header row was identified, auto-detect the student names column
-          if (headerRowIndex === -1 || (nameColIndex === -1 && firstNameColIndex === -1)) {
-            headerRowIndex = 0;
-            let bestColIdx = 0;
-            let maxArabicNames = 0;
-
-            const maxCols = Math.max(...rawRows.map(r => Array.isArray(r) ? r.length : 0));
-            for (let c = 0; c < maxCols; c++) {
-              let arabicCount = 0;
-              rawRows.forEach(r => {
-                const val = String(r[c] || '').trim();
-                if (val.length > 5 && /^[\u0600-\u06FF\s]+$/.test(val) && val.split(/\s+/).length >= 2) {
-                  arabicCount++;
-                }
-              });
-              if (arabicCount > maxArabicNames) {
-                maxArabicNames = arabicCount;
-                bestColIdx = c;
-              }
-            }
-            nameColIndex = bestColIdx;
-          }
-
-          // Infer grade from sheet name if specified
-          let inferredGrade = 'الصف الأول';
-          if (sheetName.includes('ثاني')) inferredGrade = 'الصف الثاني';
-          else if (sheetName.includes('ثالث')) inferredGrade = 'الصف الثالث';
-          else if (sheetName.includes('رابع')) inferredGrade = 'الصف الرابع';
-          else if (sheetName.includes('خامس')) inferredGrade = 'الصف الخامس';
-          else if (sheetName.includes('سادس')) inferredGrade = 'الصف السادس';
-
-          // 2. Process student rows
-          for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
-            const row = rawRows[r];
-            if (!Array.isArray(row)) continue;
-
-            let firstName = '';
-            let secondName = '';
-            let thirdName = '';
-            let fourthName = '';
-            let titleName = '';
-
-            if (secondNameColIndex >= 0 || thirdNameColIndex >= 0) {
-              // Read segmented names
-              firstName = String(row[firstNameColIndex >= 0 ? firstNameColIndex : nameColIndex] || '').trim();
-              secondName = String(row[secondNameColIndex] || '').trim();
-              thirdName = String(row[thirdNameColIndex] || '').trim();
-              fourthName = fourthNameColIndex >= 0 ? String(row[fourthNameColIndex] || '').trim() : '';
-              titleName = titleColIndex >= 0 ? String(row[titleColIndex] || '').trim() : '';
-
-              if (firstName.split(/\s+/).length > 1) {
-                const parts = firstName.split(/\s+/);
-                firstName = parts[0];
-                if (!secondName) secondName = parts[1] || '';
-                if (!thirdName && parts[2]) thirdName = parts[2];
-                if (!fourthName && parts[3]) fourthName = parts[3];
-                if (!titleName && parts[4]) titleName = parts[4];
-              }
-            } else {
-              const nameStr = String(row[nameColIndex >= 0 ? nameColIndex : 0] || '').trim();
-              if (
-                !nameStr || 
-                nameStr.length < 2 ||
-                nameStr.includes('الاسم') || 
-                nameStr.includes('المجموع') || 
-                nameStr.includes('العدد') || 
-                nameStr.includes('مدير') || 
-                nameStr.includes('المشرف') ||
-                nameStr.includes('وزارة التربية') ||
-                nameStr.includes('جمهورية العراق')
-              ) {
-                continue;
-              }
-
-              const tokens = nameStr.split(/\s+/).filter(t => t.length > 0);
-              if (tokens.length < 1) continue;
-
-              firstName = tokens[0] || 'طالب';
-              secondName = tokens[1] || '';
-              thirdName = tokens[2] || '';
-              fourthName = tokens[3] || '';
-              titleName = tokens.slice(4).join(' ') || (titleColIndex >= 0 ? String(row[titleColIndex] || '').trim() : '');
-            }
-
-            if (!firstName || firstName.includes('الاسم') || firstName.includes('المجموع')) {
-              continue;
-            }
-
-            const seq = startingSeq + globalIndex;
-
-            const recordNumber = recordNumColIndex >= 0 && row[recordNumColIndex] 
-              ? String(row[recordNumColIndex]).trim() 
-              : `${1000 + seq}`;
-
-            const currentGrade = gradeColIndex >= 0 && row[gradeColIndex] 
-              ? String(row[gradeColIndex]).trim() 
-              : inferredGrade;
-
-            const section = sectionColIndex >= 0 && row[sectionColIndex] 
-              ? standardizeSectionName(String(row[sectionColIndex])) 
-              : 'أ';
-
-            const motherName = motherColIndex >= 0 && row[motherColIndex] 
-              ? String(row[motherColIndex]).trim() 
-              : 'مريم جاسم';
-
-            const nationalCardNumber = nationalIdColIndex >= 0 && row[nationalIdColIndex] 
-              ? String(row[nationalIdColIndex]).trim() 
-              : `200012345${seq}`;
-
-            const absences = absencesColIndex >= 0 && row[absencesColIndex] 
-              ? parseInt(String(row[absencesColIndex]), 10) || 0 
-              : 0;
-
-            const status = statusColIndex >= 0 && String(row[statusColIndex]).includes('غادر') 
-              ? 'غادر المدرسة' 
-              : 'مستمر';
-
-            const fullName = [firstName, secondName, thirdName, fourthName, titleName].filter(Boolean).join(' ').trim();
-
-            allStudents.push({
-              id: `std-xls-${Date.now()}-${globalIndex}`,
-              sequence: seq,
-              recordNumber,
-              registerPageNumber: `${10 + seq}`,
-              wasatiPageNumber: `${5 + seq}`,
-              registrationYear: '2025-2026',
-              previousYearResult: 'ناجح',
-              currentGrade,
-              section,
-              absencesCount: absences,
-              status: status as Student['status'],
-              healthStatus: 'سليم',
-              firstName,
-              secondName,
-              thirdName,
-              fourthName,
-              titleName,
-              fullName,
-              motherName,
-              nationalCardNumber,
-              conductScore: 'ممتاز',
-              marksHistory: [],
-              notesLog: [
-                { 
-                  id: `note-${Date.now()}`, 
-                  date: new Date().toISOString().split('T')[0], 
-                  type: 'ملاحظة عامة', 
-                  text: `تم استيراد الطالب من ملف الإكسل (ورقة: ${sheetName})` 
-                }
-              ]
+          const sheetStudents = parseSingleSheetRows(sheetName, rawRows, runningSeq);
+          if (sheetStudents.length > 0) {
+            runningSeq += sheetStudents.length;
+            previews.push({
+              sheetName,
+              grade: sheetStudents[0]?.currentGrade || 'الأول المتوسط',
+              section: sheetStudents[0]?.section || 'أ',
+              studentCount: sheetStudents.length,
+              sampleNames: sheetStudents.slice(0, 4).map(s => s.fullName || s.firstName),
+              students: sheetStudents
             });
-
-            globalIndex++;
           }
         });
 
-        resolve(allStudents);
+        resolve(previews);
       } catch (err) {
         reject(err);
       }
@@ -428,6 +671,13 @@ export async function parseExcelFileForStudents(file: File, startingSeq: number 
     reader.readAsArrayBuffer(file);
   });
 }
+
+// Parse Excel binary or CSV file into Student records across ALL sheets/pages
+export async function parseExcelFileForStudents(file: File, startingSeq: number = 1): Promise<Student[]> {
+  const previews = await inspectExcelWorkbookForStudents(file, startingSeq);
+  return previews.flatMap(p => p.students);
+}
+
 
 // Helper to extract value from row by normalized keys
 function getRowValue(row: Record<string, any>, matchers: string[]): string {

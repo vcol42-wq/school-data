@@ -74,26 +74,73 @@ export function standardizeGradeName(gradeStr: string): string {
 }
 
 export function standardizeSectionName(secStr: string): string {
-  if (!secStr) return 'أ';
-  const clean = secStr.trim().replace(/^(شعبة|الشعبة|ش)\s*/g, '').trim();
-  const lower = clean.toLowerCase();
+  if (!secStr || typeof secStr !== 'string') return 'أ';
+  let clean = secStr.trim();
+  if (!clean) return 'أ';
 
-  // منع الكلمات الشائعة التي تدل على الصف من التحول إلى شعبة مثل "متوسط"
-  if (clean.includes('متوسط') || clean.includes('اول') || clean.includes('ثاني') || clean.includes('ثالث') || clean.includes('صف')) {
-    return 'أ';
+  // 1. Remove wrapping quotes, brackets, and parentheses
+  clean = clean.replace(/^[\[\(\{\<"'\s]+|[\]\)\}\>"'\s]+$/g, '').trim();
+
+  // 2. Remove prefixes like "شعبة", "الشعبة", "ش:", "ش/", "فرع"
+  clean = clean.replace(/^(شعبة|الشعبة|ش|الفرع|فرع|رمز|مجموعة)\s*[:\-\/\\]?\s*/i, '').trim();
+
+  // Helper mapper for single tokens
+  const mapTokenToSection = (token: string): string | null => {
+    if (!token) return null;
+    const t = token.trim().replace(/[\[\(\)\{\}\<\>\"\']/g, '');
+    const lower = t.toLowerCase();
+    if (t === 'ا' || t === 'أ' || t === 'إ' || t === 'آ' || lower === 'a' || lower === '1' || t === '١') return 'أ';
+    if (t === 'ب' || lower === 'b' || lower === '2' || t === '٢') return 'ب';
+    if (t === 'ج' || lower === 'c' || lower === '3' || t === '٣') return 'ج';
+    if (t === 'د' || lower === 'd' || lower === '4' || t === '٤') return 'د';
+    if (t === 'ه' || t === 'هـ' || lower === 'e' || lower === '5' || t === '٥') return 'هـ';
+    if (t === 'و' || lower === 'f' || lower === '6' || t === '٦') return 'و';
+    if (t === 'ز' || lower === 'z' || lower === '7' || t === '٧') return 'ز';
+    if (t === 'ح' || lower === 'h' || lower === '8' || t === '٨') return 'ح';
+    if (t === 'ط' || lower === '9' || t === '٩') return 'ط';
+    if (t === 'ي' || lower === '10' || t === '١٠') return 'ي';
+    if (t === 'خ') return 'خ';
+    if (/^[أ-يa-zA-Z]$/.test(t)) return t;
+    return null;
+  };
+
+  // Direct match if clean is already a single char/token
+  const direct = mapTokenToSection(clean);
+  if (direct) return direct;
+
+  // 3. Handle combined Grade/Section patterns like "1/2", "1-2", "الأول / ب", "1/ب"
+  const slashOrDash = clean.match(/[\/\-]\s*([أ-يa-zA-Z0-9]+)/);
+  if (slashOrDash && slashOrDash[1]) {
+    const fromSlash = mapTokenToSection(slashOrDash[1]);
+    if (fromSlash) return fromSlash;
   }
 
-  if (clean === 'ا' || clean === 'أ' || clean === 'إ' || clean === 'آ' || lower === 'a' || lower === '1' || clean === '١') return 'أ';
-  if (clean === 'ب' || lower === 'b' || lower === '2' || clean === '٢') return 'ب';
-  if (clean === 'ج' || lower === 'c' || lower === '3' || clean === '٣') return 'ج';
-  if (clean === 'د' || lower === 'd' || lower === '4' || clean === '٤') return 'د';
-  if (clean === 'ه' || clean === 'هـ' || lower === 'e' || lower === '5' || clean === '٥') return 'هـ';
-  if (clean === 'و' || lower === 'f' || lower === '6' || clean === '٦') return 'و';
-  if (clean === 'ز' || lower === 'z' || lower === '7' || clean === '٧') return 'ز';
-  if (clean === 'ح' || lower === 'h' || lower === '8' || clean === '٨') return 'ح';
-  if (clean === 'ط' || lower === '9' || clean === '٩') return 'ط';
-  if (clean === 'خ') return 'خ';
-  return /^[أ-يa-zA-Z]$/.test(clean) ? clean : 'أ';
+  // 4. Extract section from combined text like "الأول متوسط ب" or "الصف الثاني (ج)" or "اول ب"
+  const strippedGrade = clean
+    .replace(/(الصف|صف)\s+/g, '')
+    .replace(/(الأول|الاول|اول|أول|ثاني|الثاني|ثالث|الثالث|رابع|الرابع|خامس|الخامس|سادس|السادس)/g, '')
+    .replace(/(متوسطة|متوسط|ابتدائية|ابتدائي|إعدادية|اعدادية|إعدادي|اعدادي|ثانوية|ثانوي)/g, '')
+    .replace(/(علمي|أدبي|ادبي|تطبيقي|أحيائي|احيائي|صناعي|تجاري)/g, '')
+    .replace(/[\(\)\[\]\{\}\:\-\_\/\\]/g, ' ')
+    .trim();
+
+  if (strippedGrade) {
+    const tokens = strippedGrade.split(/\s+/).filter(Boolean);
+    // Check tokens from right to left (as section usually appears at the end)
+    for (let i = tokens.length - 1; i >= 0; i--) {
+      const mapped = mapTokenToSection(tokens[i]);
+      if (mapped) return mapped;
+    }
+  }
+
+  // 5. Look for any standalone Arabic or English letter / digit in brackets or spaces
+  const bracketMatch = clean.match(/[\(\[\{]([أ-يa-zA-Z0-9]+)[\)\]\}]/);
+  if (bracketMatch && bracketMatch[1]) {
+    const fromBracket = mapTokenToSection(bracketMatch[1]);
+    if (fromBracket) return fromBracket;
+  }
+
+  return 'أ';
 }
 
 export function isValidSubjectName(raw: string): boolean {

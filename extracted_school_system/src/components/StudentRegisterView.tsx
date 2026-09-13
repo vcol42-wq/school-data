@@ -387,21 +387,78 @@ function normalizeForSearch(str: string): string {
     });
   }, [students, activeTab, selectedGrade, selectedSection, searchQuery, sortOption]);
 
+  const handleConfirmImportStudents = async (
+    imported: Student[],
+    targetGrade?: string,
+    targetSection?: string,
+    replaceExisting: boolean = true
+  ) => {
+    if (!imported || imported.length === 0) {
+      alert('لم يتم العثور على أي طلاب للاستيراد.');
+      return;
+    }
+
+    let updatedList: Student[];
+
+    if (replaceExisting) {
+      if (targetGrade && targetSection) {
+        // Replace only students in this specific grade & section
+        const others = students.filter(s => !(s.currentGrade === targetGrade && s.section === targetSection));
+        updatedList = [...others, ...imported];
+      } else {
+        // Multi-section replace: group imported by (grade, section) pairs and replace existing for those pairs
+        const importedPairs = new Set(imported.map(s => `${s.currentGrade || ''}:::${s.section || ''}`));
+        const others = students.filter(s => !importedPairs.has(`${s.currentGrade || ''}:::${s.section || ''}`));
+        updatedList = [...others, ...imported];
+      }
+    } else {
+      // Append without replacing
+      updatedList = [...students, ...imported];
+    }
+
+    // Ensure continuous sequence numbering
+    updatedList = updatedList.map((s, idx) => ({ ...s, sequence: idx + 1 }));
+
+    setStudents(updatedList);
+    localStorage.setItem('diyala_school_students', JSON.stringify(updatedList));
+    window.dispatchEvent(new Event('school_data_updated'));
+
+    // Automatically focus on the imported section in the view!
+    if (targetGrade && targetSection) {
+      setSelectedGrade(targetGrade);
+      setSelectedSection(targetSection);
+    } else if (imported[0]?.currentGrade && imported[0]?.section) {
+      setSelectedGrade(imported[0].currentGrade);
+      setSelectedSection(imported[0].section);
+    }
+
+    // Auto Sync to Cloud immediately (Supabase)
+    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+    await quickSyncStudentsToSupabase(schoolId, updatedList);
+
+    const secCounts = imported.reduce((acc, s) => {
+      const secKey = s.section || 'أ';
+      acc[secKey] = (acc[secKey] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const secSummary = Object.entries(secCounts).map(([sec, count]) => `شعبة (${sec}): ${count} طالب`).join('، ');
+
+    alert(`✅ تم الاستيراد بنجاح!
+${targetSection ? `تم استيراد شعبة (${targetSection}) على حده، وفصلها وعرضها مباشرة في الواجهة.` : `تم استيراد ${imported.length} طالب بنجاح ومزامنتهم مع السحابة.`}
+
+تفاصيل الشعب: ${secSummary}
+${replaceExisting ? '• تم استبدال وتحديث السجل لمنع تكرار أو جمع الأسماء.' : ''}`);
+
+    setShowImportModal(false);
+  };
+
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
       const imported = await parseExcelFileForStudents(file, students.length + 1);
       if (imported.length > 0) {
-        const updatedList = [...students, ...imported];
-        setStudents(updatedList);
-        
-        // Auto Sync to Cloud immediately
-        const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
-        await quickSyncStudentsToSupabase(schoolId, updatedList);
-        
-        alert(`تم استيراد ${imported.length} طالب بنجاح ومزامنتهم فورياً مع السحابة (Supabase)!`);
-        setShowImportModal(false);
+        await handleConfirmImportStudents(imported, undefined, undefined, true);
       } else {
         alert('لم يتم العثور على سجلات صالحة في ملف الأكسل. يرجى التأكد من احتواء الملف على أعمدة الأسماء.');
       }
@@ -409,6 +466,7 @@ function normalizeForSearch(str: string): string {
       alert(`خطأ في معالجة ملف الأكسل: ${err.message}`);
     }
   };
+
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -428,11 +486,20 @@ function normalizeForSearch(str: string): string {
     if (imported.length > 0) {
       const updatedList = [...students, ...imported];
       setStudents(updatedList);
+      localStorage.setItem('diyala_school_students', JSON.stringify(updatedList));
+      window.dispatchEvent(new Event('school_data_updated'));
       
       const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       await quickSyncStudentsToSupabase(schoolId, updatedList);
       
-      alert(`تم استيراد ${imported.length} طالب بنجاح ومزامنتهم مع السحابة!`);
+      const secCounts = imported.reduce((acc, s) => {
+        const secKey = s.section || 'أ';
+        acc[secKey] = (acc[secKey] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      const secSummary = Object.entries(secCounts).map(([sec, count]) => `شعبة (${sec}): ${count} طالب`).join('، ');
+
+      alert(`تم استيراد ${imported.length} طالب بنجاح ومزامنتهم مع السحابة!\n\nتفاصيل الشعب المستوردة:\n${secSummary}`);
       setImportRawText('');
       setShowImportModal(false);
     } else {
@@ -689,6 +756,7 @@ function normalizeForSearch(str: string): string {
         onExcelUpload={handleExcelUpload}
         onImageUpload={handleImageUpload}
         onImportText={handleImportRawText}
+        onImportStudents={handleConfirmImportStudents}
       />
 
       {/* Student Transcript Modal (v4.0 NEW) */}
