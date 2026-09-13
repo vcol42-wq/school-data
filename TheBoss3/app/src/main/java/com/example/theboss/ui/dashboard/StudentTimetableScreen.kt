@@ -53,7 +53,6 @@ import com.example.theboss.data.local.AttendanceEntity
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.utils.NotificationHelper
 import com.example.theboss.utils.alarm.StudyAlarmScheduler
-import com.example.theboss.widget.StudentScheduleWidgetProvider
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.delay
@@ -365,7 +364,6 @@ fun StudentTimetableScreen(
             val updatedJson = gson.toJson(customMap)
             customOverridesJson = updatedJson
             prefs.edit().putString("custom_subject_overrides", updatedJson).apply()
-            StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
             Toast.makeText(context, "تم حفظ اسم المادة الجديد بنجاح ✏️", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -534,13 +532,11 @@ fun StudentTimetableScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refreshData()
-        StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
         if (rawScheduleJson == "{}" || rawScheduleJson.length < 10) {
             isRefreshingSchedule = true
             viewModel.syncScheduleManual {
                 isRefreshingSchedule = false
                 rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
-                StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
             }
         }
     }
@@ -590,15 +586,37 @@ fun StudentTimetableScreen(
         val result = mutableMapOf<String, MutableMap<Int, StudentLessonSlot>>()
         daysList.forEach { result[it] = mutableMapOf() }
 
+        fun extractLesson(lessons: Any?, period: Int): StudentLessonSlot? {
+            if (lessons == null) return null
+            var map: Map<*, *>? = null
+            if (lessons is Map<*, *>) {
+                map = (lessons["lesson$period"] ?: lessons["$period"] ?: lessons[period.toString()]) as? Map<*, *>
+            } else if (lessons is List<*>) {
+                if (period - 1 in lessons.indices) {
+                    map = lessons[period - 1] as? Map<*, *>
+                }
+            }
+            if (map != null) {
+                val rawSubj = (map["subject"] ?: map["subjectName"] ?: map["name"])?.toString() ?: ""
+                val teacher = (map["teacherName"] ?: map["teacher"] ?: map["teacher_name"])?.toString() ?: ""
+                val isOff = map["isOff"] == true || map["isOff"]?.toString() == "true"
+                if (!isOff && (rawSubj.isNotBlank() || teacher.isNotBlank())) {
+                    return StudentLessonSlot(shortenSubject(rawSubj), teacher)
+                }
+            }
+            return null
+        }
+
         var parsedAny = false
         try {
             val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
             if (rootObj != null) {
+                val actualMap = (rootObj["schedule_map"] as? Map<String, Any>) ?: rootObj
                 val stdS = standardizeSectionName(studentSection)
 
                 // Pass 1: Strict Grade + Section match
                 for (day in daysList) {
-                    val dayData = rootObj.entries.find { normDay(it.key) == normDay(day) }?.value as? List<*>
+                    val dayData = actualMap.entries.find { normDay(it.key) == normDay(day) }?.value as? List<*>
                     if (dayData != null) {
                         for (row in dayData) {
                             if (row is Map<*, *>) {
@@ -610,18 +628,12 @@ fun StudentTimetableScreen(
                                 val matchesSection = (rowS == stdS || stdS == "الكل" || rowS.isEmpty())
 
                                 if (matchesGrade && matchesSection) {
-                                    val lessons = row["lessons"] as? Map<*, *>
-                                    if (lessons != null) {
-                                        for (i in 1..6) {
-                                            val lessonObj = lessons["lesson$i"] as? Map<*, *>
-                                            val rawSubj = lessonObj?.get("subject")?.toString() ?: ""
-                                            val teacher = lessonObj?.get("teacherName")?.toString() ?: ""
-                                            val isOff = lessonObj?.get("isOff") as? Boolean ?: false
-                                            if (!isOff && (rawSubj.isNotEmpty() || teacher.isNotEmpty())) {
-                                                val subj = shortenSubject(rawSubj)
-                                                result[day]?.put(i, StudentLessonSlot(subj, teacher))
-                                                parsedAny = true
-                                            }
+                                    val lessons = row["lessons"]
+                                    for (i in 1..6) {
+                                        val slot = extractLesson(lessons, i)
+                                        if (slot != null) {
+                                            result[day]?.put(i, slot)
+                                            parsedAny = true
                                         }
                                     }
                                 }
@@ -633,21 +645,15 @@ fun StudentTimetableScreen(
                 // Pass 2: Fallback to first available schedule row in school JSON if pass 1 found no matches
                 if (!parsedAny) {
                     for (day in daysList) {
-                        val dayData = rootObj.entries.find { normDay(it.key) == normDay(day) }?.value as? List<*>
+                        val dayData = actualMap.entries.find { normDay(it.key) == normDay(day) }?.value as? List<*>
                         if (dayData != null && dayData.isNotEmpty()) {
                             val firstRow = dayData.firstOrNull { it is Map<*, *> } as? Map<*, *>
-                            val lessons = firstRow?.get("lessons") as? Map<*, *>
-                            if (lessons != null) {
-                                for (i in 1..6) {
-                                    val lessonObj = lessons["lesson$i"] as? Map<*, *>
-                                    val rawSubj = lessonObj?.get("subject")?.toString() ?: ""
-                                    val teacher = lessonObj?.get("teacherName")?.toString() ?: ""
-                                    val isOff = lessonObj?.get("isOff") as? Boolean ?: false
-                                    if (!isOff && (rawSubj.isNotEmpty() || teacher.isNotEmpty())) {
-                                        val subj = shortenSubject(rawSubj)
-                                        result[day]?.put(i, StudentLessonSlot(subj, teacher))
-                                        parsedAny = true
-                                    }
+                            val lessons = firstRow?.get("lessons")
+                            for (i in 1..6) {
+                                val slot = extractLesson(lessons, i)
+                                if (slot != null) {
+                                    result[day]?.put(i, slot)
+                                    parsedAny = true
                                 }
                             }
                         }
@@ -836,7 +842,6 @@ fun StudentTimetableScreen(
                                     viewModel.syncScheduleManual { success ->
                                         isRefreshingSchedule = false
                                         rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
-                                        StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                                         Toast.makeText(context, if (success) "تم التحديث ⚡" else "بيانات الجدول متاحة", Toast.LENGTH_SHORT).show()
                                     }
                                 },
@@ -1077,7 +1082,6 @@ fun StudentTimetableScreen(
                                     viewModel.syncScheduleManual { success ->
                                         isRefreshingSchedule = false
                                         rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
-                                        StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                                         Toast.makeText(context, if (success) "تم تحديث البيانات ⚡" else "بيانات الجدول متاحة", Toast.LENGTH_SHORT).show()
                                     }
                                 }

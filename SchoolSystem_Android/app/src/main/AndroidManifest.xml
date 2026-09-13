@@ -50,27 +50,6 @@
         </receiver>
 
         <receiver
-            android:name=".widget.DailyScheduleWidgetProvider"
-            android:exported="true"
-            android:label="جدول حصص الأستاذ اليومي">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.school.system.widget.ACTION_REFRESH" />
-                <action android:name="com.school.system.widget.ACTION_PREV_DAY" />
-                <action android:name="com.school.system.widget.ACTION_NEXT_DAY" />
-            </intent-filter>
-
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/daily_schedule_widget_info" />
-        </receiver>
-
-        <service
-            android:name=".widget.ScheduleWidgetService"
-            android:permission="android.permission.BIND_REMOTEVIEWS"
-            android:exported="false" />
-
-        <receiver
             android:name=".widget.FullScheduleWidgetProvider"
             android:exported="true"
             android:label="الجدول العام للمدرسة">

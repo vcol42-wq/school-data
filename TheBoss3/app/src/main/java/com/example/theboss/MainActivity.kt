@@ -48,18 +48,12 @@ class MainActivity : ComponentActivity() {
 
         // Schedule continuous background periodic sync for teacher updates and lesson preparations
         StudentSyncWorker.schedule(applicationContext)
-        com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(applicationContext)
 
         setContent {
             TheBossTheme {
                 AppNavigation()
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(applicationContext)
     }
 }
 

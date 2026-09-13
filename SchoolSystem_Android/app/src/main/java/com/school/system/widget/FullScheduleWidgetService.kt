@@ -2,6 +2,7 @@ package com.school.system.widget
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import com.google.gson.Gson
@@ -69,24 +70,26 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             views.setTextViewText(cellViewId, display)
 
             val isTeacherLesson = if (teacherName.isNotEmpty() && subj != "-") {
-                teacher.lowercase().contains(teacherName) || subj.lowercase().contains(teacherName)
-            } else {
-                false
-            }
+                WidgetScheduleHelper.isLessonMatchingTeacher(teacherName, teacher, subj)
+            } else false
 
             val isCurrentActive = (i == activeLessonNumber)
 
             when {
                 isCurrentActive && isTeacherLesson -> {
+                    views.setTextColor(cellViewId, Color.parseColor("#FEF08A"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_highlight_bg)
                 }
                 isCurrentActive -> {
+                    views.setTextColor(cellViewId, Color.parseColor("#38BDF8"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_compact_ongoing_bg)
                 }
                 isTeacherLesson -> {
-                    views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_badge_bg)
+                    views.setTextColor(cellViewId, Color.WHITE)
+                    views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                 }
                 else -> {
+                    views.setTextColor(cellViewId, Color.parseColor("#94A3B8"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_item_bg)
                 }
             }

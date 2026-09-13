@@ -1,5 +1,3 @@
 <resources>
     <string name="app_name">المدير - الجدول الدراسي</string>
-    <string name="widget_name">جدول الحصص اليومي</string>
-    <string name="widget_description">عرض جدول الدروس والحصص اليومية المباشرة</string>
 </resources>

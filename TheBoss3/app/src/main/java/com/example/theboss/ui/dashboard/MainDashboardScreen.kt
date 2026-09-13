@@ -40,7 +40,6 @@ import com.example.theboss.data.repository.StudentRepository
 import android.content.Context
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.ui.workspace.WorkspaceToolsScreen
-import com.example.theboss.widget.StudentScheduleWidgetProvider
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -133,7 +132,6 @@ class DashboardViewModel @Inject constructor(
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
         }
     }
 }

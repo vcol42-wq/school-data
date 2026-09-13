@@ -35,7 +35,6 @@ class StudentSyncWorker(
                 repository.syncDirectMessages()
                 val deviceId = repository.getDeviceId()
                 repository.syncAttendance(schoolId, deviceId)
-                com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(applicationContext)
             }
             Result.success()
         } catch (e: Exception) {

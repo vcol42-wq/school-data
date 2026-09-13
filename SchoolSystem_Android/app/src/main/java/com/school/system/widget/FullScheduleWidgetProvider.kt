@@ -65,6 +65,19 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_day_text, "اليوم: $dayName")
             views.setViewVisibility(R.id.widget_countdown_banner, View.GONE)
 
+            // Dynamic Lesson Timings for Headers from Cloud Schedule
+            val (startHourStr, lessonDur, breakDur) = WidgetScheduleHelper.getTimingFromScheduleJson(context)
+            val headerIds = listOf(
+                R.id.header_lesson_1, R.id.header_lesson_2, R.id.header_lesson_3,
+                R.id.header_lesson_4, R.id.header_lesson_5, R.id.header_lesson_6
+            )
+
+            for (i in 1..6) {
+                val timingText = WidgetScheduleHelper.calculateLessonTiming(i, startHourStr, lessonDur, breakDur, isShort = true)
+                val startTime = timingText.split("-").getOrNull(0)?.trim() ?: ""
+                views.setTextViewText(headerIds[i - 1], "$i\n$startTime")
+            }
+
             // Service Intent for RemoteViews ListView
             val serviceIntent = Intent(context, FullScheduleWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)

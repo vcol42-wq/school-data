@@ -8,7 +8,6 @@ import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.remote.SupabaseApi
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.data.remote.JoinRequest
-import com.example.theboss.widget.StudentScheduleWidgetProvider
 import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -371,7 +370,6 @@ class StudentRepository @Inject constructor(
                     (timingObj["breakDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("break_duration_minutes", it) }
                 }
                 editor.apply()
-                com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                 return Result.success(true)
             }
             Result.failure(Exception("لم يتم العثور على جدول مرفوع للمدرسة"))
@@ -470,7 +468,6 @@ class StudentRepository @Inject constructor(
                 val activeSubjects = assignmentEntities.filter { !it.isCompleted }.map { it.subjectName }.toSet()
                 val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
                 prefs.edit().putString("active_homework_subjects", Gson().toJson(activeSubjects)).apply()
-                StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
             }
         } catch (e: Exception) {
             e.printStackTrace()
