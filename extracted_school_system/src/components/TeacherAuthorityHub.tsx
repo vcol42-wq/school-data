@@ -36,7 +36,7 @@ import {
   BadgeCheck,
   GraduationCap
 } from 'lucide-react';
-import { supabase, isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
+import { getSupabase, isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
 import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
 import { standardizeGradeName, standardizeSectionName, standardizeSubjectName } from '../utils/syncEngine';
 
@@ -385,6 +385,10 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
           const tName = item.teacher_name?.trim() || '';
           if (!tName || tName === 'غير مسند') return;
 
+          const rawSub = (item.subject || '').trim();
+          const cleanSub = standardizeSubjectName(rawSub);
+          if (!cleanSub || cleanSub.length <= 1 || /^[أ-يa-zA-Z]$/.test(cleanSub) || cleanSub.includes('مفرغ') || cleanSub.includes('إدارة')) return;
+
           if (!legacyTeacherMap.has(tName)) {
             legacyTeacherMap.set(tName, {
               code: item.secret_code || generateRandomPin(),
@@ -394,10 +398,13 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
             });
           }
           const tData = legacyTeacherMap.get(tName)!;
-          if (item.subject) tData.subjects.add(item.subject.trim());
+          tData.subjects.add(cleanSub);
           if (item.grade && item.section) {
-            const cKey = `${item.grade.trim()}-${item.section.trim()}`;
-            tData.classes.set(cKey, { grade: item.grade.trim(), section: item.section.trim() });
+            const stdG = standardizeGradeName(item.grade);
+            const stdS = standardizeSectionName(item.section);
+            if (!stdS.includes('متوسط') && !stdS.includes('صف')) {
+              tData.classes.set(`${stdG}-${stdS}`, { grade: stdG, section: stdS });
+            }
           }
         });
 
@@ -526,8 +533,10 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
   const fetchCloudAssignments = useCallback(async () => {
     setIsLoading(true);
     try {
+      const client = getSupabase(activeSchoolId);
+
       // 1. First check schools.config for complete teacher_profiles and supervisor
-      const { data: schoolData } = await supabase
+      const { data: schoolData } = await client
         .from('schools')
         .select('config')
         .eq('id', activeSchoolId)
@@ -554,43 +563,50 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         }
       }
 
-      // 2. Fallback: check subject_assignments table
-      const { data, error } = await supabase
+      // 2. Fallback: check subject_assignments table with strict sanity filter
+      const { data, error } = await client
         .from('subject_assignments')
         .select('*')
         .eq('school_id', activeSchoolId);
 
       if (!error && data && data.length > 0) {
-        setProfiles(prevProfiles => {
-          if (prevProfiles.length === 0) return prevProfiles;
-
-          const updated = prevProfiles.map(prof => {
-            // Match assignments by class and subject since teacher_name might not exist in the table
-            const cloudRecords = data.filter((d: any) => {
-              const matchesClass = prof.classes.some(c => c.grade.trim() === d.grade?.trim() && c.section.trim() === d.section?.trim());
-              const matchesSub = prof.subjects.some(s => s.trim() === d.subject?.trim());
-              return matchesClass && matchesSub;
-            });
-
-            if (cloudRecords.length > 0) {
-              const cloudCode = cloudRecords[0].secret_code || prof.secretCode;
-              const cloudLocked = cloudRecords.some((r: any) => r.is_locked);
-              return {
-                ...prof,
-                secretCode: cloudCode,
-                isLocked: cloudLocked
-              };
-            }
-            return prof;
-          });
-
-          localStorage.setItem(`diyala_teacher_profiles_${activeSchoolId}`, JSON.stringify(updated));
-          const flattened = flattenProfilesToAssignments(updated);
-          localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(flattened));
-          return updated;
+        const cleanData = data.filter((d: any) => {
+          const s = (d.subject || '').trim();
+          return s.length > 1 && !/^[أ-يa-zA-Z]$/.test(s) && !s.includes('مفرغ') && !s.includes('إدارة') && !s.includes('تفرغ');
         });
 
-        setStatusMessage({ type: 'success', text: `تم الاتصال بالسحابة ومطابقة بيانات المعلمين بنجاح ✓` });
+        if (cleanData.length > 0) {
+          setProfiles(prevProfiles => {
+            if (prevProfiles.length === 0) return prevProfiles;
+
+            const updated = prevProfiles.map(prof => {
+              // Match assignments by class and subject since teacher_name might not exist in the table
+              const cloudRecords = cleanData.filter((d: any) => {
+                const matchesClass = prof.classes.some(c => standardizeGradeName(c.grade) === standardizeGradeName(d.grade) && standardizeSectionName(c.section) === standardizeSectionName(d.section));
+                const matchesSub = prof.subjects.some(s => standardizeSubjectName(s) === standardizeSubjectName(d.subject));
+                return matchesClass && matchesSub;
+              });
+
+              if (cloudRecords.length > 0) {
+                const cloudCode = cloudRecords[0].secret_code || prof.secretCode;
+                const cloudLocked = cloudRecords.some((r: any) => r.is_locked);
+                return {
+                  ...prof,
+                  secretCode: cloudCode,
+                  isLocked: cloudLocked
+                };
+              }
+              return prof;
+            });
+
+            localStorage.setItem(`diyala_teacher_profiles_${activeSchoolId}`, JSON.stringify(updated));
+            const flattened = flattenProfilesToAssignments(updated);
+            localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(flattened));
+            return updated;
+          });
+
+          setStatusMessage({ type: 'success', text: `تم الاتصال بالسحابة ومطابقة بيانات المعلمين بنجاح ✓` });
+        }
       }
     } catch (err) {
       console.warn('Could not fetch cloud subject assignments:', err);
@@ -632,7 +648,9 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         updated_at: new Date().toISOString()
       };
 
-      const { error: schoolErr } = await supabase
+      const client = getSupabase(activeSchoolId);
+
+      const { error: schoolErr } = await client
         .from('schools')
         .update({ config: configPayload })
         .eq('id', activeSchoolId);
@@ -644,7 +662,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
       // 2. Clean sync to subject_assignments table:
       // First delete all existing records for this school to purge old/corrupted legacy rows
       try {
-        const { error: delError } = await supabase
+        const { error: delError } = await client
           .from('subject_assignments')
           .delete()
           .eq('school_id', activeSchoolId);
@@ -665,13 +683,13 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
 
         if (recordsToInsert.length > 0) {
           // Try upsert first; if conflict constraint missing, fallback to clean insert
-          const { error: assError } = await supabase
+          const { error: assError } = await client
             .from('subject_assignments')
             .upsert(recordsToInsert, { onConflict: 'school_id,grade,section,subject' });
 
           if (assError) {
             console.warn('Upsert warning, falling back to direct insert:', assError.message);
-            await supabase.from('subject_assignments').insert(recordsToInsert);
+            await client.from('subject_assignments').insert(recordsToInsert);
           }
         }
       } catch (assErr) {
@@ -793,19 +811,25 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
       // رفع ومزامنة نقية للسحابة
       const flattened = flattenProfilesToAssignments(freshProfiles);
       
+      const client = getSupabase(activeSchoolId);
+
       // مسح وإعادة كتابة جدول subject_assignments
-      await supabase.from('subject_assignments').delete().eq('school_id', activeSchoolId);
-      if (flattened.length > 0) {
-        const recordsToInsert = flattened.map(a => ({
-          school_id: activeSchoolId,
-          grade: a.grade.trim(),
-          section: a.section.trim(),
-          subject: a.subject.trim(),
-          secret_code: a.secret_code.trim(),
-          is_locked: !!a.is_locked,
-          last_updated_at: new Date().toISOString()
-        }));
-        await supabase.from('subject_assignments').insert(recordsToInsert);
+      try {
+        await client.from('subject_assignments').delete().eq('school_id', activeSchoolId);
+        if (flattened.length > 0) {
+          const recordsToInsert = flattened.map(a => ({
+            school_id: activeSchoolId,
+            grade: a.grade.trim(),
+            section: a.section.trim(),
+            subject: a.subject.trim(),
+            secret_code: a.secret_code.trim(),
+            is_locked: !!a.is_locked,
+            last_updated_at: new Date().toISOString()
+          }));
+          await client.from('subject_assignments').insert(recordsToInsert);
+        }
+      } catch (subErr) {
+        console.warn('Notice syncing subject_assignments table during reset:', subErr);
       }
 
       // تحديث مدارس config
@@ -824,7 +848,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         })),
         updated_at: new Date().toISOString()
       };
-      await supabase.from('schools').update({ config: fullConfig }).eq('id', activeSchoolId);
+      await client.from('schools').update({ config: fullConfig }).eq('id', activeSchoolId);
 
       setStatusMessage({
         type: 'success',

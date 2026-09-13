@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -47,6 +49,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.TextUnit
@@ -210,9 +213,13 @@ fun GradeRegisterScreen(
     val absences by viewModel.absences.collectAsState()
     val columnSettings by viewModel.getDailyColumnSettings("${grade}_${section}_$subject").collectAsState(null)
     val config by viewModel.config.collectAsState()
+    val gradeLocks by viewModel.gradeLocks.collectAsState()
+    val isRosterProtected = remember(config) { config?.schoolId.orEmpty().isNotBlank() }
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var showAddStudentDialog by remember { mutableStateOf(false) }
+    var showRosterProtectedDialog by remember { mutableStateOf(false) }
+    var showPublishHomeworkDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var studentToEdit by remember { mutableStateOf<Student?>(null) }
@@ -385,13 +392,31 @@ fun GradeRegisterScreen(
                                 modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp)
                             ) {
                                 IconButton(
-                                    onClick = { showAddStudentDialog = true },
+                                    onClick = { 
+                                        if (isRosterProtected) {
+                                            showRosterProtectedDialog = true
+                                        } else {
+                                            showAddStudentDialog = true
+                                        }
+                                    },
                                     modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
                                 ) {
                                     Icon(
-                                        Icons.Default.PersonAdd,
-                                        contentDescription = "إضافة طالب",
-                                        tint = currentTheme.primaryColor,
+                                        if (isRosterProtected) Icons.Default.Shield else Icons.Default.PersonAdd,
+                                        contentDescription = if (isRosterProtected) "قائمة الطلبة معتمدة 🛡️" else "إضافة طالب",
+                                        tint = if (isRosterProtected) Color(0xFF0284C7) else currentTheme.primaryColor,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                                Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
+                                IconButton(
+                                    onClick = { showPublishHomeworkDialog = true },
+                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Campaign,
+                                        contentDescription = "إرسال واجب وتوجيهات يومية للشعبة 📝",
+                                        tint = Color(0xFF8B5CF6),
                                         modifier = Modifier.size(19.dp)
                                     )
                                 }
@@ -741,13 +766,19 @@ fun GradeRegisterScreen(
                             )
                             Spacer(Modifier.height(16.dp))
                             Button(
-                                onClick = { showAddStudentDialog = true },
+                                onClick = { 
+                                    if (isRosterProtected) {
+                                        showRosterProtectedDialog = true
+                                    } else {
+                                        showAddStudentDialog = true
+                                    }
+                                },
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor)
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isRosterProtected) Color(0xFF0284C7) else currentTheme.primaryColor)
                             ) {
-                                Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(if (isRosterProtected) Icons.Default.Shield else Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("إضافة واستيراد الطلبة 📋", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(if (isRosterProtected) "قائمة الطلبة معتمدة ومحمية 🛡️" else "إضافة واستيراد الطلبة 📋", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                             }
                         }
                     }
@@ -759,23 +790,43 @@ fun GradeRegisterScreen(
                             listState = listState,
                             onUpdateMarks = { s, m -> viewModel.updateStudentMarks(s, m) },
                             onEditHeader = { headerToEdit = it },
-                            onEditStudentName = { studentToEdit = it },
+                            onEditStudentName = { 
+                                if (isRosterProtected) {
+                                    Toast.makeText(context, "تعديل أسماء الطلاب مقتصر على إدارة المدرسة لحماية سجل القيد 🛡️", Toast.LENGTH_LONG).show()
+                                } else {
+                                    studentToEdit = it
+                                }
+                            },
                             isEditable = !isEditingLocked,
-                            isSpecial = isSpecial
+                            isSpecial = isSpecial,
+                            gradeLocks = gradeLocks
                         )
                         1 -> TeacherRegisterTable(
                             students = students, 
                             listState = listState, 
                             onUpdate = { viewModel.updateStudentMarks(it.first, it.second) }, 
-                            onEditStudentName = { studentToEdit = it },
+                            onEditStudentName = { 
+                                if (isRosterProtected) {
+                                    Toast.makeText(context, "تعديل أسماء الطلاب مقتصر على إدارة المدرسة لحماية سجل القيد 🛡️", Toast.LENGTH_LONG).show()
+                                } else {
+                                    studentToEdit = it
+                                }
+                            },
                             isEditable = !isEditingLocked, 
-                            isSpecial = isSpecial
+                            isSpecial = isSpecial,
+                            gradeLocks = gradeLocks
                         )
                         2 -> AdminRegisterTable(
                             students = students, 
                             listState = listState, 
                             onUpdate = { viewModel.updateStudentMarks(it.first, it.second) }, 
-                            onEditStudentName = { studentToEdit = it },
+                            onEditStudentName = { 
+                                if (isRosterProtected) {
+                                    Toast.makeText(context, "تعديل أسماء الطلاب مقتصر على إدارة المدرسة لحماية سجل القيد 🛡️", Toast.LENGTH_LONG).show()
+                                } else {
+                                    studentToEdit = it
+                                }
+                            },
                             isEditable = !isEditingLocked, 
                             isSpecial = isSpecial
                         )
@@ -788,7 +839,13 @@ fun GradeRegisterScreen(
                                 viewModel.toggleDailyAbsence(student, selectedDate.toString(), isAbsent)
                             },
                             onDateChange = { selectedDate = it },
-                            onEditStudentName = { studentToEdit = it },
+                            onEditStudentName = { 
+                                if (isRosterProtected) {
+                                    Toast.makeText(context, "تعديل أسماء الطلاب مقتصر على إدارة المدرسة لحماية سجل القيد 🛡️", Toast.LENGTH_LONG).show()
+                                } else {
+                                    studentToEdit = it
+                                }
+                            },
                             isEditable = !isEditingLocked
                         )
                     }
@@ -853,6 +910,33 @@ fun GradeRegisterScreen(
                 }
             }
 
+            // File Launcher for Excel / CSV / TXT / Word offline import
+            val fileLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri: Uri? ->
+                if (uri != null) {
+                    try {
+                        val inputStream = context.contentResolver.openInputStream(uri)
+                        val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        if (content.isNotBlank()) {
+                            val names = ImageTextExtractor.parseStudentNamesFromRawText(content)
+                            if (names.isNotEmpty()) {
+                                multiNamesText = names.joinToString("\n")
+                                selectedTab = 1
+                                Toast.makeText(context, "تم استخراج ${names.size} اسم طالب من الملف أوفلاين! 📄", Toast.LENGTH_SHORT).show()
+                            } else {
+                                multiNamesText = content
+                                selectedTab = 1
+                                Toast.makeText(context, "تم قراءة محتوى الملف أوفلاين", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(context, "تعذر قراءة الملف المحدد أوفلاين", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+
             AlertDialog(
                 onDismissRequest = { showAddStudentDialog = false },
                 title = {
@@ -869,7 +953,7 @@ fun GradeRegisterScreen(
                                 Text("طالب مفرد", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
                             }
                             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
-                                Text("لصق قائمة", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
+                                Text("ملف / لصق 📄", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
                             }
                             Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
                                 Text("مسح صورة 📷", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
@@ -885,12 +969,30 @@ fun GradeRegisterScreen(
                                 singleLine = true
                             )
                         } else if (selectedTab == 1) {
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    "الصق قائمة الأسماء هنا (سطر لكل طالب من ملف Word أو Excel):",
-                                    fontSize = 11.sp,
-                                    color = Color.Gray
-                                )
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "الصق القائمة أو اختر ملفاً:",
+                                        fontSize = 11.sp,
+                                        color = Color.Gray
+                                    )
+
+                                    Button(
+                                        onClick = { fileLauncher.launch("*/*") },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0EA5E9)),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(Icons.Default.InsertDriveFile, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("فتح ملف (Excel/Word/TXT) 📂", fontSize = 10.5.sp)
+                                    }
+                                }
+
                                 OutlinedTextField(
                                     value = multiNamesText,
                                     onValueChange = { multiNamesText = it },
@@ -990,6 +1092,290 @@ fun GradeRegisterScreen(
                 dismissButton = {
                     TextButton(onClick = { showAddStudentDialog = false }) {
                         Text("إلغاء")
+                    }
+                }
+            )
+        }
+
+        if (showPublishHomeworkDialog) {
+            val hwPrefs = remember(context) { context.getSharedPreferences("homework_drafts", android.content.Context.MODE_PRIVATE) }
+            val classKey = "${grade}_${section}_$subject"
+
+            val initialTitle = remember(showPublishHomeworkDialog) {
+                hwPrefs.getString("title_$classKey", null) ?: hwPrefs.getString("title_global", "") ?: ""
+            }
+            val initialDesc = remember(showPublishHomeworkDialog) {
+                hwPrefs.getString("desc_$classKey", null) ?: hwPrefs.getString("desc_global", "") ?: ""
+            }
+            val initialDue = remember(showPublishHomeworkDialog) {
+                hwPrefs.getString("due_$classKey", null) ?: hwPrefs.getString("due_global", "غداً") ?: "غداً"
+            }
+
+            var hwTitle by remember(showPublishHomeworkDialog) { mutableStateOf(initialTitle) }
+            var hwDesc by remember(showPublishHomeworkDialog) { mutableStateOf(initialDesc) }
+            var hwDueDate by remember(showPublishHomeworkDialog) { mutableStateOf(if (initialDue.isNotBlank()) initialDue else "غداً") }
+            var isSendingHw by remember { mutableStateOf(false) }
+
+            val saveCurrentDraft: (String, String, String) -> Unit = { titleToSave, descToSave, dueToSave ->
+                hwPrefs.edit()
+                    .putString("title_$classKey", titleToSave)
+                    .putString("desc_$classKey", descToSave)
+                    .putString("due_$classKey", dueToSave)
+                    .putString("title_global", titleToSave)
+                    .putString("desc_global", descToSave)
+                    .putString("due_global", dueToSave)
+                    .apply()
+            }
+
+            val clearCurrentDraft: () -> Unit = {
+                hwTitle = ""
+                hwDesc = ""
+                hwDueDate = "غداً"
+                hwPrefs.edit()
+                    .remove("title_$classKey")
+                    .remove("desc_$classKey")
+                    .remove("due_$classKey")
+                    .remove("title_global")
+                    .remove("desc_global")
+                    .remove("due_global")
+                    .apply()
+                Toast.makeText(context, "تم تصفير محتوى الواجب بنجاح 🧹", Toast.LENGTH_SHORT).show()
+            }
+
+            var selectedDueDateChips by remember { mutableStateOf(setOf("الدرس القادم")) }
+
+            val toggleDueDateChip: (String) -> Unit = { chip ->
+                val newSet = selectedDueDateChips.toMutableSet()
+                if (newSet.contains(chip)) {
+                    newSet.remove(chip)
+                } else {
+                    newSet.add(chip)
+                }
+                selectedDueDateChips = newSet
+
+                val hasNextLesson = newSet.contains("الدرس القادم")
+                val daysOrder = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
+                val days = daysOrder.filter { newSet.contains(it) }
+
+                val newDue = when {
+                    hasNextLesson && days.isNotEmpty() -> "الدرس القادم يوم " + days.joinToString(" و ")
+                    hasNextLesson -> "الدرس القادم"
+                    days.isNotEmpty() -> "يوم " + days.joinToString(" و ")
+                    else -> ""
+                }
+                hwDueDate = newDue
+                saveCurrentDraft(hwTitle, hwDesc, newDue)
+            }
+
+            AlertDialog(
+                onDismissRequest = { 
+                    saveCurrentDraft(hwTitle, hwDesc, hwDueDate)
+                    showPublishHomeworkDialog = false 
+                },
+                title = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Campaign, contentDescription = null, tint = Color(0xFF8B5CF6), modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("بطاقة الواجب والتعليمات 📝", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+
+                        // زر تصفير الواجب بلمسة واحدة
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFFEE2E2),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                            modifier = Modifier.clickable { clearCurrentDraft() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.DeleteSweep, contentDescription = "تصفير الواجب", tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("تصفير الواجب", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                            }
+                        }
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Prominent Lesson & Class Info Card
+                        Surface(
+                            color = Color(0xFFF3E8FF),
+                            border = BorderStroke(1.dp, Color(0xFFC084FC)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = "المادة والدرس: $subject 📖",
+                                    fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF581C87)
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = "موجّه لكافة طلاب: $grade ($section)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF7E22CE)
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = hwTitle,
+                            onValueChange = { 
+                                hwTitle = it
+                                saveCurrentDraft(it, hwDesc, hwDueDate)
+                            },
+                            label = { Text("عنوان الواجب أو التوجيهات") },
+                            placeholder = { Text("مثال: حل تمارين ص 42 + مراجعة الفصل الثاني") },
+                            textStyle = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = currentTheme.textPrimaryColor),
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = hwDesc,
+                            onValueChange = { 
+                                hwDesc = it
+                                saveCurrentDraft(hwTitle, it, hwDueDate)
+                            },
+                            label = { Text("تفاصيل وملاحظات إضافية للطلاب") },
+                            placeholder = { Text("مثال: كتابة التمارين في دفتر الواجبات وإحضاره غداً") },
+                            textStyle = TextStyle(fontSize = 13.sp, color = currentTheme.textPrimaryColor),
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            maxLines = 4
+                        )
+
+                        // Due Date Input & Multi-Select Quick Preset Chips
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedTextField(
+                                value = hwDueDate,
+                                onValueChange = { 
+                                    hwDueDate = it
+                                    saveCurrentDraft(hwTitle, hwDesc, it)
+                                },
+                                label = { Text("موعد الإنجاز والتسليم 📅") },
+                                placeholder = { Text("اكتب الموعد أو اختر اختصارات...") },
+                                textStyle = TextStyle(fontSize = 13.5.sp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimaryColor),
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+
+                            Text(
+                                text = "اختصارات الموعد (يمكنك اختيار أكثر من خيار للدمج):",
+                                fontSize = 11.sp,
+                                color = Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            // Row 1: الدرس القادم | الأحد | الإثنين
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("الدرس القادم", "الأحد", "الإثنين").forEach { chip ->
+                                    val isSelected = selectedDueDateChips.contains(chip)
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) Color(0xFF8B5CF6) else Color(0xFFF1F5F9),
+                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF7C3AED) else Color(0xFFCBD5E1)),
+                                        modifier = Modifier
+                                            .weight(if (chip == "الدرس القادم") 1.2f else 1f)
+                                            .clickable { toggleDueDateChip(chip) }
+                                    ) {
+                                        Text(
+                                            text = if (chip == "الدرس القادم") "الدرس القادم ⏱️" else chip,
+                                            modifier = Modifier.padding(vertical = 6.dp),
+                                            textAlign = TextAlign.Center,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.White else Color(0xFF334155)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Row 2: الثلاثاء | الأربعاء | الخميس
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("الثلاثاء", "الأربعاء", "الخميس").forEach { chip ->
+                                    val isSelected = selectedDueDateChips.contains(chip)
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = if (isSelected) Color(0xFF8B5CF6) else Color(0xFFF1F5F9),
+                                        border = BorderStroke(1.dp, if (isSelected) Color(0xFF7C3AED) else Color(0xFFCBD5E1)),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { toggleDueDateChip(chip) }
+                                    ) {
+                                        Text(
+                                            text = chip,
+                                            modifier = Modifier.padding(vertical = 6.dp),
+                                            textAlign = TextAlign.Center,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) Color.White else Color(0xFF334155)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (hwTitle.isNotBlank()) {
+                                isSendingHw = true
+                                saveCurrentDraft(hwTitle, hwDesc, hwDueDate)
+                                viewModel.publishDailyHomework(grade, section, subject, hwTitle, hwDesc, hwDueDate) { success, msg ->
+                                    isSendingHw = false
+                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                    if (success) {
+                                        showPublishHomeworkDialog = false
+                                    }
+                                }
+                            } else {
+                                Toast.makeText(context, "يرجى كتابة عنوان الواجب أولاً", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !isSendingHw,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8B5CF6))
+                    ) {
+                        if (isSendingHw) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(Modifier.width(6.dp))
+                            Text("جاري الإرسال...", fontSize = 12.sp)
+                        } else {
+                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("إرسال التعليمات للشعبة 🚀", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { 
+                        saveCurrentDraft(hwTitle, hwDesc, hwDueDate)
+                        showPublishHomeworkDialog = false 
+                    }) {
+                        Text("إغلاق وحفظ المسودة")
                     }
                 }
             )
@@ -1263,6 +1649,77 @@ fun GradeRegisterScreen(
                 dismissButton = {
                     TextButton(onClick = { studentToEdit = null }) {
                         Text("إلغاء", color = Color(0xFF64748B))
+                    }
+                }
+            )
+        }
+
+        if (showRosterProtectedDialog) {
+            AlertDialog(
+                onDismissRequest = { showRosterProtectedDialog = false },
+                icon = {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF0284C7).copy(alpha = 0.12f),
+                        modifier = Modifier.size(52.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Default.Shield,
+                                contentDescription = null,
+                                tint = Color(0xFF0284C7),
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                },
+                title = {
+                    Text(
+                        "قائمة الطلبة معتمدة ومحمية 🛡️",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "التطبيق مقترن حالياً بالنظام المركزي للمدرسة. لحماية سجل القيد العام وتفادي أي أخطاء أو تكرار بالبيانات في السحابة، يمنع إضافة أو حذف الطلاب من هاتف المعلم.",
+                            fontSize = 12.5.sp,
+                            color = currentTheme.textPrimaryColor,
+                            lineHeight = 19.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF0284C7).copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.25f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    "💡 لإضافة أي طالب جديد أو منقول: يرجى التنسيق مع إدارة المدرسة لإضافته في النظام المكتبي، ثم الضغط على زر (استدعاء وتحديث 🔄) في الشريط العلوي لاستدعائه فوراً.",
+                                    fontSize = 11.5.sp,
+                                    color = Color(0xFF0369A1),
+                                    lineHeight = 17.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showRosterProtectedDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("حسناً، فهمت ذلك ✓", fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -2042,7 +2499,8 @@ fun TeacherRegisterTable(
     onUpdate: (Pair<Student, StudentMarks>) -> Unit,
     onEditStudentName: (Student) -> Unit,
     isEditable: Boolean = false,
-    isSpecial: Boolean = false
+    isSpecial: Boolean = false,
+    gradeLocks: Map<String, Boolean> = emptyMap()
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val hScroll = rememberScrollState()
@@ -2052,6 +2510,13 @@ fun TeacherRegisterTable(
     val rowH = 40.dp
     val fontSize = 9.5.sp
     val labelFontSize = 8.5.sp
+
+    val isM1Locked = !isEditable || (gradeLocks["m1"] == true)
+    val isM2Locked = !isEditable || (gradeLocks["m2"] == true)
+    val isMidtermLocked = !isEditable || (gradeLocks["midterm"] == true)
+    val isM3Locked = !isEditable || (gradeLocks["m3"] == true)
+    val isM4Locked = !isEditable || (gradeLocks["m4"] == true)
+    val isFinalLocked = !isEditable || (gradeLocks["final"] == true)
 
     val duplicateNames = remember(students) {
         students.groupBy { it.fullName }.filter { it.value.size > 1 }.keys
@@ -2083,19 +2548,19 @@ fun TeacherRegisterTable(
                     }
                     // Row 2: Sub-headers
                     Row {
-                        PaperHeaderCell("معدل ش1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
-                        PaperHeaderCell("معدل ش2", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
+                        PaperHeaderCell(if (isM1Locked) "معدل ش1 🔒" else "معدل ش1", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                        PaperHeaderCell(if (isM2Locked) "معدل ش2 🔒" else "معدل ش2", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
                         PaperHeaderCell("درجة فص1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
-                        PaperHeaderCell("درجة نصف", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
+                        PaperHeaderCell(if (isMidtermLocked) "درجة نصف 🔒" else "درجة نصف", cellW, rowH, labelFontSize, backgroundColor = if (isMidtermLocked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isMidtermLocked) Color(0xFF64748B) else Color(0xFF1E3A8A))
 
-                        PaperHeaderCell("معدل ش3", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
-                        PaperHeaderCell("معدل ش4", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
+                        PaperHeaderCell(if (isM3Locked) "معدل ش3 🔒" else "معدل ش3", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                        PaperHeaderCell(if (isM4Locked) "معدل ش4 🔒" else "معدل ش4", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
                         PaperHeaderCell("درجة فص2", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
                         PaperHeaderCell("السعي السنوي", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
 
-                        PaperHeaderCell("نهائي د1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFD1FAE5), textColor = Color(0xFF065F46))
-                        PaperHeaderCell("د2", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFD1FAE5), textColor = Color(0xFF065F46))
-                        PaperHeaderCell("الدرجة النهائية", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFD1FAE5), textColor = Color(0xFF065F46))
+                        PaperHeaderCell(if (isFinalLocked) "نهائي د1 🔒" else "نهائي د1", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFD1FAE5), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF065F46))
+                        PaperHeaderCell(if (isFinalLocked) "د2 🔒" else "د2", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFD1FAE5), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF065F46))
+                        PaperHeaderCell(if (isFinalLocked) "النهائية 🔒" else "النهائية", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFD1FAE5), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF065F46))
                     }
                 }
             }
@@ -2165,7 +2630,8 @@ fun DailyRegisterTable(
     onEditHeader: (Int) -> Unit,
     onEditStudentName: (Student) -> Unit,
     isEditable: Boolean = true,
-    isSpecial: Boolean = false
+    isSpecial: Boolean = false,
+    gradeLocks: Map<String, Boolean> = emptyMap()
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val hScroll = rememberScrollState()
@@ -2175,6 +2641,13 @@ fun DailyRegisterTable(
     val rowH = 40.dp
     val fontSize = 9.5.sp
     val labelFontSize = 8.sp
+
+    val isM1Locked = !isEditable || (gradeLocks["m1"] == true)
+    val isM2Locked = !isEditable || (gradeLocks["m2"] == true)
+    val isMidtermLocked = !isEditable || (gradeLocks["midterm"] == true)
+    val isM3Locked = !isEditable || (gradeLocks["m3"] == true)
+    val isM4Locked = !isEditable || (gradeLocks["m4"] == true)
+    val isFinalLocked = !isEditable || (gradeLocks["final"] == true)
 
     var m1Count by remember { mutableIntStateOf(1) }
     var m2Count by remember { mutableIntStateOf(1) }
@@ -2209,30 +2682,30 @@ fun DailyRegisterTable(
                     Row {
                         // 1. الشهر الأول (Blue Group)
                         PaperHeaderCellWithAdd(
-                            text = "الشهر الأول", 
+                            text = if (isM1Locked) "الشهر الأول 🔒" else "الشهر الأول", 
                             width = cellW * (m1Count + 3), 
                             height = rowH, 
                             fontSize = fontSize,
                             textColor = Color.White,
-                            backgroundColor = Color(0xFF1E3A8A),
-                            onAdd = { if (m1Count < 5) m1Count++ }, 
-                            onRemove = { if (m1Count > 1) m1Count-- },
-                            canAdd = m1Count < 5,
-                            canRemove = m1Count > 1
+                            backgroundColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A),
+                            onAdd = { if (!isM1Locked && m1Count < 5) m1Count++ }, 
+                            onRemove = { if (!isM1Locked && m1Count > 1) m1Count-- },
+                            canAdd = !isM1Locked && m1Count < 5,
+                            canRemove = !isM1Locked && m1Count > 1
                         )
 
                         // 2. الشهر الثاني (Purple Group)
                         PaperHeaderCellWithAdd(
-                            text = "الشهر الثاني", 
+                            text = if (isM2Locked) "الشهر الثاني 🔒" else "الشهر الثاني", 
                             width = cellW * (m2Count + 3), 
                             height = rowH, 
                             fontSize = fontSize,
                             textColor = Color.White,
-                            backgroundColor = Color(0xFF5B21B6),
-                            onAdd = { if (m2Count < 5) m2Count++ }, 
-                            onRemove = { if (m2Count > 1) m2Count-- },
-                            canAdd = m2Count < 5,
-                            canRemove = m2Count > 1
+                            backgroundColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6),
+                            onAdd = { if (!isM2Locked && m2Count < 5) m2Count++ }, 
+                            onRemove = { if (!isM2Locked && m2Count > 1) m2Count-- },
+                            canAdd = !isM2Locked && m2Count < 5,
+                            canRemove = !isM2Locked && m2Count > 1
                         )
 
                         // 3. الفصل الأول (Amber Group)
@@ -2241,47 +2714,54 @@ fun DailyRegisterTable(
                         // 4. نصف السنة (Teal Group)
                         if (isSpecial) {
                             PaperHeaderCellWithAdd(
-                                text = "نصف السنة", 
+                                text = if (isMidtermLocked) "نصف السنة 🔒" else "نصف السنة", 
                                 width = cellW * (midtermOralCount + 3), 
                                 height = rowH, 
                                 fontSize = fontSize,
                                 textColor = Color.White,
-                                backgroundColor = Color(0xFF0F766E),
-                                onAdd = { if (midtermOralCount < 5) midtermOralCount++ }, 
-                                onRemove = { if (midtermOralCount > 1) midtermOralCount-- },
-                                canAdd = midtermOralCount < 5,
-                                canRemove = midtermOralCount > 1
+                                backgroundColor = if (isMidtermLocked) Color(0xFF475569) else Color(0xFF0F766E),
+                                onAdd = { if (!isMidtermLocked && midtermOralCount < 5) midtermOralCount++ }, 
+                                onRemove = { if (!isMidtermLocked && midtermOralCount > 1) midtermOralCount-- },
+                                canAdd = !isMidtermLocked && midtermOralCount < 5,
+                                canRemove = !isMidtermLocked && midtermOralCount > 1
                             )
                         } else {
-                            PaperHeaderCell("نصف السنة", cellW, rowH, fontSize, textColor = Color.White, backgroundColor = Color(0xFF0F766E))
+                            PaperHeaderCell(
+                                text = if (isMidtermLocked) "نصف السنة 🔒" else "نصف السنة", 
+                                width = cellW, 
+                                height = rowH, 
+                                fontSize = fontSize, 
+                                textColor = Color.White, 
+                                backgroundColor = if (isMidtermLocked) Color(0xFF475569) else Color(0xFF0F766E)
+                            )
                         }
                         
                         // 5. الشهر الثالث (Blue Group)
                         PaperHeaderCellWithAdd(
-                            text = "الشهر الثالث", 
+                            text = if (isM3Locked) "الشهر الثالث 🔒" else "الشهر الثالث", 
                             width = cellW * (m3Count + 3), 
                             height = rowH, 
                             fontSize = fontSize,
                             textColor = Color.White,
-                            backgroundColor = Color(0xFF1E3A8A),
-                            onAdd = { if (m3Count < 5) m3Count++ }, 
-                            onRemove = { if (m3Count > 1) m3Count-- },
-                            canAdd = m3Count < 5,
-                            canRemove = m3Count > 1
+                            backgroundColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A),
+                            onAdd = { if (!isM3Locked && m3Count < 5) m3Count++ }, 
+                            onRemove = { if (!isM3Locked && m3Count > 1) m3Count-- },
+                            canAdd = !isM3Locked && m3Count < 5,
+                            canRemove = !isM3Locked && m3Count > 1
                         )
 
                         // 6. الشهر الرابع (Purple Group)
                         PaperHeaderCellWithAdd(
-                            text = "الشهر الرابع", 
+                            text = if (isM4Locked) "الشهر الرابع 🔒" else "الشهر الرابع", 
                             width = cellW * (m4Count + 3), 
                             height = rowH, 
                             fontSize = fontSize,
                             textColor = Color.White,
-                            backgroundColor = Color(0xFF5B21B6),
-                            onAdd = { if (m4Count < 5) m4Count++ }, 
-                            onRemove = { if (m4Count > 1) m4Count-- },
-                            canAdd = m4Count < 5,
-                            canRemove = m4Count > 1
+                            backgroundColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6),
+                            onAdd = { if (!isM4Locked && m4Count < 5) m4Count++ }, 
+                            onRemove = { if (!isM4Locked && m4Count > 1) m4Count-- },
+                            canAdd = !isM4Locked && m4Count < 5,
+                            canRemove = !isM4Locked && m4Count > 1
                         )
 
                         // 7. الفصل الثاني والسعي (Amber & Orange Groups)
@@ -2291,23 +2771,30 @@ fun DailyRegisterTable(
                         // 8. الامتحان النهائي (Emerald Group)
                         if (isSpecial) {
                             PaperHeaderCellWithAdd(
-                                text = "الامتحان النهائي", 
+                                text = if (isFinalLocked) "الامتحان النهائي 🔒" else "الامتحان النهائي", 
                                 width = cellW * (finalOralCount + 3), 
                                 height = rowH, 
                                 fontSize = fontSize,
                                 textColor = Color.White,
-                                backgroundColor = Color(0xFF047857),
-                                onAdd = { if (finalOralCount < 5) finalOralCount++ }, 
-                                onRemove = { if (finalOralCount > 1) finalOralCount-- },
-                                canAdd = finalOralCount < 5,
-                                canRemove = finalOralCount > 1
+                                backgroundColor = if (isFinalLocked) Color(0xFF475569) else Color(0xFF047857),
+                                onAdd = { if (!isFinalLocked && finalOralCount < 5) finalOralCount++ }, 
+                                onRemove = { if (!isFinalLocked && finalOralCount > 1) finalOralCount-- },
+                                canAdd = !isFinalLocked && finalOralCount < 5,
+                                canRemove = !isFinalLocked && finalOralCount > 1
                             )
                         } else {
-                            PaperHeaderCell("الامتحان النهائي", cellW, rowH, fontSize, textColor = Color.White, backgroundColor = Color(0xFF047857))
+                            PaperHeaderCell(
+                                text = if (isFinalLocked) "الامتحان النهائي 🔒" else "الامتحان النهائي", 
+                                width = cellW, 
+                                height = rowH, 
+                                fontSize = fontSize, 
+                                textColor = Color.White, 
+                                backgroundColor = if (isFinalLocked) Color(0xFF475569) else Color(0xFF047857)
+                            )
                         }
                         
                         // 9. د2 والدرجة النهائية
-                        PaperHeaderCell("د2", cellW, rowH, fontSize, textColor = Color.White, backgroundColor = Color(0xFF475569))
+                        PaperHeaderCell(if (isFinalLocked) "د2 🔒" else "د2", cellW, rowH, fontSize, textColor = Color.White, backgroundColor = Color(0xFF475569))
                         PaperHeaderCell("الدرجة النهائية", cellW, rowH, fontSize, textColor = Color.White, backgroundColor = Color(0xFF4338CA))
                     }
                     
@@ -2316,20 +2803,24 @@ fun DailyRegisterTable(
                         // Month 1 Subheaders
                         repeat(m1Count) { i ->
                             val colName = settings.columnNames.getOrElse(i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE)) { onEditHeader(i) }
+                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else null) { 
+                                if (!isM1Locked) onEditHeader(i) 
+                            }
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
-                        PaperHeaderCell("معدل ش1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFBFDBFE), textColor = Color(0xFF1E3A8A))
+                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                        PaperHeaderCell("معدل ش1", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
                         
                         // Month 2 Subheaders
                         repeat(m2Count) { i ->
                             val colName = settings.columnNames.getOrElse(5 + i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE)) { onEditHeader(5 + i) }
+                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else null) { 
+                                if (!isM2Locked) onEditHeader(5 + i) 
+                            }
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
-                        PaperHeaderCell("معدل ش2", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDDD6FE), textColor = Color(0xFF5B21B6))
+                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                        PaperHeaderCell("معدل ش2", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6))
                         
                         // Term 1 Subheader
                         PaperHeaderCell("معدل ف1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFFEF3C7), textColor = Color(0xFFB45309))
@@ -2337,32 +2828,36 @@ fun DailyRegisterTable(
                         // Midterm Subheaders
                         if (isSpecial) {
                             repeat(midtermOralCount) { i ->
-                                PaperHeaderCell("شفهي ${i+1}", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFCCFBF1), textColor = Color(0xFF0F766E))
+                                PaperHeaderCell("شفهي ${i+1}", cellW, rowH, labelFontSize, backgroundColor = if (isMidtermLocked) Color(0xFFE2E8F0) else Color(0xFFCCFBF1), textColor = if (isMidtermLocked) Color(0xFF64748B) else Color(0xFF0F766E))
                             }
-                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFCCFBF1), textColor = Color(0xFF0F766E))
-                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFCCFBF1), textColor = Color(0xFF0F766E))
-                            PaperHeaderCell("درجة نصف", cellW, rowH, labelFontSize, backgroundColor = Color(0xFF99F6E4), textColor = Color(0xFF0F766E))
+                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = if (isMidtermLocked) Color(0xFFE2E8F0) else Color(0xFFCCFBF1), textColor = if (isMidtermLocked) Color(0xFF64748B) else Color(0xFF0F766E))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isMidtermLocked) Color(0xFFE2E8F0) else Color(0xFFCCFBF1), textColor = if (isMidtermLocked) Color(0xFF64748B) else Color(0xFF0F766E))
+                            PaperHeaderCell("درجة نصف", cellW, rowH, labelFontSize, backgroundColor = if (isMidtermLocked) Color(0xFFCBD5E1) else Color(0xFF99F6E4), textColor = if (isMidtermLocked) Color(0xFF475569) else Color(0xFF0F766E))
                         } else {
-                            PaperHeaderCell("درجة نصف", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFCCFBF1), textColor = Color(0xFF0F766E))
+                            PaperHeaderCell("درجة نصف", cellW, rowH, labelFontSize, backgroundColor = if (isMidtermLocked) Color(0xFFE2E8F0) else Color(0xFFCCFBF1), textColor = if (isMidtermLocked) Color(0xFF64748B) else Color(0xFF0F766E))
                         }
                         
                         // Month 3 Subheaders
                         repeat(m3Count) { i ->
                             val colName = settings.columnNames.getOrElse(10 + i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE)) { onEditHeader(10 + i) }
+                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else null) { 
+                                if (!isM3Locked) onEditHeader(10 + i) 
+                            }
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDBEAFE), textColor = Color(0xFF1E3A8A))
-                        PaperHeaderCell("معدل ش3", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFBFDBFE), textColor = Color(0xFF1E3A8A))
+                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                        PaperHeaderCell("معدل ش3", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
                         
                         // Month 4 Subheaders
                         repeat(m4Count) { i ->
                             val colName = settings.columnNames.getOrElse(15 + i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE)) { onEditHeader(15 + i) }
+                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else null) { 
+                                if (!isM4Locked) onEditHeader(15 + i) 
+                            }
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFEDE9FE), textColor = Color(0xFF5B21B6))
-                        PaperHeaderCell("معدل ش4", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFDDD6FE), textColor = Color(0xFF5B21B6))
+                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                        PaperHeaderCell("معدل ش4", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6))
                         
                         // Term 2 & Annual Subheaders
                         PaperHeaderCell("معدل ف2", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFFEF3C7), textColor = Color(0xFFB45309))
@@ -2371,17 +2866,17 @@ fun DailyRegisterTable(
                         // Final Exam Subheaders
                         if (isSpecial) {
                             repeat(finalOralCount) { i ->
-                                PaperHeaderCell("شفهي ${i+1}", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFD1FAE5), textColor = Color(0xFF047857))
+                                PaperHeaderCell("شفهي ${i+1}", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFD1FAE5), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF047857))
                             }
-                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFD1FAE5), textColor = Color(0xFF047857))
-                            PaperHeaderCell("تحريري د1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFD1FAE5), textColor = Color(0xFF047857))
-                            PaperHeaderCell("مجموع د1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFA7F3D0), textColor = Color(0xFF047857))
+                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFD1FAE5), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF047857))
+                            PaperHeaderCell("تحريري د1", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFD1FAE5), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF047857))
+                            PaperHeaderCell("مجموع د1", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFCBD5E1) else Color(0xFFA7F3D0), textColor = if (isFinalLocked) Color(0xFF475569) else Color(0xFF047857))
                         } else {
-                            PaperHeaderCell("تحريري د1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFD1FAE5), textColor = Color(0xFF047857))
+                            PaperHeaderCell("تحريري د1", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFD1FAE5), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF047857))
                         }
                         
                         // Round 2 & Final Grade Subheaders
-                        PaperHeaderCell("امتحان د2", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFF1F5F9), textColor = Color(0xFF475569))
+                        PaperHeaderCell(if (isFinalLocked) "امتحان د2 🔒" else "امتحان د2", cellW, rowH, labelFontSize, backgroundColor = if (isFinalLocked) Color(0xFFE2E8F0) else Color(0xFFF1F5F9), textColor = if (isFinalLocked) Color(0xFF64748B) else Color(0xFF475569))
                         PaperHeaderCell("النهائية", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFE0E7FF), textColor = Color(0xFF4338CA))
                     }
                 }
@@ -2426,7 +2921,7 @@ fun DailyRegisterTable(
                         // Month 1 Data Cells
                         repeat(m1Count) { i ->
                             val v = m.m1Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable) { valNew -> 
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM1Locked) { valNew -> 
                                 val nl = m.m1Daily.toMutableList()
                                 while (nl.size < 5) nl.add(0f)
                                 nl[i] = valNew
@@ -2434,13 +2929,13 @@ fun DailyRegisterTable(
                             }
                         }
                         PaperTableCell(m.m1Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m1Written, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(m1Written = it)) }
+                        PaperInputCell(m.m1Written, cellW, rowH, fontSize, isEditable = !isM1Locked) { onUpdateMarks(std, m.copy(m1Written = it)) }
                         PaperTableCell(m.m1MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
                         
                         // Month 2 Data Cells
                         repeat(m2Count) { i ->
                             val v = m.m2Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable) { valNew -> 
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM2Locked) { valNew -> 
                                 val nl = m.m2Daily.toMutableList()
                                 while (nl.size < 5) nl.add(0f)
                                 nl[i] = valNew
@@ -2448,7 +2943,7 @@ fun DailyRegisterTable(
                             }
                         }
                         PaperTableCell(m.m2Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m2Written, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(m2Written = it)) }
+                        PaperInputCell(m.m2Written, cellW, rowH, fontSize, isEditable = !isM2Locked) { onUpdateMarks(std, m.copy(m2Written = it)) }
                         PaperTableCell(m.m2MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
                         
                         // Term 1 Data Cell
@@ -2458,7 +2953,7 @@ fun DailyRegisterTable(
                         if (isSpecial) {
                             repeat(midtermOralCount) { i ->
                                 val v = m.midtermOral.getOrElse(i) { 0f }
-                                PaperInputCell(v, cellW, rowH, fontSize, isEditable) { valNew -> 
+                                PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isMidtermLocked) { valNew -> 
                                     val nl = m.midtermOral.toMutableList()
                                     while (nl.size < 5) nl.add(0f)
                                     nl[i] = valNew
@@ -2466,16 +2961,16 @@ fun DailyRegisterTable(
                                 }
                             }
                             PaperTableCell(m.midtermOral.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                            PaperInputCell(m.midtermScore, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(midtermScore = it)) }
+                            PaperInputCell(m.midtermScore, cellW, rowH, fontSize, isEditable = !isMidtermLocked) { onUpdateMarks(std, m.copy(midtermScore = it)) }
                             PaperTableCell(m.midtermFinalGrade.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFCCFBF1).copy(alpha = 0.5f))
                         } else {
-                            PaperInputCell(m.midtermScore, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(midtermScore = it, midtermFinalGrade = it)) }
+                            PaperInputCell(m.midtermScore, cellW, rowH, fontSize, isEditable = !isMidtermLocked) { onUpdateMarks(std, m.copy(midtermScore = it, midtermFinalGrade = it)) }
                         }
                         
                         // Month 3 Data Cells
                         repeat(m3Count) { i ->
                             val v = m.m3Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable) { valNew -> 
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM3Locked) { valNew -> 
                                 val nl = m.m3Daily.toMutableList()
                                 while (nl.size < 5) nl.add(0f)
                                 nl[i] = valNew
@@ -2483,13 +2978,13 @@ fun DailyRegisterTable(
                             }
                         }
                         PaperTableCell(m.m3Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m3Written, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(m3Written = it)) }
+                        PaperInputCell(m.m3Written, cellW, rowH, fontSize, isEditable = !isM3Locked) { onUpdateMarks(std, m.copy(m3Written = it)) }
                         PaperTableCell(m.m3MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
                         
                         // Month 4 Data Cells
                         repeat(m4Count) { i ->
                             val v = m.m4Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable) { valNew -> 
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM4Locked) { valNew -> 
                                 val nl = m.m4Daily.toMutableList()
                                 while (nl.size < 5) nl.add(0f)
                                 nl[i] = valNew
@@ -2497,7 +2992,7 @@ fun DailyRegisterTable(
                             }
                         }
                         PaperTableCell(m.m4Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m4Written, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(m4Written = it)) }
+                        PaperInputCell(m.m4Written, cellW, rowH, fontSize, isEditable = !isM4Locked) { onUpdateMarks(std, m.copy(m4Written = it)) }
                         PaperTableCell(m.m4MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
                         
                         // Term 2 & Annual Average Data Cells
@@ -2508,7 +3003,7 @@ fun DailyRegisterTable(
                         if (isSpecial) {
                             repeat(finalOralCount) { i ->
                                 val v = m.finalOral.getOrElse(i) { 0f }
-                                PaperInputCell(v, cellW, rowH, fontSize, isEditable) { valNew -> 
+                                PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isFinalLocked) { valNew -> 
                                     val nl = m.finalOral.toMutableList()
                                     while (nl.size < 5) nl.add(0f)
                                     nl[i] = valNew
@@ -2516,14 +3011,14 @@ fun DailyRegisterTable(
                                 }
                             }
                             PaperTableCell(m.finalOral.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                            PaperInputCell(m.finalWrittenD1, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(finalWrittenD1 = it)) }
+                            PaperInputCell(m.finalWrittenD1, cellW, rowH, fontSize, isEditable = !isFinalLocked) { onUpdateMarks(std, m.copy(finalWrittenD1 = it)) }
                             PaperTableCell(m.finalExamTotal.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFD1FAE5).copy(alpha = 0.5f))
                         } else {
-                            PaperInputCell(m.finalWrittenD1, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(finalWrittenD1 = it)) }
+                            PaperInputCell(m.finalWrittenD1, cellW, rowH, fontSize, isEditable = !isFinalLocked) { onUpdateMarks(std, m.copy(finalWrittenD1 = it)) }
                         }
                         
                         // Round 2 & Final Grade Data Cells
-                        PaperInputCell(m.finalWrittenD2 ?: 0f, cellW, rowH, fontSize, isEditable) { onUpdateMarks(std, m.copy(finalWrittenD2 = if (it == 0f) null else it)) }
+                        PaperInputCell(m.finalWrittenD2 ?: 0f, cellW, rowH, fontSize, isEditable = !isFinalLocked) { onUpdateMarks(std, m.copy(finalWrittenD2 = if (it == 0f) null else it)) }
                         
                         PaperTableCell(m.finalGrade.toInt().toString(), cellW, rowH, fontSize, isBold = true, textColor = if (m.finalGrade < 50) Color(0xFFDC2626) else null, backgroundColor = Color(0xFFE0E7FF).copy(alpha = 0.5f))
                     }
@@ -2788,10 +3283,19 @@ fun PaperInputCell(
     onValueChange: (Float) -> Unit
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
+    val context = LocalContext.current
     var text by remember(value) { mutableStateOf(if(value == 0f) "" else value.toInt().toString()) }
     val borderColor = currentTheme.tableBorderColor
-    val cellBg = currentTheme.tableCellBg
-    val textColor = currentTheme.textPrimaryColor
+    val cellBg = if (!isEditable) {
+        if (currentTheme.isDark) Color(0xFF1E293B) else Color(0xFFF1F5F9)
+    } else {
+        currentTheme.tableCellBg
+    }
+    val textColor = if (!isEditable) {
+        if (currentTheme.isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+    } else {
+        currentTheme.textPrimaryColor
+    }
     val bringIntoViewRequester = remember { BringIntoViewRequester() }
     val coroutineScope = rememberCoroutineScope()
 
@@ -2801,6 +3305,13 @@ fun PaperInputCell(
             .height(height)
             .border(0.5.dp, borderColor)
             .background(cellBg)
+            .then(
+                if (!isEditable) {
+                    Modifier.clickable {
+                        Toast.makeText(context, "درجات هذه الفترة معتمدة ومقفلة من إدارة المدرسة 🔒", Toast.LENGTH_SHORT).show()
+                    }
+                } else Modifier
+            )
             .bringIntoViewRequester(bringIntoViewRequester),
         contentAlignment = Alignment.Center
     ) {

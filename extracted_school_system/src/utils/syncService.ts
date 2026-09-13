@@ -38,13 +38,29 @@ export async function exportSchoolData(
   try {
     const client = getSupabase(schoolId);
 
+    let timingConfig = {
+      schoolStartHour: '08:00',
+      lessonDurationMinutes: 45,
+      breakDurationMinutes: 10
+    };
+    try {
+      const savedCfg = typeof window !== 'undefined' ? localStorage.getItem('diyala_school_config') : null;
+      if (savedCfg) {
+        const parsed = JSON.parse(savedCfg);
+        if (parsed.schoolStartHour) timingConfig.schoolStartHour = parsed.schoolStartHour;
+        if (parsed.lessonDurationMinutes) timingConfig.lessonDurationMinutes = Number(parsed.lessonDurationMinutes);
+        if (parsed.breakDurationMinutes) timingConfig.breakDurationMinutes = Number(parsed.breakDurationMinutes);
+      }
+    } catch (_) {}
+
     // 1. Upsert School configuration
     const schoolsPayload = [
       {
         id: schoolId,
         name: schoolName,
         pairing_code: pairingCode,
-        admin_email: adminEmail
+        admin_email: adminEmail,
+        config: timingConfig
       }
     ];
 
@@ -56,8 +72,8 @@ export async function exportSchoolData(
 
     // 1.5. Upsert School Schedule Map
     const finalScheduleMap = (scheduleMap && Object.keys(scheduleMap).length > 0)
-      ? scheduleMap
-      : { 'الأحد': [], 'الإثنين': [], 'الثلاثاء': [], 'الأربعاء': [], 'الخميس': [] };
+      ? { ...scheduleMap, _timing: timingConfig }
+      : { 'الأحد': [], 'الإثنين': [], 'الثلاثاء': [], 'الأربعاء': [], 'الخميس': [], _timing: timingConfig };
 
     const { error: scheduleError } = await client
       .from('schedules')
@@ -755,7 +771,7 @@ export async function sendPairingRequest(payload: {
 }
 
 /**
- * Sends an administrative directive (instruction) to all teachers/staff
+ * Sends an administrative directive (instruction) to all teachers/staff and students
  * via Supabase 'directives' table.
  */
 export async function sendDirective(
@@ -763,25 +779,111 @@ export async function sendDirective(
   title: string,
   content: string,
   targetRole: 'teachers' | 'students' | 'all' = 'all'
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; directive?: any }> {
   try {
-    const client = getSupabase(schoolId);
-    const { error } = await client
+    let cleanSchoolId = schoolId?.trim();
+    let schoolName = 'مدرستي النموذجية';
+    let pairingCode = '112233';
+
+    try {
+      const savedConfig = localStorage.getItem('diyala_school_config');
+      if (savedConfig) {
+        const parsed = JSON.parse(savedConfig);
+        if (!cleanSchoolId && parsed.schoolId) cleanSchoolId = parsed.schoolId;
+        if (parsed.schoolName) schoolName = parsed.schoolName;
+        if (parsed.pairingCode) pairingCode = parsed.pairingCode;
+      }
+    } catch (e) {}
+
+    if (!cleanSchoolId) {
+      cleanSchoolId = localStorage.getItem('diyala_school_id') || 'school_01';
+    }
+
+    const client = getSupabase(cleanSchoolId);
+
+    // Auto-upsert school first to prevent Foreign Key (23503) errors
+    try {
+      await client.from('schools').upsert([{
+        id: cleanSchoolId,
+        name: schoolName,
+        pairing_code: pairingCode
+      }], { onConflict: 'id' });
+    } catch (upsertErr) {
+      console.warn('Pre-upsert school note:', upsertErr);
+    }
+
+    const payload = {
+      school_id: cleanSchoolId,
+      title: title.trim(),
+      content: content.trim(),
+      target_role: targetRole,
+      created_at: new Date().toISOString(),
+      is_active: true
+    };
+
+    const { data, error } = await client
       .from('directives')
-      .insert([{
-        school_id: schoolId,
-        title,
-        content,
-        target_role: targetRole,
-        created_at: new Date().toISOString(),
-        is_active: true
-      }]);
+      .insert([payload])
+      .select();
 
     if (error) throw error;
-    return { success: true, message: 'تم إرسال التوجيه الإداري بنجاح لجميع الأجهزة!' };
+    return { 
+      success: true, 
+      message: 'تم إرسال وبث التوجيه الإداري بنجاح لجميع الأجهزة والسحابة! 🚀', 
+      directive: data?.[0] 
+    };
   } catch (error: any) {
     console.error('Send Directive Error:', error);
-    return { success: false, message: 'فشل إرسال التوجيه: ' + error.message };
+    return { success: false, message: 'فشل إرسال التوجيه: ' + (error.message || error.details || 'خطأ غير معروف') };
+  }
+}
+
+/**
+ * Fetch all directives for a school
+ */
+export async function getDirectivesList(schoolId?: string): Promise<any[]> {
+  try {
+    let cleanSchoolId = schoolId?.trim();
+    if (!cleanSchoolId) {
+      try {
+        const savedConfig = localStorage.getItem('diyala_school_config');
+        if (savedConfig) cleanSchoolId = JSON.parse(savedConfig).schoolId;
+      } catch (e) {}
+    }
+    if (!cleanSchoolId) {
+      cleanSchoolId = localStorage.getItem('diyala_school_id') || 'school_01';
+    }
+
+    const client = getSupabase(cleanSchoolId);
+    const { data, error } = await client
+      .from('directives')
+      .select('*')
+      .eq('school_id', cleanSchoolId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error('Failed to fetch directives:', e);
+    return [];
+  }
+}
+
+/**
+ * Delete a directive from Supabase
+ */
+export async function deleteDirective(schoolId: string, directiveId: string): Promise<boolean> {
+  try {
+    let cleanSchoolId = schoolId?.trim() || localStorage.getItem('diyala_school_id') || 'school_01';
+    const client = getSupabase(cleanSchoolId);
+    const { error } = await client
+      .from('directives')
+      .delete()
+      .eq('id', directiveId);
+    return !error;
+  } catch (e) {
+    console.error('Failed to delete directive:', e);
+    return false;
   }
 }
 

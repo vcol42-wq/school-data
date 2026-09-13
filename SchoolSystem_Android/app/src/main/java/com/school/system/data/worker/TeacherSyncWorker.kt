@@ -18,6 +18,7 @@ class TeacherSyncWorker(
     @InstallIn(SingletonComponent::class)
     interface TeacherSyncWorkerEntryPoint {
         fun authRepository(): AuthRepository
+        fun syncRepository(): com.school.system.data.SyncRepository
     }
 
     override suspend fun doWork(): Result {
@@ -28,6 +29,10 @@ class TeacherSyncWorker(
             )
             val authRepo = entryPoint.authRepository()
             authRepo.verifyApprovalStatus()
+
+            val syncRepo = entryPoint.syncRepository()
+            syncRepo.fetchAndNotifyDirectives()
+
             Result.success()
         } catch (e: Exception) {
             e.printStackTrace()

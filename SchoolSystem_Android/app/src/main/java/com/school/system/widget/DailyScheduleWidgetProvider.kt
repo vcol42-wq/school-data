@@ -36,7 +36,24 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_REFRESH_WIDGET || intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
+        if (intent.action == ACTION_REFRESH_WIDGET ||
+            intent.action == ACTION_PREV_DAY ||
+            intent.action == ACTION_NEXT_DAY ||
+            intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE
+        ) {
+            val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+            if (intent.action == ACTION_PREV_DAY) {
+                val currentIdx = prefs.getInt("widget_selected_day_idx", WidgetScheduleHelper.getDefaultDayIndex())
+                val newIdx = if (currentIdx > 0) currentIdx - 1 else 4
+                prefs.edit().putInt("widget_selected_day_idx", newIdx).apply()
+            } else if (intent.action == ACTION_NEXT_DAY) {
+                val currentIdx = prefs.getInt("widget_selected_day_idx", WidgetScheduleHelper.getDefaultDayIndex())
+                val newIdx = if (currentIdx < 4) currentIdx + 1 else 0
+                prefs.edit().putInt("widget_selected_day_idx", newIdx).apply()
+            } else if (intent.action == ACTION_REFRESH_WIDGET) {
+                prefs.edit().putInt("widget_selected_day_idx", WidgetScheduleHelper.getDefaultDayIndex()).apply()
+            }
+
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val componentName = ComponentName(context, DailyScheduleWidgetProvider::class.java)
             val appWidgetIds = appWidgetManager.getAppWidgetIds(componentName)
@@ -49,6 +66,8 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_REFRESH_WIDGET = "com.school.system.widget.ACTION_REFRESH"
+        const val ACTION_PREV_DAY = "com.school.system.widget.ACTION_PREV_DAY"
+        const val ACTION_NEXT_DAY = "com.school.system.widget.ACTION_NEXT_DAY"
 
         fun updateAppWidget(
             context: Context,
@@ -57,23 +76,12 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
         ) {
             val views = RemoteViews(context.packageName, R.layout.widget_teacher_horizontal_strip)
 
-            val calendar = Calendar.getInstance()
-            val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-            val dayName = when (dayOfWeek) {
-                Calendar.SUNDAY -> "الأحد"
-                Calendar.MONDAY -> "الإثنين"
-                Calendar.TUESDAY -> "الثلاثاء"
-                Calendar.WEDNESDAY -> "الأربعاء"
-                Calendar.THURSDAY -> "الخميس"
-                Calendar.FRIDAY -> "الجمعة"
-                Calendar.SATURDAY -> "السبت"
-                else -> "الأحد"
-            }
+            val dayName = WidgetScheduleHelper.getEffectiveDayArabic(context)
+            views.setTextViewText(R.id.strip_header_day, dayName)
 
             val upcoming = WidgetScheduleHelper.calculateUpcomingTeacherLesson(context)
-            val activeLessonNum = if (upcoming.isOngoing) upcoming.lessonNumber else 0
-
-            views.setTextViewText(R.id.strip_header_day, dayName)
+            val isViewingRealToday = (dayName == WidgetScheduleHelper.getRealCurrentDayArabic())
+            val activeLessonNum = if (upcoming.isOngoing && isViewingRealToday) upcoming.lessonNumber else 0
 
             val lessons = WidgetScheduleHelper.getTodayTeacherLessons(context)
             val lessonsByNum = lessons.associateBy { it.lessonNumber }
@@ -104,31 +112,63 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(subjViewId, cleanSubj)
                     views.setTextViewText(classViewId, cleanCls)
 
+                    views.setTextColor(subjViewId, android.graphics.Color.WHITE)
+                    views.setTextColor(classViewId, android.graphics.Color.parseColor("#93C5FD"))
+
                     if (i == activeLessonNum) {
                         views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_teacher_highlight_bg)
                     } else {
-                        views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_teacher_badge_bg)
+                        views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                     }
                 } else {
                     views.setTextViewText(subjViewId, "شاغر")
                     views.setTextViewText(classViewId, "-")
+                    views.setTextColor(subjViewId, android.graphics.Color.parseColor("#64748B"))
+                    views.setTextColor(classViewId, android.graphics.Color.parseColor("#475569"))
                     views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_item_bg)
                 }
             }
 
+            // Prev Day Intent
+            val prevIntent = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
+                action = ACTION_PREV_DAY
+                setPackage(context.packageName)
+            }
+            val prevPending = PendingIntent.getBroadcast(
+                context,
+                101,
+                prevIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.strip_btn_prev_day, prevPending)
+
+            // Next Day Intent
+            val nextIntent = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
+                action = ACTION_NEXT_DAY
+                setPackage(context.packageName)
+            }
+            val nextPending = PendingIntent.getBroadcast(
+                context,
+                102,
+                nextIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.strip_btn_next_day, nextPending)
+
             // Refresh Intent
             val refreshIntent = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
                 action = ACTION_REFRESH_WIDGET
+                setPackage(context.packageName)
             }
             val refreshPendingIntent = PendingIntent.getBroadcast(
                 context,
-                0,
+                103,
                 refreshIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             views.setOnClickPendingIntent(R.id.strip_btn_refresh, refreshPendingIntent)
 
-            // Open App
+            // Open App from Badge (Do not attach to root to prevent swallowing button clicks)
             val mainIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
@@ -138,7 +178,7 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
                 mainIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.id.teacher_strip_root, mainPendingIntent)
+            views.setOnClickPendingIntent(R.id.strip_status_badge, mainPendingIntent)
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }

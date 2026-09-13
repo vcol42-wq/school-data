@@ -3,52 +3,97 @@
     android:id="@+id/teacher_strip_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="horizontal"
+    android:orientation="vertical"
     android:background="@drawable/widget_bg"
-    android:padding="6dp"
-    android:gravity="center_vertical">
+    android:padding="6dp">
 
-    <!-- Right Header Badge & Refresh -->
+    <!-- Top Navigation Bar for Teacher Schedule -->
     <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:paddingEnd="4dp"
-        android:paddingStart="2dp">
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="4dp"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp">
 
+        <!-- Refresh Button -->
+        <ImageView
+            android:id="@+id/strip_btn_refresh"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:src="@drawable/ic_widget_refresh"
+            android:padding="4dp"
+            android:background="@drawable/widget_nav_btn_bg"
+            android:contentDescription="تحديث" />
+
+        <TextView
+            android:id="@+id/strip_status_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="👨‍🏫 جدول الأستاذ"
+            android:textColor="#94A3B8"
+            android:textSize="10.5sp"
+            android:textStyle="bold"
+            android:layout_marginStart="8dp" />
+
+        <!-- Spacer -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Prev Day Button -->
+        <TextView
+            android:id="@+id/strip_btn_prev_day"
+            android:layout_width="30dp"
+            android:layout_height="26dp"
+            android:text="◀"
+            android:textColor="#38BDF8"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/widget_nav_btn_bg" />
+
+        <!-- Active Day Header Title -->
         <TextView
             android:id="@+id/strip_header_day"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="26dp"
             android:text="الأحد"
-            android:textColor="#38BDF8"
-            android:textSize="10sp"
+            android:textColor="#FFFFFF"
+            android:textSize="12.5sp"
             android:textStyle="bold"
-            android:gravity="center" />
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:background="@drawable/widget_teacher_card_bg"
+            android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp" />
 
-        <ImageView
-            android:id="@+id/strip_btn_refresh"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:src="@drawable/ic_widget_refresh"
-            android:padding="1dp"
-            android:layout_marginTop="2dp"
-            android:contentDescription="تحديث" />
+        <!-- Next Day Button -->
+        <TextView
+            android:id="@+id/strip_btn_next_day"
+            android:layout_width="30dp"
+            android:layout_height="26dp"
+            android:text="▶"
+            android:textColor="#38BDF8"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/widget_nav_btn_bg" />
     </LinearLayout>
 
-    <ImageView
-        android:layout_width="1dp"
-        android:layout_height="match_parent"
-        android:background="#334155"
-        android:layout_marginStart="2dp"
-        android:layout_marginEnd="2dp"
-        android:contentDescription="فاصل" />
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#1E293B"
+        android:layout_marginBottom="4dp" />
 
     <!-- 6 Columns for Lessons 1 to 6 -->
     <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="horizontal"
         android:gravity="center_vertical">
@@ -69,14 +114,14 @@
                 android:layout_height="wrap_content"
                 android:text="1"
                 android:textColor="#38BDF8"
-                android:textSize="9sp"
+                android:textSize="9.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/text_subject_1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="أحياء"
+                android:text="-"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -87,9 +132,9 @@
                 android:id="@+id/text_class_1"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="ثالث آ"
-                android:textColor="#CBD5E1"
-                android:textSize="9.5sp"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
@@ -100,7 +145,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:layout_marginStart="2dp"
+            android:layout_marginStart="3dp"
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/widget_item_bg"
@@ -111,14 +156,14 @@
                 android:layout_height="wrap_content"
                 android:text="2"
                 android:textColor="#38BDF8"
-                android:textSize="9sp"
+                android:textSize="9.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/text_subject_2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="E"
+                android:text="-"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -129,9 +174,9 @@
                 android:id="@+id/text_class_2"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="أول ب"
-                android:textColor="#CBD5E1"
-                android:textSize="9.5sp"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
@@ -142,7 +187,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:layout_marginStart="2dp"
+            android:layout_marginStart="3dp"
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/widget_item_bg"
@@ -153,14 +198,14 @@
                 android:layout_height="wrap_content"
                 android:text="3"
                 android:textColor="#38BDF8"
-                android:textSize="9sp"
+                android:textSize="9.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/text_subject_3"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="رياضيات"
+                android:text="-"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -171,9 +216,9 @@
                 android:id="@+id/text_class_3"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="ثاني أ"
-                android:textColor="#CBD5E1"
-                android:textSize="9.5sp"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
@@ -184,7 +229,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:layout_marginStart="2dp"
+            android:layout_marginStart="3dp"
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/widget_item_bg"
@@ -195,14 +240,14 @@
                 android:layout_height="wrap_content"
                 android:text="4"
                 android:textColor="#38BDF8"
-                android:textSize="9sp"
+                android:textSize="9.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/text_subject_4"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="عربي"
+                android:text="-"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -213,9 +258,9 @@
                 android:id="@+id/text_class_4"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="رابع ب"
-                android:textColor="#CBD5E1"
-                android:textSize="9.5sp"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
@@ -226,7 +271,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:layout_marginStart="2dp"
+            android:layout_marginStart="3dp"
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/widget_item_bg"
@@ -237,16 +282,17 @@
                 android:layout_height="wrap_content"
                 android:text="5"
                 android:textColor="#38BDF8"
-                android:textSize="9sp"
+                android:textSize="9.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/text_subject_5"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="شاغر"
-                android:textColor="#94A3B8"
+                android:text="-"
+                android:textColor="#64748B"
                 android:textSize="11sp"
+                android:textStyle="bold"
                 android:maxLines="1"
                 android:ellipsize="end" />
 
@@ -255,8 +301,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="-"
-                android:textColor="#64748B"
-                android:textSize="9.5sp"
+                android:textColor="#475569"
+                android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>
@@ -267,7 +313,7 @@
             android:layout_width="0dp"
             android:layout_height="match_parent"
             android:layout_weight="1"
-            android:layout_marginStart="2dp"
+            android:layout_marginStart="3dp"
             android:orientation="vertical"
             android:gravity="center"
             android:background="@drawable/widget_item_bg"
@@ -278,14 +324,14 @@
                 android:layout_height="wrap_content"
                 android:text="6"
                 android:textColor="#38BDF8"
-                android:textSize="9sp"
+                android:textSize="9.5sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/text_subject_6"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="إسلامية"
+                android:text="-"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
@@ -296,9 +342,9 @@
                 android:id="@+id/text_class_6"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="خامس أ"
-                android:textColor="#CBD5E1"
-                android:textSize="9.5sp"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="end" />
         </LinearLayout>

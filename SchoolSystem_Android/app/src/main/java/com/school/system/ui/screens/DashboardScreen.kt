@@ -41,6 +41,7 @@ fun DashboardScreen(
 ) {
     val config by viewModel.config.collectAsState()
     val packages by viewModel.packages.collectAsState()
+    val directives by viewModel.directives.collectAsState()
     var showSummonDialog by remember { mutableStateOf(false) }
     var showSelectClassesDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
@@ -53,6 +54,7 @@ fun DashboardScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
     var teacherNameState by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
+    var isDirectivesDismissed by remember { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     var isUploadingGrades by remember { mutableStateOf(false) }
@@ -278,8 +280,19 @@ fun DashboardScreen(
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(24.dp)
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
+                        if (directives.isNotEmpty() && !isDirectivesDismissed) {
+                            TeacherDirectivesCard(
+                                directives = directives,
+                                onDismiss = { isDirectivesDismissed = true }
+                            )
+                            Spacer(Modifier.height(14.dp))
+                        }
+
                         Surface(
                             color = Color(0xFFEFF6FF),
                             shape = CircleShape,
@@ -334,6 +347,14 @@ fun DashboardScreen(
                         .padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    if (directives.isNotEmpty() && !isDirectivesDismissed) {
+                        item {
+                            TeacherDirectivesCard(
+                                directives = directives,
+                                onDismiss = { isDirectivesDismissed = true }
+                            )
+                        }
+                    }
                     items(packages) { pkg ->
                         RegisterCardItem(
                             pkg = pkg,
@@ -1764,4 +1785,99 @@ fun SelectTeacherClassesDialog(
         }
     )
 }
+
+@Composable
+fun TeacherDirectivesCard(
+    directives: List<com.school.system.data.SupabaseDirectiveDto>,
+    onDismiss: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val latest = directives.firstOrNull() ?: return
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 2.dp)
+            .clickable { expanded = !expanded },
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFFFFFBEB),
+        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFDE68A)),
+        shadowElevation = 2.dp
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Text("📢", fontSize = 16.sp)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = if (directives.size == 1) "توجيه إداري من مدير المدرسة" else "توجيهات الإدارة (${directives.size})",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Color(0xFF92400E)
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Color(0xFFFEF3C7),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = if (expanded) "طي ▲" else "عرض ▼",
+                            fontSize = 11.sp,
+                            color = Color(0xFFB45309),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(4.dp))
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "إخفاء التوجيه",
+                            tint = Color(0xFF92400E),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = latest.title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.5.sp,
+                color = Color(0xFF78350F)
+            )
+            Text(
+                text = latest.content,
+                fontSize = 11.5.sp,
+                color = Color(0xFF451A03),
+                maxLines = if (expanded) Int.MAX_VALUE else 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+
+            if (directives.size > 1 && expanded) {
+                Spacer(Modifier.height(8.dp))
+                HorizontalDivider(color = Color(0xFFFDE68A), thickness = 1.dp)
+                Spacer(Modifier.height(6.dp))
+                directives.drop(1).forEach { dir ->
+                    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                        Text(dir.title, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF92400E))
+                        Text(dir.content, fontSize = 11.sp, color = Color(0xFF451A03))
+                    }
+                    HorizontalDivider(color = Color(0xFFFEF3C7), thickness = 0.5.dp)
+                }
+            }
+        }
+    }
+}
+
 

@@ -83,6 +83,24 @@ fun ScheduleScreen(
 
     val daysList = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
     val gson = remember { Gson() }
+
+    // Dynamic schedule timings (configured by principal in desktop system)
+    val (timingStartHour, timingLessonDur, timingBreakDur) = remember(rawScheduleJson) {
+        try {
+            val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
+            val timingObj = rootObj?.get("_timing") as? Map<*, *>
+            val startHour = timingObj?.get("schoolStartHour")?.toString()
+                ?: prefs.getString("school_start_hour", "08:00")
+                ?: "08:00"
+            val lessonDur = (timingObj?.get("lessonDurationMinutes") as? Number)?.toInt()
+                ?: prefs.getInt("lesson_duration_minutes", 45)
+            val breakDur = (timingObj?.get("breakDurationMinutes") as? Number)?.toInt()
+                ?: prefs.getInt("break_duration_minutes", 10)
+            Triple(startHour, lessonDur, breakDur)
+        } catch (e: Exception) {
+            Triple("08:00", 45, 10)
+        }
+    }
     
     // Parse structured schedule items
     val parsedScheduleByDay: Map<String, List<TeacherLessonInfo>> = remember(rawScheduleJson) {
@@ -320,7 +338,10 @@ fun ScheduleScreen(
                         day = selectedGeneralDay,
                         classes = availableClasses,
                         allLessons = parsedScheduleByDay[selectedGeneralDay] ?: emptyList(),
-                        lazyListState = lazyListState
+                        lazyListState = lazyListState,
+                        startHourStr = timingStartHour,
+                        lessonDuration = timingLessonDur,
+                        breakDuration = timingBreakDur
                     )
                 }
             }
@@ -334,7 +355,10 @@ fun ScheduleScreen(
 @Composable
 fun WeeklyPersonalScheduleTable(
     daysList: List<String>,
-    lessons: List<TeacherLessonInfo>
+    lessons: List<TeacherLessonInfo>,
+    startHourStr: String = "08:00",
+    lessonDuration: Int = 45,
+    breakDuration: Int = 10
 ) {
     val currentTheme = LocalAppTheme.current
     val hScroll = rememberScrollState()
@@ -358,7 +382,7 @@ fun WeeklyPersonalScheduleTable(
         val rowH = 58.dp
 
         Surface(
-            shape = RoundedCornerShape(14.dp),
+            shape = RoundedCornerShape(12.dp),
             color = currentTheme.surfaceColor,
             border = BorderStroke(1.dp, currentTheme.tableBorderColor),
             shadowElevation = 2.dp,
@@ -369,30 +393,53 @@ fun WeeklyPersonalScheduleTable(
                 Column(
                     modifier = Modifier
                         .width(dayColW)
-                        .background(currentTheme.tableHeaderBg)
+                        .border(
+                            BorderStroke(
+                                0.5.dp,
+                                currentTheme.tableBorderColor
+                            )
+                        )
                 ) {
-                    ScheduleHeaderCell("اليوم 📅", dayColW, headerH)
+                    // Header Cell for Days
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(headerH)
+                            .background(currentTheme.tableHeaderBg)
+                            .padding(4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "اليوم 📅",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 12.sp,
+                            color = currentTheme.textSecondaryColor,
+                            textAlign = TextAlign.Center
+                        )
+                    }
 
+                    // Day Cells
                     daysList.forEachIndexed { index, day ->
-                        val isEven = index % 2 == 0
-                        val rowBg = if (isEven) currentTheme.tableCellBg else currentTheme.tableAltCellBg
                         Box(
                             modifier = Modifier
-                                .width(dayColW)
+                                .fillMaxWidth()
                                 .height(rowH)
-                                .background(rowBg)
-                                .border(0.5.dp, currentTheme.tableBorderColor)
-                                .padding(horizontal = 2.dp, vertical = 4.dp),
+                                .background(if (index % 2 == 0) currentTheme.surfaceColor else currentTheme.tableAltCellBg)
+                                .border(
+                                    BorderStroke(
+                                        0.5.dp,
+                                        currentTheme.tableBorderColor.copy(alpha = 0.5f)
+                                    )
+                                )
+                                .padding(4.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = day,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 12.5.sp,
+                                fontSize = 12.sp,
                                 color = currentTheme.primaryColor,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                softWrap = false
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
@@ -409,7 +456,7 @@ fun WeeklyPersonalScheduleTable(
                         modifier = Modifier.background(currentTheme.tableHeaderBg)
                     ) {
                         for (i in 1..6) {
-                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i), lessonColW, headerH)
+                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i, startHourStr, lessonDuration, breakDuration), lessonColW, headerH)
                         }
                     }
 
@@ -485,7 +532,10 @@ fun GeneralDayScheduleGrid(
     day: String,
     classes: List<String>,
     allLessons: List<TeacherLessonInfo>,
-    lazyListState: LazyListState = rememberLazyListState()
+    lazyListState: LazyListState = rememberLazyListState(),
+    startHourStr: String = "08:00",
+    lessonDuration: Int = 45,
+    breakDuration: Int = 10
 ) {
     val currentTheme = LocalAppTheme.current
     val hScroll = rememberScrollState()
@@ -542,7 +592,7 @@ fun GeneralDayScheduleGrid(
                             .horizontalScroll(hScroll)
                     ) {
                         for (i in 1..6) {
-                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i), lessonColW, headerH)
+                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i, startHourStr, lessonDuration, breakDuration), lessonColW, headerH)
                         }
                     }
                 }
@@ -712,30 +762,57 @@ fun ScheduleHeaderCellWithTiming(lessonTitle: String, timing: String, width: Dp,
     }
 }
 
-fun getLessonShortTiming(lessonNumber: Int): String {
-    return when (lessonNumber) {
-        1 -> "08:00 - 08:40"
-        2 -> "08:50 - 09:30"
-        3 -> "09:50 - 10:30"
-        4 -> "10:45 - 11:25"
-        5 -> "11:35 - 12:15"
-        6 -> "12:25 - 01:05"
-        7 -> "01:15 - 01:55"
-        else -> ""
+fun calculateSlotTiming(
+    lessonNumber: Int,
+    startHourStr: String = "08:00",
+    lessonDuration: Int = 45,
+    breakDuration: Int = 10,
+    isShort: Boolean = false
+): String {
+    if (lessonNumber < 1) return ""
+    val parts = startHourStr.split(":").mapNotNull { it.toIntOrNull() }
+    val startH = if (parts.isNotEmpty()) parts[0] else 8
+    val startM = if (parts.size > 1) parts[1] else 0
+
+    var currentTotalMinutes = startH * 60 + startM
+    for (i in 1 until lessonNumber) {
+        currentTotalMinutes += lessonDuration + breakDuration
     }
+
+    val lessonStartMin = currentTotalMinutes
+    val lessonEndMin = currentTotalMinutes + lessonDuration
+
+    fun formatMin(min: Int, short: Boolean): String {
+        var h = min / 60
+        val m = min % 60
+        val period = if (h in 12..23) "م" else "ص"
+        h %= 12
+        if (h == 0) h = 12
+        val timeStr = String.format(java.util.Locale.US, "%02d:%02d", h, m)
+        return if (short) timeStr else "$timeStr $period"
+    }
+
+    val startFormatted = formatMin(lessonStartMin, isShort)
+    val endFormatted = formatMin(lessonEndMin, isShort)
+    return "$startFormatted - $endFormatted"
 }
 
-fun getLessonTiming(lessonNumber: Int): String {
-    return when (lessonNumber) {
-        1 -> "08:00 ص - 08:45 ص"
-        2 -> "08:55 ص - 09:40 ص"
-        3 -> "09:50 ص - 10:35 ص"
-        4 -> "10:45 ص - 11:30 ص"
-        5 -> "11:40 ص - 12:25 م"
-        6 -> "12:35 م - 01:20 م"
-        7 -> "01:30 م - 02:15 م"
-        else -> "الحصة $lessonNumber"
-    }
+fun getLessonShortTiming(
+    lessonNumber: Int,
+    startHourStr: String = "08:00",
+    lessonDuration: Int = 45,
+    breakDuration: Int = 10
+): String {
+    return calculateSlotTiming(lessonNumber, startHourStr, lessonDuration, breakDuration, isShort = true)
+}
+
+fun getLessonTiming(
+    lessonNumber: Int,
+    startHourStr: String = "08:00",
+    lessonDuration: Int = 45,
+    breakDuration: Int = 10
+): String {
+    return calculateSlotTiming(lessonNumber, startHourStr, lessonDuration, breakDuration, isShort = false)
 }
 
 @Composable

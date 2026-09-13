@@ -23,8 +23,13 @@ import {
   Clock3,
   AlertTriangle,
   ArrowLeft,
-  CheckCircle2
+  CheckCircle2,
+  Megaphone,
+  Send,
+  Clock
 } from 'lucide-react';
+import { DirectivesModal } from './DirectivesModal';
+import { sendDirective } from '../utils/syncService';
 
 interface MainLauncherProps {
   setActiveView: (view: ActiveView) => void;
@@ -50,6 +55,37 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
   const [iconShape, setIconShape] = useState<'squircle' | 'round'>('squircle');
   const [copiedCode, setCopiedCode] = useState(false);
   const [now, setNow] = useState(() => new Date());
+
+  // Quick Directives state
+  const [isDirectivesModalOpen, setIsDirectivesModalOpen] = useState(false);
+  const [quickDirectiveTitle, setQuickDirectiveTitle] = useState('');
+  const [quickDirectiveContent, setQuickDirectiveContent] = useState('');
+  const [quickDirectiveRole, setQuickDirectiveRole] = useState<'all' | 'teachers' | 'students'>('all');
+  const [isQuickSending, setIsQuickSending] = useState(false);
+  const [quickDirectiveFeedback, setQuickDirectiveFeedback] = useState<{ success: boolean; text: string } | null>(null);
+
+  const activeSchoolId = config?.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+
+  const handleQuickSendDirective = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickDirectiveTitle.trim() || !quickDirectiveContent.trim()) {
+      setQuickDirectiveFeedback({ success: false, text: 'يرجى كتابة موضوع ونص التوجيه' });
+      return;
+    }
+    setIsQuickSending(true);
+    setQuickDirectiveFeedback(null);
+    const res = await sendDirective(activeSchoolId, quickDirectiveTitle, quickDirectiveContent, quickDirectiveRole);
+    setIsQuickSending(false);
+    if (res.success) {
+      setQuickDirectiveFeedback({ success: true, text: res.message });
+      setQuickDirectiveTitle('');
+      setQuickDirectiveContent('');
+      setTimeout(() => setQuickDirectiveFeedback(null), 4000);
+    } else {
+      setQuickDirectiveFeedback({ success: false, text: res.message });
+    }
+  };
+
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
@@ -212,6 +248,16 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
       gradient: 'from-indigo-600 via-blue-700 to-indigo-950',
       badge: 'QR سحابي ⚡',
       badgeBg: 'bg-amber-400 text-slate-950 font-black ring-2 ring-amber-300'
+    },
+    // 13. توجيهات وتعليمات الإدارة
+    {
+      id: 'directives' as any,
+      title: 'توجيهات وتعليمات الإدارة',
+      subtitle: 'بث التوجيهات والإنذارات الفورية للكادر والطلاب',
+      icon: Megaphone,
+      gradient: 'from-amber-500 via-orange-600 to-amber-700',
+      badge: 'بث عاجل 📢',
+      badgeBg: 'bg-amber-100 text-amber-950 font-black'
     }
   ];
 
@@ -283,7 +329,7 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
       </div>
 
       {/* Director's live pulse */}
-      <section className="director-pulse mb-8 rounded-3xl border-2 border-[var(--theme-card-border)] p-4 md:p-5 shadow-xl">
+      <section className="director-pulse mb-6 rounded-3xl border-2 border-[var(--theme-card-border)] p-4 md:p-5 shadow-xl">
         <div className="flex flex-col lg:flex-row items-stretch gap-4">
           <div className="director-pulse-main flex-1 rounded-2xl p-4 text-white">
             <div className="flex items-center justify-between gap-3">
@@ -299,9 +345,117 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
             <button onClick={() => setActiveView('students')} className="pulse-stat"><span>الطلاب</span><strong>{studentsCount}</strong><ArrowLeft /></button>
             <button onClick={() => setActiveView('staff')} className="pulse-stat"><span>الكادر</span><strong>{staffCount}</strong><ArrowLeft /></button>
             <button onClick={() => setActiveView('schedule')} className={`pulse-stat ${scheduledGaps ? 'pulse-stat-warning' : ''}`}><span>الشواغر الآن</span><strong>{scheduledGaps}</strong>{scheduledGaps ? <AlertTriangle /> : <CheckCircle2 />}</button>
-            <button onClick={() => setActiveView('sync_center')} className="pulse-stat"><span>الربط السحابي</span><strong>جاهز</strong><Cloud /></button>
+            <button onClick={() => setIsDirectivesModalOpen(true)} className="pulse-stat hover:border-amber-400"><span>بث التوجيهات</span><strong className="text-amber-600">بث 📢</strong><Megaphone /></button>
           </div>
         </div>
+      </section>
+
+      {/* DIRECTIVES INSTANT BROADCAST BAR (شريط حوار وبث توجيهات الإدارة) */}
+      <section className="mb-8 rounded-3xl border-2 border-amber-400/80 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 p-4 md:p-5 shadow-lg relative overflow-hidden backdrop-blur-xs">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 mb-3 border-b border-amber-200/60 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-md">
+              <Megaphone className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-slate-900">شريط بث التوجيهات والتعاميم الفورية 📢</h3>
+                <span className="text-[10px] font-black bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">سحابي مباشر</span>
+              </div>
+              <p className="text-xs text-slate-500 font-semibold">بث التعليمات والتنبيهات المباشرة لهواتف الكادر والطلاب مع رنين واهتزاز</p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsDirectivesModalOpen(true)}
+            className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 text-xs font-black shadow-xs flex items-center gap-1.5 transition-all"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-600" />
+            <span>سجل التعاميم وإدارتها</span>
+          </button>
+        </div>
+
+        {/* Quick broadcast form */}
+        <form onSubmit={handleQuickSendDirective} className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
+            
+            {/* Title */}
+            <div className="md:col-span-4">
+              <input
+                type="text"
+                value={quickDirectiveTitle}
+                onChange={e => setQuickDirectiveTitle(e.target.value)}
+                placeholder="موضوع التوجيه (مثال: اجتماع طارئ / عطلة رسمية)..."
+                className="w-full px-3.5 py-2 rounded-xl bg-white border border-amber-300/80 text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-inner"
+              />
+            </div>
+
+            {/* Target Role Selector */}
+            <div className="md:col-span-3 flex items-center bg-white p-1 rounded-xl border border-amber-300/80 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setQuickDirectiveRole('all')}
+                className={`flex-1 py-1 text-center rounded-lg transition-all text-[11px] font-black ${
+                  quickDirectiveRole === 'all' ? 'bg-amber-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                الكل 🌐
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickDirectiveRole('teachers')}
+                className={`flex-1 py-1 text-center rounded-lg transition-all text-[11px] font-black ${
+                  quickDirectiveRole === 'teachers' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                الكادر 👨‍🏫
+              </button>
+              <button
+                type="button"
+                onClick={() => setQuickDirectiveRole('students')}
+                className={`flex-1 py-1 text-center rounded-lg transition-all text-[11px] font-black ${
+                  quickDirectiveRole === 'students' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                الطلاب 🎓
+              </button>
+            </div>
+
+            {/* Content & Submit */}
+            <div className="md:col-span-5 flex items-center gap-2">
+              <input
+                type="text"
+                value={quickDirectiveContent}
+                onChange={e => setQuickDirectiveContent(e.target.value)}
+                placeholder="نص التوجيه أو التعليمات..."
+                className="flex-1 px-3.5 py-2 rounded-xl bg-white border border-amber-300/80 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-inner"
+              />
+              <button
+                type="submit"
+                disabled={isQuickSending}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-black text-xs shadow-md transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+              >
+                {isQuickSending ? (
+                  <Sparkles className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                <span>{isQuickSending ? 'جاري البث...' : 'بث 🚀'}</span>
+              </button>
+            </div>
+
+          </div>
+
+          {quickDirectiveFeedback && (
+            <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in ${
+              quickDirectiveFeedback.success ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-rose-100 text-rose-900 border border-rose-300'
+            }`}>
+              {quickDirectiveFeedback.success ? <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" /> : <AlertTriangle className="w-4 h-4 text-rose-700 shrink-0" />}
+              <span>{quickDirectiveFeedback.text}</span>
+            </div>
+          )}
+        </form>
       </section>
 
       {/* Desktop App Icons Container */}
@@ -329,7 +483,11 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
               <button
                 key={item.id}
                 onClick={() => {
-                  setActiveView(item.id as ActiveView);
+                  if (item.id === ('directives' as any)) {
+                    setIsDirectivesModalOpen(true);
+                  } else {
+                    setActiveView(item.id as ActiveView);
+                  }
                 }}
                 className="group flex flex-col items-center text-center cursor-pointer transition-all duration-200 transform hover:-translate-y-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 rounded-2xl p-2 w-full max-w-[130px]"
               >
@@ -368,10 +526,12 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
         </div>
       </div>
 
-      {/* Footer Info Note */}
-      <div className="mt-8 text-center text-xs text-[var(--theme-text-muted)] flex items-center justify-center gap-2">
-        <span>يمكنك أيضاً فتح القائمة الجانبية بالضغط على الأسطر الثلاثة (☰) في الشريط الأعلى.</span>
-      </div>
+      {/* Directives Full Management Modal */}
+      <DirectivesModal
+        isOpen={isDirectivesModalOpen}
+        onClose={() => setIsDirectivesModalOpen(false)}
+        schoolId={activeSchoolId}
+      />
 
     </div>
   );

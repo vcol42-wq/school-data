@@ -271,12 +271,29 @@ export async function exportSchoolDataWithProgress(
     // Step 2: Upsert School Identity & Pairing Profile
     // ----------------------------------------------------
     emit('step_school', 2, 'تصدير هوية المدرسة ورمز الاقتران', 20, `جاري تسجيل مدرسة (${schoolName}) ورمز (${pairingCode})...`, 'active');
+    
+    let timingConfig = {
+      schoolStartHour: '08:00',
+      lessonDurationMinutes: 45,
+      breakDurationMinutes: 10
+    };
+    try {
+      const savedCfg = typeof window !== 'undefined' ? localStorage.getItem('diyala_school_config') : null;
+      if (savedCfg) {
+        const parsed = JSON.parse(savedCfg);
+        if (parsed.schoolStartHour) timingConfig.schoolStartHour = parsed.schoolStartHour;
+        if (parsed.lessonDurationMinutes) timingConfig.lessonDurationMinutes = Number(parsed.lessonDurationMinutes);
+        if (parsed.breakDurationMinutes) timingConfig.breakDurationMinutes = Number(parsed.breakDurationMinutes);
+      }
+    } catch (_) {}
+
     const schoolPayload = [
       {
         id: schoolId,
         name: schoolName,
         pairing_code: pairingCode,
-        admin_email: adminEmail
+        admin_email: adminEmail,
+        config: timingConfig
       }
     ];
     const { error: schoolError } = await client.from('schools').upsert(schoolPayload, { onConflict: 'id' });
@@ -733,8 +750,8 @@ export async function exportSchoolDataWithProgress(
     // ----------------------------------------------------
     emit('step_schedule', 9, 'تصدير الجدول الأسبوعي للمدرسة', 98, 'جاري رفع خريطة جدول الحصص والتوقيتات...', 'active');
     const finalScheduleMap = (scheduleMap && Object.keys(scheduleMap).length > 0)
-      ? scheduleMap
-      : { 'الأحد': [], 'الإثنين': [], 'الثلاثاء': [], 'الأربعاء': [], 'الخميس': [] };
+      ? { ...scheduleMap, _timing: timingConfig }
+      : { 'الأحد': [], 'الإثنين': [], 'الثلاثاء': [], 'الأربعاء': [], 'الخميس': [], _timing: timingConfig };
 
     const { error: scheduleError } = await client.from('schedules').upsert({
       id: schoolId,
@@ -863,20 +880,65 @@ export async function fetchCloudTableRows(
   try {
     const client = getSupabase(schoolId);
 
-    // If viewing subject_assignments, attempt reading from SQL table or fallback to schools.config
+    // If viewing subject_assignments, prioritize verified clean assignments from schools.config
+    // and strictly filter out any legacy single-letter or exempt status rows
     if (tableName === 'subject_assignments') {
+      try {
+        const { data: schoolRow } = await client.from('schools').select('config').eq('id', schoolId).single();
+        const subAss = schoolRow?.config?.subject_assignments;
+        if (Array.isArray(subAss) && subAss.length > 0) {
+          const cleanConfigAss = subAss.filter((r: any) => {
+            const s = (r.subject || '').trim();
+            const g = (r.grade || '').trim();
+            if (s.length <= 1 || /^[أ-يa-zA-Z]$/.test(s)) return false;
+            if (s.includes('مفرغ') || s.includes('إدارة') || s.includes('تفرغ') || s.includes('شاغر')) return false;
+            return g.length > 0;
+          });
+          if (cleanConfigAss.length > 0) {
+            return { success: true, data: cleanConfigAss };
+          }
+        }
+      } catch (confErr) {
+        console.warn('Notice reading schools.config for subject assignments preview:', confErr);
+      }
+
       try {
         const { data: sqlData, error: sqlErr } = await client.from('subject_assignments').select('*').eq('school_id', schoolId).limit(limit);
         if (!sqlErr && sqlData && sqlData.length > 0) {
-          return { success: true, data: sqlData };
+          // Strictly sanitize and deduplicate sqlData
+          const seenKeys = new Set<string>();
+          const cleanSqlData: any[] = [];
+          
+          // Sort latest updated first
+          const sortedSql = [...sqlData].sort((a, b) => 
+            new Date(b.last_updated_at || 0).getTime() - new Date(a.last_updated_at || 0).getTime()
+          );
+
+          for (const row of sortedSql) {
+            const s = (row.subject || '').trim();
+            const g = (row.grade || '').trim();
+            const sec = (row.section || '').trim();
+
+            if (s.length <= 1 || /^[أ-يa-zA-Z]$/.test(s)) continue;
+            if (s.includes('مفرغ') || s.includes('إدارة') || s.includes('تفرغ') || s.includes('شاغر')) continue;
+            if (!g.includes('المتوسط') && !g.includes('الإعدادي') && !g.includes('الابتدائي')) continue;
+
+            const key = `${standardizeGradeName(g)}__${standardizeSectionName(sec)}__${s}`;
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key);
+              cleanSqlData.push({
+                ...row,
+                grade: standardizeGradeName(g),
+                section: standardizeSectionName(sec)
+              });
+            }
+          }
+
+          if (cleanSqlData.length > 0) {
+            return { success: true, data: cleanSqlData };
+          }
         }
       } catch {}
-
-      const { data: schoolRow } = await client.from('schools').select('config').eq('id', schoolId).single();
-      const subAss = schoolRow?.config?.subject_assignments;
-      if (Array.isArray(subAss) && subAss.length > 0) {
-        return { success: true, data: subAss };
-      }
     }
 
     let query = client.from(tableName).select('*').limit(limit);
@@ -985,10 +1047,13 @@ export async function deepCleanSchoolCloudData(
     await client.from('classes').delete().eq('school_id', schoolId);
     await client.from('subjects').delete().eq('school_id', schoolId);
     await client.from('teacher_assignments').delete().eq('school_id', schoolId);
+    try {
+      await client.from('subject_assignments').delete().eq('school_id', schoolId);
+    } catch {}
 
     return { 
       success: true, 
-      message: 'تم تفريغ وتطهير جداول الشعب والمواد والإسناد في السحابة بنجاح! أصبحت السحابة نقية 100%.' 
+      message: 'تم تفريغ وتطهير جداول الشعب والمواد والإسناد والرموز السرية في السحابة بنجاح! أصبحت السحابة نقية 100%.' 
     };
   } catch (err: any) {
     return { success: false, message: err.message || 'فشل التطهير السحابي' };

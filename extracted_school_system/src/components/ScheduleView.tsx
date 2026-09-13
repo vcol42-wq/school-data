@@ -94,10 +94,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       // 1. Save locally to localStorage
       localStorage.setItem('diyala_school_schedule', JSON.stringify(scheduleMap));
 
+      const enrichedScheduleMap = {
+        ...scheduleMap,
+        _timing: {
+          schoolStartHour: config.schoolStartHour || '08:00',
+          lessonDurationMinutes: Number(config.lessonDurationMinutes) || 45,
+          breakDurationMinutes: Number(config.breakDurationMinutes) || 10
+        }
+      };
+
       // 2. Direct upsert to Supabase
       const { error } = await client.from('schedules').upsert({
         id: schoolId,
-        schedule_map: scheduleMap
+        schedule_map: enrichedScheduleMap
       }, { onConflict: 'id', ignoreDuplicates: false });
 
       if (error) {
@@ -190,7 +199,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           return;
         }
 
-        // Standard Ministry Template for intermediate schools (أنصبة مرحلة المتوسطة المعتمدة رسمياً)
+        // Standard Ministry Template for intermediate schools (29 academic + 1 Thursday 6th Activity/Vacant = 30)
         const STANDARD_TEMPLATE = [
           { name: 'التربية الإسلامية', quota: 2 },
           { name: 'اللغة العربية', quota: 5 },
@@ -199,10 +208,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           { name: 'الكيمياء', quota: 2 },
           { name: 'الفيزياء', quota: 2 },
           { name: 'الأحياء', quota: 2 },
-          { name: 'الاجتماعيات', quota: 4 },
+          { name: 'الاجتماعيات', quota: 3 },
           { name: 'التربية الأخلاقية', quota: 1 },
           { name: 'التربية الرياضية', quota: 1 },
           { name: 'التربية الفنية', quota: 1 },
+          { name: 'شاغر / نشاط حر', quota: 1 },
         ];
 
         candidateSections = discovered.map((item, idx) => ({
@@ -210,22 +220,46 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           grade: item.grade,
           section: item.section,
           subjects: STANDARD_TEMPLATE.map((tmpl, sIdx) => {
-            const fallbackTeacher = staffList[sIdx % (staffList.length || 1)]
-              ? (staffList[sIdx % staffList.length].fullName || `${staffList[sIdx % staffList.length].firstName} ${staffList[sIdx % staffList.length].secondName}`.trim())
-              : 'أ. أستاذ المادة';
+            if (tmpl.name.includes('شاغر') || tmpl.name.includes('نشاط')) {
+              return {
+                id: `sub-${idx}-${sIdx}`,
+                subjectName: tmpl.name,
+                teacherName: 'شاغر',
+                weeklyLessons: tmpl.quota
+              };
+            }
+
+            // Match teacher by specialization or subject taught
+            const matchingTeachers = staffList.filter(st => {
+              const spec = (st.specialization || '').trim().toLowerCase();
+              const act = (st.actualSubjectTaught || '').trim().toLowerCase();
+              const sTitle = tmpl.name.toLowerCase();
+              return (spec && (sTitle.includes(spec) || spec.includes(sTitle))) ||
+                     (act && (sTitle.includes(act) || act.includes(sTitle)));
+            });
+
+            let assignedTeacher = 'أ. أستاذ المادة';
+            if (matchingTeachers.length > 0) {
+              const chosen = matchingTeachers[idx % matchingTeachers.length];
+              assignedTeacher = chosen.fullName || `${chosen.firstName} ${chosen.secondName}`.trim();
+            } else if (staffList.length > 0) {
+              const chosen = staffList[(sIdx + idx) % staffList.length];
+              assignedTeacher = chosen.fullName || `${chosen.firstName} ${chosen.secondName}`.trim();
+            }
+
             return {
               id: `sub-${idx}-${sIdx}`,
               subjectName: tmpl.name,
-              teacherName: fallbackTeacher,
+              teacherName: assignedTeacher,
               weeklyLessons: tmpl.quota
             };
           })
         }));
       }
 
-      // 2. Run smart fair solver with full rules (0 science in Lesson 6, 0 single/dual in Lesson 6, 0 lesson in Thursday Lesson 6)
+      // 2. Run smart fair solver with full charter rules
       const freshSeed = Date.now() + Math.random() * 100000;
-      const result = generateSmartFairSchedule(candidateSections, 400, freshSeed);
+      const result = generateSmartFairSchedule(candidateSections, 500, freshSeed);
 
       if (!result.success && result.collisions.length > 0) {
         if (!confirm(`⚠️ تم توليد الجدول مع (${result.collisions.length}) تضارب في أنصبة بعض المعلمين. هل ترغب في اعتماده وحفظه الآن؟`)) {
@@ -281,9 +315,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       // 5. Direct Cloud Sync to Supabase
       try {
         const client = getSupabase(activeSchoolId);
+        const enrichedDirectMap = {
+          ...result.scheduleMap,
+          _timing: {
+            schoolStartHour: config.schoolStartHour || '08:00',
+            lessonDurationMinutes: Number(config.lessonDurationMinutes) || 45,
+            breakDurationMinutes: Number(config.breakDurationMinutes) || 10
+          }
+        };
         await client.from('schedules').upsert({
           id: activeSchoolId,
-          schedule_map: result.scheduleMap
+          schedule_map: enrichedDirectMap
         }, { onConflict: 'id', ignoreDuplicates: false });
       } catch (err) {
         console.warn('Could not sync to cloud in background:', err);
@@ -481,9 +523,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     try {
       const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
       const client = getSupabase(schoolId);
+      const enrichedUpdateMap = {
+        ...updatedScheduleMap,
+        _timing: {
+          schoolStartHour: config.schoolStartHour || '08:00',
+          lessonDurationMinutes: Number(config.lessonDurationMinutes) || 45,
+          breakDurationMinutes: Number(config.breakDurationMinutes) || 10
+        }
+      };
       await client.from('schedules').upsert({
         id: schoolId,
-        schedule_map: updatedScheduleMap
+        schedule_map: enrichedUpdateMap
       }, { onConflict: 'id', ignoreDuplicates: false });
     } catch (err) {
       console.warn('Could not sync cell edit to cloud:', err);

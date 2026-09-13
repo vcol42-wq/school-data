@@ -268,6 +268,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       alert('✅ تم تغيير المدرسة بنجاح! تم تصفير كافة البيانات وتوليد رمز اقتران جديد للربط بين التطبيقات.');
     } else {
       setConfig({ ...formConfig });
+      try {
+        const schoolId = formConfig.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+        const client = getSupabase(schoolId);
+        client.from('schools').upsert({
+          id: schoolId,
+          name: formConfig.schoolName,
+          pairing_code: formConfig.pairingCode || '112233',
+          admin_email: formConfig.adminEmail || '',
+          config: {
+            schoolStartHour: formConfig.schoolStartHour || '08:00',
+            lessonDurationMinutes: Number(formConfig.lessonDurationMinutes) || 45,
+            breakDurationMinutes: Number(formConfig.breakDurationMinutes) || 10
+          }
+        }, { onConflict: 'id' }).then(() => {});
+      } catch (_) {}
       alert('تم حفظ كافة إعدادات النظام وتحديث التوقيتات وبيانات المدير والمدرسة بنجاح!');
     }
   };

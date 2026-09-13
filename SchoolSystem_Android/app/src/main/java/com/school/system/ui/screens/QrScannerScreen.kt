@@ -12,11 +12,14 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import android.widget.Toast
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -149,6 +152,66 @@ fun QrScannerScreen(
         }
     }
 
+    var showManualCodeDialog by remember { mutableStateOf(false) }
+    var manualCodeInput by remember { mutableStateOf("") }
+
+    if (showManualCodeDialog) {
+        AlertDialog(
+            onDismissRequest = { showManualCodeDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFF2563EB))
+                    Spacer(Modifier.width(8.dp))
+                    Text("الربط برمز المدرسة 🔑", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "أدخل رمز الاقتران الخاص بمدرستك (المكون عادة من 6 أرقام مثل: 112233، أو معرّف المدرسة SCH-...)",
+                        fontSize = 12.5.sp,
+                        color = Color(0xFF475569),
+                        lineHeight = 18.sp
+                    )
+                    OutlinedTextField(
+                        value = manualCodeInput,
+                        onValueChange = { manualCodeInput = it },
+                        label = { Text("رمز أو كود المدرسة") },
+                        placeholder = { Text("مثال: 112233") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = manualCodeInput.trim()
+                        if (clean.isNotEmpty()) {
+                            showManualCodeDialog = false
+                            onCodeScanned(clean)
+                        } else {
+                            Toast.makeText(context, "يرجى إدخال كود المدرسة أولاً", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("ربط وتحقق الآن ✓", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showManualCodeDialog = false },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -156,6 +219,11 @@ fun QrScannerScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { showManualCodeDialog = true }) {
+                        Text("إدخال رمز 🔢", color = Color(0xFF38BDF8), fontWeight = FontWeight.Bold)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -183,11 +251,12 @@ fun QrScannerScreen(
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 64.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .padding(bottom = 48.dp, start = 16.dp, end = 16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Surface(
-                            color = Color.Black.copy(alpha = 0.7f),
+                            color = Color.Black.copy(alpha = 0.75f),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text(
@@ -197,6 +266,17 @@ fun QrScannerScreen(
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
+                        }
+
+                        Button(
+                            onClick = { showManualCodeDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("أو إدخال رمز المدرسة يدوياً (الكود) 🔢", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 } else {
@@ -321,7 +401,23 @@ fun QrScannerScreen(
             }
         } else {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("يرجى منح إذن الكاميرا لمسح الرمز")
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(48.dp))
+                    Text("يرجى منح إذن الكاميرا لمسح الرمز أو إدخال الكود يدوياً", color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Button(
+                        onClick = { showManualCodeDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("إدخال رمز المدرسة يدوياً 🔢", fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }

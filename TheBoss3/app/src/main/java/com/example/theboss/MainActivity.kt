@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.theboss.data.worker.StudentSyncWorker
 import com.example.theboss.ui.auth.JoinRequestScreen
 import com.example.theboss.ui.auth.OnboardingScreen
 import com.example.theboss.ui.auth.QrScannerScreen
@@ -45,11 +46,20 @@ class MainActivity : ComponentActivity() {
             requestPermissionLauncher.launch(permissions.toTypedArray())
         }
 
+        // Schedule continuous background periodic sync for teacher updates and lesson preparations
+        StudentSyncWorker.schedule(applicationContext)
+        com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(applicationContext)
+
         setContent {
             TheBossTheme {
                 AppNavigation()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(applicationContext)
     }
 }
 

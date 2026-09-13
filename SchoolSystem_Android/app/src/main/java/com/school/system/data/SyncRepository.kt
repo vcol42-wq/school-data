@@ -1,11 +1,14 @@
 package com.school.system.data
 
+import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.school.system.data.dao.*
 import com.school.system.data.model.*
+import com.school.system.utils.TeacherNotificationHelper
 import com.school.system.widget.DailyScheduleWidgetProvider
 import com.school.system.widget.FullScheduleWidgetProvider
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
 import retrofit2.Response
@@ -130,6 +133,16 @@ data class SupabaseSchoolDto(
 data class SupabaseScheduleDto(
     val id: String,
     val schedule_map: Map<String, Any>?
+)
+
+data class SupabaseDirectiveDto(
+    val id: String = "",
+    val school_id: String = "",
+    val title: String = "",
+    val content: String = "",
+    val target_role: String = "all",
+    val is_active: Boolean = true,
+    val created_at: String? = null
 )
 
 data class SupabaseJoinRequestDto(
@@ -268,6 +281,15 @@ interface SupabaseApi {
         @Body assignment: SupabaseDailyAssignmentDto
     ): Response<List<SupabaseDailyAssignmentDto>>
 
+    @POST("rest/v1/daily_assignments")
+    @Headers("Prefer: return=minimal")
+    suspend fun insertDailyAssignmentSimple(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Body assignment: SupabaseDailyAssignmentDto
+    ): Response<Void>
+
     @GET("rest/v1/daily_assignments")
     suspend fun getDailyAssignments(
         @Header("apikey") apiKey: String,
@@ -350,10 +372,22 @@ interface SupabaseApi {
         @Header("x-school-id") schoolId: String,
         @Body request: SupabaseJoinRequestDto
     ): Response<List<SupabaseJoinRequestDto>>
+
+    @GET("rest/v1/directives")
+    suspend fun getDirectives(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Query("school_id") schoolFilter: String,
+        @Query("target_role") roleFilter: String = "in.(all,teacher,teachers,staff)",
+        @Query("is_active") activeFilter: String = "eq.true",
+        @Query("order") order: String = "created_at.desc"
+    ): Response<List<SupabaseDirectiveDto>>
 }
 
 @Singleton
 class SyncRepository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val configDao: ConfigDao,
     private val studentDao: StudentDao,
     private val packageDao: ClassPackageDao,
@@ -420,6 +454,88 @@ class SyncRepository @Inject constructor(
         }
         
         return Pair(url, key)
+    }
+
+    /**
+     * استرجاع أقفال رصد الدرجات حسب الأشهر والفترات المحددة من إدارة المدرسة
+     */
+    suspend fun fetchGradeLocks(schoolId: String): Map<String, Boolean> {
+        if (schoolId.isBlank()) return emptyMap()
+        return try {
+            val (url, key) = resolveCredentials(null, null)
+            val api = getApi(url)
+            val cleanSchoolId = schoolId.trim()
+            val response = api.getSchools(
+                apiKey = key,
+                auth = "Bearer $key",
+                schoolId = cleanSchoolId,
+                idFilter = "eq.$cleanSchoolId"
+            )
+            if (response.isSuccessful) {
+                val school = response.body()?.firstOrNull()
+                val config = school?.config
+                val locksObj = config?.get("grade_locks")
+                if (locksObj is Map<*, *>) {
+                    locksObj.mapNotNull { (k, v) ->
+                        val keyStr = k?.toString() ?: return@mapNotNull null
+                        val boolVal = when (v) {
+                            is Boolean -> v
+                            is String -> v.toBoolean()
+                            is Number -> v.toInt() == 1
+                            else -> false
+                        }
+                        keyStr to boolVal
+                    }.toMap()
+                } else {
+                    emptyMap()
+                }
+            } else {
+                emptyMap()
+            }
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    suspend fun verifySchoolByPairingCode(code: String): SupabaseSchoolDto? {
+        return try {
+            val clean = code.trim()
+            if (clean.isBlank()) return null
+            val (url, key) = resolveCredentials(null, null)
+            val api = getApi(url)
+
+            // 1. Check pairing_code
+            var response = api.getSchools(
+                apiKey = key,
+                auth = "Bearer $key",
+                pairingCodeFilter = "eq.$clean"
+            )
+            if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                return response.body()!!.first()
+            }
+
+            // 2. Check idFilter
+            response = api.getSchools(
+                apiKey = key,
+                auth = "Bearer $key",
+                idFilter = "eq.$clean"
+            )
+            if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                return response.body()!!.first()
+            }
+
+            // 3. Fallback: all schools match
+            val allResponse = api.getSchools(apiKey = key, auth = "Bearer $key")
+            if (allResponse.isSuccessful && !allResponse.body().isNullOrEmpty()) {
+                return allResponse.body()!!.firstOrNull { s ->
+                    s.pairing_code.equals(clean, ignoreCase = true) || s.id.equals(clean, ignoreCase = true)
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.e("SyncRepository", "verifySchoolByPairingCode error: ${e.message}")
+            null
+        }
     }
 
     /**
@@ -829,15 +945,62 @@ class SyncRepository @Inject constructor(
                 }
             }
 
+            // 1.5 Check schools.config.teacher_profiles (The gold standard source of truth for unified PIN)
+            if (matchedTeacher == null) {
+                try {
+                    val schoolRes = api.getSchools(apiKey = apiKey, auth = authHeader, schoolId = schoolId, idFilter = "eq.$schoolId")
+                    if (schoolRes.isSuccessful && !schoolRes.body().isNullOrEmpty()) {
+                        val schoolDto = schoolRes.body()!!.firstOrNull()
+                        val configProfiles = (schoolDto?.config?.get("teacher_profiles") as? List<*>)
+                        if (!configProfiles.isNullOrEmpty()) {
+                            val pinCandidates = listOf(targetPin, pairingCode, cleanInput).filter { it.isNotBlank() }
+                            for (rawProf in configProfiles) {
+                                if (rawProf !is Map<*, *>) continue
+                                val profPin = normalizeArabic(rawProf["secretCode"]?.toString()?.trim() ?: "")
+                                val profName = rawProf["teacherName"]?.toString()?.trim() ?: ""
+                                val profSpec = rawProf["specialization"]?.toString()?.trim() ?: ""
+                                val profId = rawProf["teacherId"]?.toString()?.trim() ?: ""
+                                val isExempt = rawProf["isExempt"] == true || rawProf["isExempt"]?.toString() == "true"
+                                if (isExempt) continue
+
+                                for (pin in pinCandidates) {
+                                    if (profPin.isNotBlank() && profPin == normalizeArabic(pin)) {
+                                        matchedTeacher = SupabaseTeacherDto(
+                                            id = profId.ifBlank { "tch_${profName.hashCode()}" },
+                                            name = profName.ifBlank { "أستاذ المادة" },
+                                            specialization = profSpec
+                                        )
+                                        break
+                                    }
+                                }
+                                if (matchedTeacher != null) break
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("SyncRepository", "Notice checking config teacher_profiles: ${e.message}")
+                }
+            }
+
             // 2. If not matched, lookup by secret_code (PIN) in subject_assignments & teacher_assignments!
             if (matchedTeacher == null) {
                 val pinCandidates = listOf(targetPin, pairingCode, cleanInput).filter { it.isNotBlank() }
                 
-                // 2.1 Check subject_assignments (where desktop stores secret_code and teacher_name)
+                // 2.1 Check subject_assignments with strict sanity filtering (reject single letters / exempt titles)
                 try {
                     val subAssignRes = api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
                     if (subAssignRes.isSuccessful && !subAssignRes.body().isNullOrEmpty()) {
-                        val subAssignments = subAssignRes.body()!!
+                        val subAssignments = subAssignRes.body()!!.filter { s ->
+                            val subj = (s.subject ?: "").trim()
+                            val grd = (s.grade ?: "").trim()
+                            subj.length > 1 &&
+                            !subj.matches("^[أ-يa-zA-Z]$".toRegex()) &&
+                            !subj.contains("مفرغ") &&
+                            !subj.contains("إدارة") &&
+                            !subj.contains("تفرغ") &&
+                            !subj.contains("شاغر") &&
+                            (grd.contains("المتوسط") || grd.contains("الإعدادي") || grd.contains("الابتدائي"))
+                        }
                         for (pin in pinCandidates) {
                             val foundSub = subAssignments.find { (it.secret_code ?: "").trim() == pin.trim() }
                             if (foundSub != null) {
@@ -1257,9 +1420,14 @@ class SyncRepository @Inject constructor(
                 val subRes = api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
                 if (subRes.isSuccessful && !subRes.body().isNullOrEmpty()) {
                     subRes.body()!!.forEach { s ->
+                        val rawSub = (s.subject ?: "").trim()
+                        if (rawSub.length <= 1 || rawSub.matches("^[أ-يa-zA-Z]$".toRegex()) || rawSub.contains("مفرغ") || rawSub.contains("إدارة") || rawSub.contains("تفرغ") || rawSub.contains("شاغر")) return@forEach
+
                         val stdGrd = standardizeGradeName(s.grade)
                         val stdSec = standardizeSectionName(s.section)
-                        val stdSubj = standardizeSubjectName(s.subject)
+                        val stdSubj = standardizeSubjectName(rawSub)
+                        if (stdSubj.isBlank() || stdSubj.length <= 1) return@forEach
+
                         val key = "$stdGrd-$stdSec-$stdSubj"
                         val existing = resultMap[key]
                         val tName = s.teacher_name?.takeIf { it.isNotBlank() } ?: existing?.teacherName
@@ -1935,7 +2103,19 @@ class SyncRepository @Inject constructor(
 
             if (scheduleJson != null) {
                 val prefs = context.getSharedPreferences("diyala_school_prefs", android.content.Context.MODE_PRIVATE)
-                prefs.edit().putString("synced_schedule", scheduleJson).apply()
+                val editor = prefs.edit().putString("synced_schedule", scheduleJson)
+                try {
+                    val root = com.google.gson.Gson().fromJson<Map<String, Any>>(scheduleJson, object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type)
+                    val timingObj = root?.get("_timing") as? Map<*, *>
+                    if (timingObj != null) {
+                        timingObj["schoolStartHour"]?.toString()?.let { editor.putString("school_start_hour", it) }
+                        (timingObj["lessonDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("lesson_duration_minutes", it) }
+                        (timingObj["breakDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("break_duration_minutes", it) }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                editor.apply()
 
                 try {
                     val widgetIntent1 = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
@@ -1966,8 +2146,33 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val resp = api.insertDailyAssignment(apiKey, authHeader, assignment.school_id, assignment)
-            resp.isSuccessful
+            val cleanSchoolId = assignment.school_id.trim().ifEmpty { "SCH-KAB2-6884" }
+            val cleanTeacherId = assignment.teacher_id.trim().ifEmpty { "teacher_01" }
+
+            val cleanAssignment = assignment.copy(
+                school_id = cleanSchoolId,
+                teacher_id = cleanTeacherId
+            )
+
+            // Try return=minimal first (standard HTTP 201 Created)
+            val fallbackResp = api.insertDailyAssignmentSimple(apiKey, authHeader, cleanSchoolId, cleanAssignment)
+            if (fallbackResp.isSuccessful) {
+                Log.d("SyncRepository", "Daily assignment inserted successfully")
+                true
+            } else {
+                val err = fallbackResp.errorBody()?.string()
+                Log.w("SyncRepository", "Insert assignment minimal failed: ${fallbackResp.code()} - $err")
+                if (fallbackResp.code() == 404) {
+                    Log.e("SyncRepository", "CRITICAL: 'daily_assignments' table does not exist in Supabase! Please execute setup_daily_assignments_and_chat.sql in Supabase SQL Editor.")
+                }
+                val resp = api.insertDailyAssignment(apiKey, authHeader, cleanSchoolId, cleanAssignment)
+                if (resp.isSuccessful) {
+                    true
+                } else {
+                    Log.w("SyncRepository", "Insert assignment representation failed: ${resp.code()} - ${resp.errorBody()?.string()}")
+                    false
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             false
@@ -2014,6 +2219,56 @@ class SyncRepository @Inject constructor(
             val orFilter = "(sender_id.eq.$teacherId,receiver_id.eq.$teacherId)"
             val resp = api.getDirectMessages(apiKey, authHeader, schoolId, "eq.$schoolId", orFilter)
             if (resp.isSuccessful) resp.body() ?: emptyList() else emptyList()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    private val _directives = kotlinx.coroutines.flow.MutableStateFlow<List<SupabaseDirectiveDto>>(emptyList())
+    val directives: kotlinx.coroutines.flow.StateFlow<List<SupabaseDirectiveDto>> = _directives
+
+    suspend fun fetchAndNotifyDirectives(targetSchoolId: String? = null): List<SupabaseDirectiveDto> {
+        return try {
+            val conf = configDao.getConfig().first() ?: return emptyList()
+            val schoolId = targetSchoolId?.ifEmpty { conf.schoolId } ?: conf.schoolId
+            if (schoolId.isEmpty() || schoolId == "school_01") return emptyList()
+
+            val (url, apiKey) = resolveCredentials(null, null)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            val resp = api.getDirectives(
+                apiKey = apiKey,
+                auth = authHeader,
+                schoolId = schoolId,
+                schoolFilter = "eq.$schoolId"
+            )
+
+            if (resp.isSuccessful) {
+                val list = resp.body()?.filter { it.is_active } ?: emptyList()
+                _directives.value = list
+
+                val prefs = context.getSharedPreferences("teacher_directives_prefs", Context.MODE_PRIVATE)
+                val seenIds = prefs.getStringSet("seen_directive_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+
+                val newDirectives = list.filter { it.id.isNotEmpty() && !seenIds.contains(it.id) }
+                if (newDirectives.isNotEmpty()) {
+                    for (dir in newDirectives) {
+                        TeacherNotificationHelper.showBroadcastNotification(
+                            context = context,
+                            title = dir.title,
+                            message = dir.content
+                        )
+                        seenIds.add(dir.id)
+                    }
+                    prefs.edit().putStringSet("seen_directive_ids", seenIds).apply()
+                }
+                list
+            } else {
+                Log.w("SyncRepository", "fetchDirectives returned ${resp.code()}: ${resp.errorBody()?.string()}")
+                emptyList()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()

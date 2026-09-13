@@ -4,62 +4,358 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#0F172A"
-    android:padding="12dp">
+    android:background="@drawable/widget_bg"
+    android:padding="5dp">
 
-    <!-- Top Bar: Title & Day -->
+    <!-- Top Navigation Bar for Student Timetable -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:paddingBottom="3dp"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp">
 
-        <TextView
-            android:id="@+id/widget_day_title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="جدول اليوم 📅"
-            android:textColor="#FBBF24"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+        <!-- Refresh Button -->
+        <ImageView
+            android:id="@+id/widget_btn_refresh"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:src="@drawable/ic_widget_refresh"
+            android:padding="4dp"
+            android:background="@drawable/widget_nav_btn_bg"
+            android:contentDescription="تحديث" />
 
+        <!-- Student Info / Grade & Section -->
         <TextView
             android:id="@+id/widget_student_info"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="الثالث المتوسط (أ)"
+            android:text="🎒 الأول المتوسط (أ)"
             android:textColor="#94A3B8"
-            android:textSize="11sp" />
+            android:textSize="10.5sp"
+            android:textStyle="bold"
+            android:layout_marginStart="6dp" />
+
+        <!-- Spacer -->
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Prev Day Button -->
+        <TextView
+            android:id="@+id/widget_btn_prev_day"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="◀"
+            android:textColor="#38BDF8"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/widget_nav_btn_bg" />
+
+        <!-- Active Day Header Badge -->
+        <TextView
+            android:id="@+id/widget_day_title"
+            android:layout_width="wrap_content"
+            android:layout_height="24dp"
+            android:text="الأحد"
+            android:textColor="#FFFFFF"
+            android:textSize="11.5sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:background="@drawable/widget_student_card_bg"
+            android:layout_marginStart="3dp"
+            android:layout_marginEnd="3dp" />
+
+        <!-- Next Day Button -->
+        <TextView
+            android:id="@+id/widget_btn_next_day"
+            android:layout_width="28dp"
+            android:layout_height="24dp"
+            android:text="▶"
+            android:textColor="#38BDF8"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/widget_nav_btn_bg" />
     </LinearLayout>
 
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:background="#334155"
-        android:layout_marginTop="6dp"
-        android:layout_marginBottom="8dp" />
+        android:background="#1E293B"
+        android:layout_marginBottom="3dp" />
 
-    <!-- Today's Lessons Display -->
-    <TextView
-        android:id="@+id/widget_schedule_summary"
+    <!-- 6 Columns for Lessons 1 to 6 with Homework Highlighting -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:text="جاري تحميل حصص اليوم..."
-        android:textColor="#F8FAFC"
-        android:textSize="12sp"
-        android:lineSpacingExtra="3dp"
-        android:gravity="center_vertical" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
 
-    <!-- Bottom Status / Tap to Open -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="اضغط لفتح الجدول والتفاصيل ⚡"
-        android:textColor="#38BDF8"
-        android:textSize="10sp"
-        android:gravity="center"
-        android:layout_marginTop="4dp" />
+        <!-- Period 1 -->
+        <LinearLayout
+            android:id="@+id/col_student_lesson_1"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/widget_student_card_bg"
+            android:padding="2dp">
+
+            <TextView
+                android:id="@+id/student_num_1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1"
+                android:textColor="#38BDF8"
+                android:textSize="9.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/student_subject_1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="إسلامية"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/student_hw_1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Period 2 -->
+        <LinearLayout
+            android:id="@+id/col_student_lesson_2"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/widget_student_card_bg"
+            android:padding="2dp">
+
+            <TextView
+                android:id="@+id/student_num_2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2"
+                android:textColor="#38BDF8"
+                android:textSize="9.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/student_subject_2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="رياضيات"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/student_hw_2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Period 3 -->
+        <LinearLayout
+            android:id="@+id/col_student_lesson_3"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/widget_student_card_bg"
+            android:padding="2dp">
+
+            <TextView
+                android:id="@+id/student_num_3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3"
+                android:textColor="#38BDF8"
+                android:textSize="9.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/student_subject_3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="عربي"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/student_hw_3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Period 4 -->
+        <LinearLayout
+            android:id="@+id/col_student_lesson_4"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/widget_student_card_bg"
+            android:padding="2dp">
+
+            <TextView
+                android:id="@+id/student_num_4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="4"
+                android:textColor="#38BDF8"
+                android:textSize="9.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/student_subject_4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="علوم"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/student_hw_4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Period 5 -->
+        <LinearLayout
+            android:id="@+id/col_student_lesson_5"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/widget_student_card_bg"
+            android:padding="2dp">
+
+            <TextView
+                android:id="@+id/student_num_5"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="5"
+                android:textColor="#38BDF8"
+                android:textSize="9.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/student_subject_5"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="إنكليزي"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/student_hw_5"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <!-- Period 6 -->
+        <LinearLayout
+            android:id="@+id/col_student_lesson_6"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginStart="2dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:background="@drawable/widget_student_card_bg"
+            android:padding="2dp">
+
+            <TextView
+                android:id="@+id/student_num_6"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="6"
+                android:textColor="#38BDF8"
+                android:textSize="9.5sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/student_subject_6"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="اجتماعيات"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/student_hw_6"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="-"
+                android:textColor="#93C5FD"
+                android:textSize="9sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+    </LinearLayout>
 
 </LinearLayout>

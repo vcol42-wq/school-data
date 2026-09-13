@@ -30,10 +30,12 @@ class StudentSyncWorker(
             val schoolId = repository.getSchoolId()
             if (!schoolId.isNullOrBlank()) {
                 repository.syncDailyAssignments(schoolId)
+                repository.syncDirectives(schoolId)
                 repository.syncTimetableAndInstructions(schoolId)
                 repository.syncDirectMessages()
                 val deviceId = repository.getDeviceId()
                 repository.syncAttendance(schoolId, deviceId)
+                com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(applicationContext)
             }
             Result.success()
         } catch (e: Exception) {

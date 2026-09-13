@@ -36,7 +36,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -537,14 +539,46 @@ fun StudentTimetableScreen(
         }
     }
 
-    val periodHeaders = listOf(
-        PeriodHeaderData("الأولى", "8:00 ص", Color(0xFFFEF08A), Color(0xFFCA8A04)),  // Yellow
-        PeriodHeaderData("الثانية", "8:50 ص", Color(0xFFBAE6FD), Color(0xFF0284C7)),  // Light Blue
-        PeriodHeaderData("الثالثة", "9:40 ص", Color(0xFFFEF08A), Color(0xFFCA8A04)),  // Yellow
-        PeriodHeaderData("الرابعة", "10:30 ص", Color(0xFFFBCFE8), Color(0xFFDB2777)), // Pink
-        PeriodHeaderData("الخامسة", "11:20 ص", Color(0xFFBAE6FD), Color(0xFF0284C7)), // Light Blue
-        PeriodHeaderData("السادسة", "12:10 م", Color(0xFFFEF08A), Color(0xFFCA8A04))  // Yellow
-    )
+    val periodHeaders = remember(rawScheduleJson) {
+        val timingObj = try {
+            val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
+            rootObj?.get("_timing") as? Map<*, *>
+        } catch (e: Exception) { null }
+
+        val startHourStr = timingObj?.get("schoolStartHour")?.toString() ?: prefs.getString("school_start_hour", "08:00") ?: "08:00"
+        val lessonDur = (timingObj?.get("lessonDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("lesson_duration_minutes", 45)
+        val breakDur = (timingObj?.get("breakDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("break_duration_minutes", 10)
+
+        val names = listOf("الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة")
+        val bgColors = listOf(
+            Color(0xFFFEF08A), Color(0xFFBAE6FD), Color(0xFFFEF08A),
+            Color(0xFFFBCFE8), Color(0xFFBAE6FD), Color(0xFFFEF08A)
+        )
+        val textColors = listOf(
+            Color(0xFFCA8A04), Color(0xFF0284C7), Color(0xFFCA8A04),
+            Color(0xFFDB2777), Color(0xFF0284C7), Color(0xFFCA8A04)
+        )
+
+        val parts = startHourStr.split(":").mapNotNull { it.toIntOrNull() }
+        val startH = if (parts.isNotEmpty()) parts[0] else 8
+        val startM = if (parts.size > 1) parts[1] else 0
+
+        names.mapIndexed { idx, name ->
+            val lessonNum = idx + 1
+            var currentTotalMinutes = startH * 60 + startM
+            for (i in 1 until lessonNum) {
+                currentTotalMinutes += lessonDur + breakDur
+            }
+            var h = currentTotalMinutes / 60
+            val m = currentTotalMinutes % 60
+            val period = if (h in 12..23) "م" else "ص"
+            h %= 12
+            if (h == 0) h = 12
+            val timeFormatted = String.format(java.util.Locale.US, "%02d:%02d %s", h, m, period)
+
+            PeriodHeaderData(name, timeFormatted, bgColors[idx % bgColors.size], textColors[idx % textColors.size])
+        }
+    }
 
     val parsedTimetable: Map<String, Map<Int, StudentLessonSlot>> = remember(rawScheduleJson, customOverridesJson, studentGrade, studentSection) {
         val result = mutableMapOf<String, MutableMap<Int, StudentLessonSlot>>()
@@ -647,13 +681,72 @@ fun StudentTimetableScreen(
         return if (defaultKey != null) defaultLessonsMap[defaultKey] ?: emptyMap() else emptyMap()
     }
 
+    fun matchSubjectName(s1: String?, s2: String?): Boolean {
+        if (s1.isNullOrBlank() || s2.isNullOrBlank()) return false
+        val std1 = shortenSubject(s1).replace("[أإآ]".toRegex(), "ا").replace("[ةه]".toRegex(), "ه").replace("[ىي]".toRegex(), "ي").lowercase()
+        val std2 = shortenSubject(s2).replace("[أإآ]".toRegex(), "ا").replace("[ةه]".toRegex(), "ه").replace("[ىي]".toRegex(), "ي").lowercase()
+        return std1.contains(std2) || std2.contains(std1)
+    }
+
     fun findPrepForSubject(subj: String): AssignmentEntity? {
         if (subj.isBlank() || subj == "شاغر") return null
-        val sNorm = norm(subj)
         return assignments.firstOrNull {
-            val aNorm = norm(it.subjectName)
-            aNorm.contains(sNorm) || sNorm.contains(aNorm)
+            matchSubjectName(it.subjectName, subj) || matchSubjectName(it.subjectId, subj)
         }
+    }
+
+    fun isNextUpcomingSlotForSubject(targetDay: String, targetPeriod: Int, subj: String): Boolean {
+        if (subj.isBlank() || subj == "شاغر") return false
+
+        data class SlotPos(val dayIdx: Int, val periodNum: Int, val dayName: String)
+        val matchingSlots = mutableListOf<SlotPos>()
+
+        daysList.forEachIndexed { dIdx, dName ->
+            val slots = getSlotsForDay(dName)
+            slots.forEach { (pNum, slot) ->
+                if (matchSubjectName(slot.subject, subj)) {
+                    matchingSlots.add(SlotPos(dIdx, pNum, dName))
+                }
+            }
+        }
+
+        if (matchingSlots.isEmpty()) return false
+        if (matchingSlots.size == 1) {
+            val single = matchingSlots[0]
+            return single.dayName == targetDay && single.periodNum == targetPeriod
+        }
+
+        val cal = Calendar.getInstance()
+        val calDay = cal.get(Calendar.DAY_OF_WEEK)
+        val currentDayIdx = when (calDay) {
+            Calendar.SUNDAY -> 0
+            Calendar.MONDAY -> 1
+            Calendar.TUESDAY -> 2
+            Calendar.WEDNESDAY -> 3
+            Calendar.THURSDAY -> 4
+            else -> 0
+        }
+
+        val currentHour = cal.get(Calendar.HOUR_OF_DAY)
+        val currentPeriodEstimate = when {
+            currentHour < 8 -> 1
+            currentHour == 8 -> 1
+            currentHour == 9 -> 2
+            currentHour == 10 -> 3
+            currentHour == 11 -> 4
+            currentHour == 12 -> 5
+            currentHour == 13 -> 6
+            else -> 7
+        }
+
+        val currentLinearPos = currentDayIdx * 10 + currentPeriodEstimate
+
+        val upcomingSlot = matchingSlots
+            .filter { (it.dayIdx * 10 + it.periodNum) >= currentLinearPos }
+            .minByOrNull { it.dayIdx * 10 + it.periodNum }
+            ?: matchingSlots.minByOrNull { it.dayIdx * 10 + it.periodNum }
+
+        return upcomingSlot?.dayName == targetDay && upcomingSlot?.periodNum == targetPeriod
     }
 
     fun findDirectiveForSubject(subj: String): DirectiveDto? {
@@ -860,7 +953,8 @@ fun StudentTimetableScreen(
                                             val subj = slot?.subject ?: ""
                                             val prep = findPrepForSubject(subj)
                                             val directive = findDirectiveForSubject(subj)
-                                            val hasPrep = prep != null || directive != null
+                                            val isNextUpcoming = prep != null && prep.isCompleted == false && isNextUpcomingSlotForSubject(dayName, i, subj)
+                                            val hasPrep = isNextUpcoming || directive != null
                                             val isVacant = subj.isBlank() || subj == "شاغر"
 
                                             val cardBrush = if (hasPrep) activeTheme.prepCardBg else activeTheme.lessonCardBg
@@ -897,26 +991,23 @@ fun StudentTimetableScreen(
                                                         verticalArrangement = Arrangement.Center
                                                     ) {
                                                         if (hasPrep) {
-                                                            Surface(
+                                                            Text(
+                                                                text = if (subj.isNotBlank()) "📝 تحضير $subj" else "📝 تحضير",
                                                                 color = Color(0xFFD97706),
-                                                                shape = RoundedCornerShape(2.dp),
-                                                                modifier = Modifier.padding(bottom = 1.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = "تحضير 📝",
-                                                                    color = Color.White,
-                                                                    fontSize = 6.5.sp,
-                                                                    fontWeight = FontWeight.Black,
-                                                                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.5.dp)
-                                                                )
-                                                            }
+                                                                fontSize = 7.5.sp,
+                                                                fontWeight = FontWeight.Black,
+                                                                textAlign = TextAlign.Center,
+                                                                maxLines = 1,
+                                                                lineHeight = 9.sp,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
                                                         }
 
                                                         Text(
                                                             text = if (!isVacant) subj else "",
                                                             fontWeight = FontWeight.Black,
-                                                            fontSize = 10.5.sp,
-                                                            color = if (hasPrep) activeTheme.prepSubjectText else activeTheme.lessonSubjectText,
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF0F172A),
                                                             textAlign = TextAlign.Center,
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis
@@ -997,6 +1088,7 @@ fun StudentTimetableScreen(
                         .fillMaxSize()
                         .padding(innerPadding)
                         .background(activeTheme.screenBgBrush)
+                        .verticalScroll(rememberScrollState())
                 ) {
                     Surface(
                         color = activeTheme.headerBannerBg,
@@ -1015,19 +1107,45 @@ fun StudentTimetableScreen(
                                 fontWeight = FontWeight.Black,
                                 fontSize = 14.5.sp
                             )
+                            if (directives.isNotEmpty()) {
+                                Surface(
+                                    color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF10B981))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Campaign,
+                                            contentDescription = null,
+                                            tint = Color(0xFF10B981),
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = "${directives.size} توجيه إداري",
+                                            color = Color(0xFF10B981),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
+                            .fillMaxWidth()
                             .padding(horizontal = 4.dp, vertical = 4.dp)
                     ) {
                         val horizontalScrollState = rememberScrollState()
 
                         Column(
                             modifier = Modifier
-                                .fillMaxSize()
+                                .fillMaxWidth()
                                 .horizontalScroll(horizontalScrollState)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1070,100 +1188,96 @@ fun StudentTimetableScreen(
 
                             Spacer(Modifier.height(3.dp))
 
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                items(daysList) { dayName ->
-                                    val daySlots = getSlotsForDay(dayName)
-                                    val dayStyle = dayStylesMap[dayName] ?: DayStyle(dayName, activeTheme.dayCardBg, activeTheme.dayCardBorder, activeTheme.dayCardText)
+                            daysList.forEach { dayName ->
+                                val daySlots = getSlotsForDay(dayName)
+                                val dayStyle = dayStylesMap[dayName] ?: DayStyle(dayName, activeTheme.dayCardBg, activeTheme.dayCardBorder, activeTheme.dayCardText)
 
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(bottom = 3.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(66.dp)
+                                            .height(46.dp)
+                                            .shadow(2.dp, RoundedCornerShape(8.dp))
+                                            .background(dayStyle.bg, RoundedCornerShape(8.dp))
+                                            .border(1.5.dp, dayStyle.border, RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = dayName,
+                                            color = dayStyle.text,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 11.5.sp,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+
+                                    for (i in 1..6) {
+                                        val slot = daySlots[i]
+                                        val subj = slot?.subject ?: ""
+                                        val prep = findPrepForSubject(subj)
+                                        val directive = findDirectiveForSubject(subj)
+                                        val isNextUpcoming = prep != null && prep.isCompleted == false && isNextUpcomingSlotForSubject(dayName, i, subj)
+                                        val hasPrep = isNextUpcoming || directive != null
+                                        val isVacant = subj.isBlank() || subj == "شاغر"
+
+                                        val cardBrush = if (hasPrep) activeTheme.prepCardBg else activeTheme.lessonCardBg
+                                        val cardBorderColor = if (hasPrep) activeTheme.prepCardBorder else activeTheme.lessonCardBorder
+
+                                        Surface(
                                             modifier = Modifier
-                                                .width(66.dp)
+                                                .width(68.dp)
                                                 .height(46.dp)
-                                                .shadow(2.dp, RoundedCornerShape(8.dp))
-                                                .background(dayStyle.bg, RoundedCornerShape(8.dp))
-                                                .border(1.5.dp, dayStyle.border, RoundedCornerShape(8.dp)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = dayName,
-                                                color = dayStyle.text,
-                                                fontWeight = FontWeight.Black,
-                                                fontSize = 11.5.sp,
-                                                textAlign = TextAlign.Center
-                                            )
-                                        }
-
-                                        for (i in 1..6) {
-                                            val slot = daySlots[i]
-                                            val subj = slot?.subject ?: ""
-                                            val prep = findPrepForSubject(subj)
-                                            val directive = findDirectiveForSubject(subj)
-                                            val hasPrep = prep != null || directive != null
-                                            val isVacant = subj.isBlank() || subj == "شاغر"
-
-                                            val cardBrush = if (hasPrep) activeTheme.prepCardBg else activeTheme.lessonCardBg
-                                            val cardBorderColor = if (hasPrep) activeTheme.prepCardBorder else activeTheme.lessonCardBorder
-
-                                            Surface(
-                                                modifier = Modifier
-                                                    .width(68.dp)
-                                                    .height(46.dp)
-                                                    .shadow(
-                                                        elevation = if (hasPrep) 3.dp else 1.5.dp,
-                                                        shape = RoundedCornerShape(8.dp)
-                                                    )
-                                                    .clickable {
-                                                        if (slot != null && subj.isNotBlank()) {
-                                                            selectedSlotData = Triple(dayName, i, slot)
-                                                        }
-                                                    },
-                                                shape = RoundedCornerShape(8.dp),
-                                                border = BorderStroke(
-                                                    if (hasPrep) 1.8.dp else 1.dp,
-                                                    cardBorderColor
+                                                .shadow(
+                                                    elevation = if (hasPrep) 3.dp else 1.5.dp,
+                                                    shape = RoundedCornerShape(8.dp)
                                                 )
+                                                .clickable {
+                                                    if (slot != null && subj.isNotBlank()) {
+                                                        selectedSlotData = Triple(dayName, i, slot)
+                                                    }
+                                                },
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(
+                                                if (hasPrep) 1.8.dp else 1.dp,
+                                                cardBorderColor
+                                            )
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(cardBrush)
+                                                    .padding(horizontal = 1.dp, vertical = 1.dp),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .background(cardBrush)
-                                                        .padding(horizontal = 1.dp, vertical = 1.dp),
-                                                    contentAlignment = Alignment.Center
+                                                Column(
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    verticalArrangement = Arrangement.Center
                                                 ) {
-                                                    Column(
-                                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                                        verticalArrangement = Arrangement.Center
-                                                    ) {
-                                                        if (hasPrep) {
-                                                            Surface(
-                                                                color = Color(0xFFD97706),
-                                                                shape = RoundedCornerShape(2.dp),
-                                                                modifier = Modifier.padding(bottom = 1.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = "تحضير 📝",
-                                                                    color = Color.White,
-                                                                    fontSize = 6.5.sp,
-                                                                    fontWeight = FontWeight.Black,
-                                                                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.5.dp)
-                                                                )
-                                                            }
-                                                        }
-
+                                                    if (hasPrep) {
                                                         Text(
-                                                            text = if (!isVacant) subj else "",
+                                                            text = if (subj.isNotBlank()) "📝 تحضير $subj" else "📝 تحضير",
+                                                            color = Color(0xFFD97706),
+                                                            fontSize = 7.5.sp,
                                                             fontWeight = FontWeight.Black,
-                                                            fontSize = 10.5.sp,
-                                                            color = if (hasPrep) activeTheme.prepSubjectText else activeTheme.lessonSubjectText,
                                                             textAlign = TextAlign.Center,
                                                             maxLines = 1,
+                                                            lineHeight = 9.sp,
                                                             overflow = TextOverflow.Ellipsis
                                                         )
                                                     }
+
+                                                    Text(
+                                                        text = if (!isVacant) subj else "",
+                                                        fontWeight = FontWeight.Black,
+                                                        fontSize = 11.sp,
+                                                        color = Color(0xFF0F172A),
+                                                        textAlign = TextAlign.Center,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
                                                 }
                                             }
                                         }
@@ -1172,6 +1286,29 @@ fun StudentTimetableScreen(
                             }
                         }
                     }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    // ----------------------------------------------------
+                    // DIRECTIVES & INSTRUCTIONS CARD UNDER TIMETABLE
+                    // ----------------------------------------------------
+                    StudentDirectivesCardUnderTimetable(
+                        directives = directives,
+                        isRefreshing = isRefreshingSchedule || isRefreshing,
+                        onRefresh = {
+                            isRefreshingSchedule = true
+                            viewModel.refreshData()
+                            viewModel.syncScheduleManual {
+                                isRefreshingSchedule = false
+                                Toast.makeText(context, "تم تحديث التوجيهات والجدول ⚡", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                    )
+
+                    Spacer(Modifier.height(24.dp))
                 }
             }
         }
@@ -1389,10 +1526,9 @@ fun StudentTimetableScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    Row(
+                                    Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Default.Assignment, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(22.dp))
@@ -1423,7 +1559,11 @@ fun StudentTimetableScreen(
                                         if (prep.description.isNotBlank()) {
                                             Text(prep.description, fontSize = 13.5.sp, color = Color(0xFF78350F), lineHeight = 20.sp)
                                         }
-                                        val formattedDueDate = if (prep.dueDate > 0) SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(prep.dueDate)) else "قريباً"
+                                        val formattedDueDate = when {
+                                            prep.dueDateString.isNotBlank() -> prep.dueDateString
+                                            prep.dueDate > 0 -> SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(prep.dueDate))
+                                            else -> "قريباً"
+                                        }
                                         Text("موعد التسليم: $formattedDueDate", fontSize = 12.5.sp, color = Color(0xFFB45309), fontWeight = FontWeight.Bold)
 
                                         Button(
@@ -1956,6 +2096,334 @@ fun StudentTimetableScreen(
                     }
                 }
             )
+        }
+    }
+}
+
+@Composable
+fun StudentDirectivesCardUnderTimetable(
+    directives: List<DirectiveDto>,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var isExpanded by remember { mutableStateOf(false) }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF0F172A).copy(alpha = 0.95f)
+        ),
+        border = BorderStroke(1.2.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .shadow(4.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF0284C7), Color(0xFF0369A1))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "توجيهات إدارة المدرسة",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            if (directives.isNotEmpty()) {
+                                Surface(
+                                    color = Color(0xFF10B981).copy(alpha = 0.25f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF34D399))
+                                ) {
+                                    Text(
+                                        text = "${directives.size}",
+                                        color = Color(0xFF34D399),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = if (directives.isNotEmpty()) "التعاميم والتنبيهات المدرسية المعتمدة" else "الربط السحابي المباشر فعّال",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+                }
+
+                // Refresh Button
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    if (isRefreshing) {
+                        CircularProgressIndicator(
+                            color = Color(0xFF38BDF8),
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "تحديث التوجيهات",
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            if (directives.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color(0xFF1E293B).copy(alpha = 0.7f),
+                    border = BorderStroke(1.dp, Color(0xFF334155)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = Color(0xFF34D399),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "لا توجد توجيهات جديدة حالياً",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = Color(0xFFF1F5F9)
+                            )
+                            Text(
+                                text = "ستصلك هنا إشعارات الإدارة المدرسية والتعليمات الهامة فور نشرها 🌟",
+                                fontSize = 11.5.sp,
+                                color = Color(0xFF94A3B8),
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+            } else {
+                val sortedDirectives = remember(directives) {
+                    directives.sortedByDescending { it.createdAt ?: it.id.toString() }
+                }
+                val latest = sortedDirectives.first()
+
+                DirectiveItemView(
+                    directive = latest,
+                    isPrimary = true,
+                    onCopy = {
+                        clipboardManager.setText(AnnotatedString("${latest.title}\n${latest.content}"))
+                        Toast.makeText(context, "تم نسخ التوجيه إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
+                    }
+                )
+
+                if (sortedDirectives.size > 1) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { isExpanded = !isExpanded }
+                            .padding(vertical = 6.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = if (isExpanded) "إخفاء باقي التوجيهات" else "عرض باقي التوجيهات (${sortedDirectives.size - 1} إضافية)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF38BDF8)
+                        )
+                        Icon(
+                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = isExpanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(top = 6.dp)
+                        ) {
+                            sortedDirectives.drop(1).forEach { otherDirective ->
+                                DirectiveItemView(
+                                    directive = otherDirective,
+                                    isPrimary = false,
+                                    onCopy = {
+                                        clipboardManager.setText(AnnotatedString("${otherDirective.title}\n${otherDirective.content}"))
+                                        Toast.makeText(context, "تم نسخ التوجيه إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectiveItemView(
+    directive: DirectiveDto,
+    isPrimary: Boolean,
+    onCopy: () -> Unit
+) {
+    val bgColor = if (isPrimary) Color(0xFF1E293B) else Color(0xFF162032)
+    val borderColor = if (isPrimary) Color(0xFF0284C7).copy(alpha = 0.6f) else Color(0xFF334155)
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = bgColor,
+        border = BorderStroke(1.dp, borderColor),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = if (isPrimary) Color(0xFF0284C7).copy(alpha = 0.25f) else Color(0xFF475569).copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(0.8.dp, if (isPrimary) Color(0xFF38BDF8) else Color(0xFF64748B))
+                    ) {
+                        Text(
+                            text = if (isPrimary) "⭐ أحدث تعميم" else "تعميم مدرسي",
+                            color = if (isPrimary) Color(0xFF38BDF8) else Color(0xFF94A3B8),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(6.dp))
+
+                    Surface(
+                        color = Color(0xFF10B981).copy(alpha = 0.18f),
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(0.8.dp, Color(0xFF34D399).copy(alpha = 0.6f))
+                    ) {
+                        Text(
+                            text = when (directive.targetRole) {
+                                "students", "student" -> "موجه للطلبة 👨‍🎓"
+                                "teachers", "teacher" -> "موجه للكادر 👨‍🏫"
+                                else -> "موجه للجميع 📢"
+                            },
+                            color = Color(0xFF34D399),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onCopy,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "نسخ النص",
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Text(
+                text = directive.title,
+                fontWeight = FontWeight.Black,
+                fontSize = 14.sp,
+                color = Color.White
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = directive.content,
+                fontSize = 12.5.sp,
+                color = Color(0xFFCBD5E1),
+                lineHeight = 19.sp
+            )
+
+            if (!directive.createdAt.isNullOrBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = Color(0xFF64748B),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = directive.createdAt.take(16).replace("T", " "),
+                        fontSize = 10.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
+            }
         }
     }
 }

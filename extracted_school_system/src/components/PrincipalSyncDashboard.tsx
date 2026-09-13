@@ -3,11 +3,39 @@ import { Student, DayScheduleMap } from '../types';
 import {
   Cloud, CloudUpload, RefreshCw, Users, BookOpen, CheckCircle2, ShieldCheck,
   Activity, QrCode, Smartphone, Link as LinkIcon, Key as VpnKey, Terminal,
-  CheckCircle, AlertCircle, Sparkles, CloudCheck, Download, ArrowRight
+  CheckCircle, AlertCircle, Sparkles, CloudCheck, Download, ArrowRight,
+  Lock, Unlock
 } from 'lucide-react';
 import { QrCodeSvg } from './QrCodeSvg';
 import { supabase, isSupabaseConfigured, getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
 import { exportSchoolData, importGradesAndAttendance, sendDirective } from '../utils/syncService';
+
+interface GradeLocksState {
+  m1: boolean;      // الشهر الأول
+  m2: boolean;      // الشهر الثاني
+  midterm: boolean; // نصف السنة
+  m3: boolean;      // الشهر الثالث
+  m4: boolean;      // الشهر الرابع
+  final: boolean;   // الامتحانات النهائية
+}
+
+const DEFAULT_GRADE_LOCKS: GradeLocksState = {
+  m1: false,
+  m2: false,
+  midterm: false,
+  m3: false,
+  m4: false,
+  final: false,
+};
+
+const GRADE_PERIOD_CONFIG: Array<{ key: keyof GradeLocksState; label: string; sub: string; color: string }> = [
+  { key: 'm1', label: 'الشهر الأول', sub: 'الفصل الأول', color: 'from-blue-600 to-indigo-600' },
+  { key: 'm2', label: 'الشهر الثاني', sub: 'الفصل الأول', color: 'from-indigo-600 to-purple-600' },
+  { key: 'midterm', label: 'نصف السنة', sub: 'الامتحانات الشاملة', color: 'from-teal-600 to-emerald-600' },
+  { key: 'm3', label: 'الشهر الثالث', sub: 'الفصل الثاني', color: 'from-blue-700 to-cyan-700' },
+  { key: 'm4', label: 'الشهر الرابع', sub: 'الفصل الثاني', color: 'from-purple-700 to-pink-700' },
+  { key: 'final', label: 'الامتحان النهائي', sub: 'الدور الأول والثاني', color: 'from-rose-600 to-amber-600' },
+];
 
 interface PrincipalSyncDashboardProps {
   students: Student[];
@@ -44,6 +72,70 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   const [pairingCode, setPairingCode] = useState<string>(() => localStorage.getItem('diyala_pairing_code') || '112233');
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [teachers, setTeachers] = useState<any[]>([]);
+
+  // Grade Locks State (حالة أقفال الأشهر للدرجات)
+  const [gradeLocks, setGradeLocks] = useState<GradeLocksState>(DEFAULT_GRADE_LOCKS);
+  const [isUpdatingLocks, setIsUpdatingLocks] = useState(false);
+
+  const toggleGradeLock = async (monthKey: keyof GradeLocksState) => {
+    if (isUpdatingLocks) return;
+    const targetState = !gradeLocks[monthKey];
+    const updated = { ...gradeLocks, [monthKey]: targetState };
+    setGradeLocks(updated);
+    setIsUpdatingLocks(true);
+
+    try {
+      const { data: schoolData } = await supabase.from('schools').select('config').eq('id', schoolId).single();
+      const currentConfig = (schoolData?.config && typeof schoolData.config === 'object') ? schoolData.config : {};
+      const newConfig = {
+        ...currentConfig,
+        grade_locks: updated
+      };
+      const { error } = await supabase.from('schools').update({ config: newConfig }).eq('id', schoolId);
+      if (error) throw error;
+
+      const period = GRADE_PERIOD_CONFIG.find(p => p.key === monthKey);
+      const action = targetState ? 'قفل 🔒' : 'فتح 🔓';
+      addLog('realtime', `تم ${action} درجات (${period?.label || monthKey}) في السحابة بنجاح`, 'success');
+    } catch (err: any) {
+      setGradeLocks(gradeLocks); // revert on failure
+      addLog('error', `فشل تحديث قفل الدرجات: ${err.message}`, 'error');
+    } finally {
+      setIsUpdatingLocks(false);
+    }
+  };
+
+  const bulkSetGradeLocks = async (lockAll: boolean) => {
+    if (isUpdatingLocks) return;
+    const updated: GradeLocksState = {
+      m1: lockAll,
+      m2: lockAll,
+      midterm: lockAll,
+      m3: lockAll,
+      m4: lockAll,
+      final: lockAll,
+    };
+    setGradeLocks(updated);
+    setIsUpdatingLocks(true);
+
+    try {
+      const { data: schoolData } = await supabase.from('schools').select('config').eq('id', schoolId).single();
+      const currentConfig = (schoolData?.config && typeof schoolData.config === 'object') ? schoolData.config : {};
+      const newConfig = {
+        ...currentConfig,
+        grade_locks: updated
+      };
+      const { error } = await supabase.from('schools').update({ config: newConfig }).eq('id', schoolId);
+      if (error) throw error;
+
+      addLog('realtime', lockAll ? 'تم قفل رصد درجات كافة الفترات والأشهر 🔒' : 'تم فتح رصد درجات كافة الفترات والأشهر 🔓', 'success');
+    } catch (err: any) {
+      setGradeLocks(gradeLocks);
+      addLog('error', `فشل تحديث الأقفال: ${err.message}`, 'error');
+    } finally {
+      setIsUpdatingLocks(false);
+    }
+  };
 
   useEffect(() => {
     const key = getSupabaseKey();
@@ -162,7 +254,16 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
           id: schoolId, name: config.schoolName || 'مدرسة سحابية', pairing_code: pairingCode, admin_email: config.adminEmail || ''
         }, { onConflict: 'id' });
         if (error) { setConnectionStatus('error'); addLog('error', error.message, 'error'); }
-        else { setConnectionStatus('connected'); addLog('realtime', 'تم الاتصال بالسحابة بنجاح', 'success'); }
+        else { 
+          setConnectionStatus('connected'); 
+          addLog('realtime', 'تم الاتصال بالسحابة بنجاح', 'success'); 
+          
+          // استرجاع أقفال الدرجات المسجلة في السحابة
+          const { data: schoolData } = await supabase.from('schools').select('config').eq('id', schoolId).single();
+          if (schoolData?.config?.grade_locks) {
+            setGradeLocks(schoolData.config.grade_locks);
+          }
+        }
       } catch (e) { setConnectionStatus('error'); }
     };
     registerSchool();
@@ -273,6 +374,82 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
                   امسح الباركود للربط التلقائي
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Academic Grade Locks Control Card (أقفال رصد الدرجات الأكاديمية) */}
+          <div className="bg-white rounded-[3rem] p-7 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 bg-rose-50 text-rose-600 rounded-2xl border border-rose-100 shadow-xs">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">أقفال رصد الدرجات الأكاديمية</h3>
+                  <p className="text-[10px] text-slate-500 font-bold">التحكم اللحظي بصلاحية رصد وتعديل الدرجات في جوال المعلم</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => bulkSetGradeLocks(true)}
+                  disabled={isUpdatingLocks}
+                  className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-[10px] font-black border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                  title="قفل كافة الأشهر"
+                >
+                  <Lock className="w-3 h-3" />
+                  قفل الكل
+                </button>
+                <button
+                  onClick={() => bulkSetGradeLocks(false)}
+                  disabled={isUpdatingLocks}
+                  className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-[10px] font-black border border-emerald-200 transition-all cursor-pointer flex items-center gap-1"
+                  title="فتح كافة الأشهر"
+                >
+                  <Unlock className="w-3 h-3" />
+                  فتح الكل
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              {GRADE_PERIOD_CONFIG.map(period => {
+                const isLocked = !!gradeLocks[period.key];
+                return (
+                  <button
+                    key={period.key}
+                    onClick={() => toggleGradeLock(period.key)}
+                    disabled={isUpdatingLocks}
+                    className={`relative p-3 rounded-2xl border-2 transition-all cursor-pointer text-right flex flex-col justify-between h-24 group ${
+                      isLocked
+                        ? 'bg-rose-50/70 border-rose-300 hover:bg-rose-100/70 shadow-xs'
+                        : 'bg-emerald-50/50 border-emerald-200 hover:bg-emerald-100/60 shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[9px] font-bold text-slate-500">{period.sub}</span>
+                      <span className={`p-1 rounded-lg transition-transform group-hover:scale-110 ${
+                        isLocked ? 'bg-rose-500 text-white shadow-xs' : 'bg-emerald-500 text-white shadow-xs'
+                      }`}>
+                        {isLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-xs font-black text-slate-900 block leading-tight">{period.label}</span>
+                      <span className={`text-[10px] font-black mt-1 inline-block ${isLocked ? 'text-rose-700' : 'text-emerald-700'}`}>
+                        {isLocked ? 'مقفل 🔒 (للقراءة فقط)' : 'مفتوح 🔓 (متاح للرصد)'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            
+            <div className="mt-3.5 p-3 bg-amber-50/90 rounded-2xl border border-amber-200/90 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-[10.5px] text-amber-900 font-bold leading-relaxed">
+                عند قفل أي شهر، يصبح عمود درجات ذلك الشهر في تطبيق المعلم للقراءة فقط، ولا يستطيع أي معلم تعديل أو حذف درجاته بعد الاعتماد، في حين تظل الأشهر المفتوحة اللاحقة متاحة للإدخال والرصد الطبيعي.
+              </p>
             </div>
           </div>
 

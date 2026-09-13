@@ -3,6 +3,8 @@ package com.school.system.ui.screens
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.school.system.data.SupabaseDailyAssignmentDto
+import com.school.system.data.SyncRepository
 import com.school.system.data.SyncManager
 import com.school.system.data.dao.StudentDao
 import com.school.system.data.dao.ColumnSettingDao
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.SharingStarted
 import com.school.system.data.local.SecureKeyStorage
+import com.school.system.data.model.SchoolConfig
 import com.school.system.data.network.GeminiAssistantService
 import com.school.system.data.repository.GradesRepository
 import com.school.system.data.repository.SecureUploadResult
@@ -39,7 +42,8 @@ class GradeViewModel @Inject constructor(
     val configDao: ConfigDao,
     private val syncManager: SyncManager,
     private val secureKeyStorage: SecureKeyStorage,
-    private val gradesRepository: GradesRepository
+    private val gradesRepository: GradesRepository,
+    private val syncRepository: SyncRepository
 ) : ViewModel() {
 
     val config = configDao.getConfig().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -50,7 +54,26 @@ class GradeViewModel @Inject constructor(
     private val _absences = MutableStateFlow<List<AbsenceRecord>>(emptyList())
     val absences: StateFlow<List<AbsenceRecord>> = _absences
 
+    // أقفال رصد وتعديل الدرجات حسب الفترات والأشهر الدراسية
+    private val _gradeLocks = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val gradeLocks: StateFlow<Map<String, Boolean>> = _gradeLocks
+
+    fun loadGradeLocks(explicitSchoolId: String? = null) {
+        viewModelScope.launch {
+            val sid = if (!explicitSchoolId.isNullOrBlank()) {
+                explicitSchoolId
+            } else {
+                config.value?.schoolId?.ifBlank { null } ?: configDao.getConfig().first()?.schoolId.orEmpty()
+            }
+            if (sid.isNotBlank()) {
+                val locks = syncRepository.fetchGradeLocks(sid)
+                _gradeLocks.value = locks
+            }
+        }
+    }
+
     fun loadStudents(grade: String, section: String, subject: String) {
+        loadGradeLocks()
         viewModelScope.launch {
             studentDao.getStudentsForClass(grade, section, subject).collectLatest { list ->
                 val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
@@ -108,6 +131,7 @@ class GradeViewModel @Inject constructor(
     }
 
     fun refreshStudentsFromCloud(grade: String, section: String, subject: String, onComplete: (Boolean, String) -> Unit) {
+        loadGradeLocks()
         viewModelScope.launch {
             try {
                 val ok = syncManager.downloadSimpleRosterForClass(grade, section, subject)
@@ -129,6 +153,46 @@ class GradeViewModel @Inject constructor(
             } catch (e: Exception) {
                 e.printStackTrace()
                 onComplete(false, "خطأ أثناء الاتصال بالسحابة: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun publishDailyHomework(
+        grade: String,
+        section: String,
+        subject: String,
+        title: String,
+        description: String,
+        dueDate: String,
+        onComplete: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            try {
+                val conf = config.value ?: SchoolConfig()
+                val schoolId = conf.schoolId.ifEmpty { "SCH-KAB2-6884" }
+                val teacherId = conf.syncSealToken?.ifEmpty { conf.managerName }?.ifEmpty { "teacher_01" } ?: "teacher_01"
+
+                val dto = SupabaseDailyAssignmentDto(
+                    school_id = schoolId,
+                    teacher_id = teacherId,
+                    class_name = grade,
+                    section = section,
+                    subject_name = subject,
+                    title = title,
+                    description = description,
+                    due_date = dueDate,
+                    is_private_tutoring = false,
+                    student_record_number = null
+                )
+                val ok = syncRepository.publishDailyAssignment(dto)
+                if (ok) {
+                    onComplete(true, "تم إرسال الواجب والتعليمات بنجاح إلى كافة طلاب شعبة $grade ($section) 🚀")
+                } else {
+                    onComplete(false, "تعذر النشر في السحابة. تأكد من توفر الاتصال وتطبيق سكريبت جدول الواجبات في Supabase")
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false, "خطأ أثناء إرسال الواجب: ${e.localizedMessage}")
             }
         }
     }
@@ -250,6 +314,10 @@ class GradeViewModel @Inject constructor(
     }
 
     fun addMockStudent(grade: String, section: String, subject: String, name: String) {
+        // حماية سجلات الطلاب: يمنع إضافة طلاب عشوائيين إذا كان التطبيق مقترناً بمدرسة
+        if (config.value?.schoolId?.isNotBlank() == true) {
+            return
+        }
         viewModelScope.launch {
             studentDao.insertStudent(
                 Student(
@@ -272,6 +340,11 @@ class GradeViewModel @Inject constructor(
         onlyMatchExisting: Boolean = false,
         onDone: (Int) -> Unit = {}
     ) {
+        // حماية سجلات الطلاب: يمنع استيراد أو استبدال قوائم الطلاب عند الاتصال بالمدرسة
+        if (config.value?.schoolId?.isNotBlank() == true) {
+            onDone(0)
+            return
+        }
         viewModelScope.launch {
             val existingStudents = studentDao.getStudentsForGradeAndSection(grade, section)
             val existingByName = existingStudents
@@ -334,6 +407,10 @@ class GradeViewModel @Inject constructor(
     }
 
     fun updateStudentName(student: Student, newName: String) {
+        // حماية سجلات الطلاب: يمنع تعديل أسماء الطلاب من جوال المعلم عند الاقتران بالمدرسة
+        if (config.value?.schoolId?.isNotBlank() == true) {
+            return
+        }
         viewModelScope.launch {
             val trimmedName = newName.trim()
             studentDao.updateStudent(student.copy(fullName = trimmedName))

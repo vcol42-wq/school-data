@@ -76,6 +76,7 @@ class StudentSettingsViewModel @Inject constructor(
                     repository.syncSchedule(schoolId)
                     repository.syncDailyAssignments(schoolId)
                     repository.syncDirectives(schoolId)
+                    com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                     onComplete(true)
                 } else {
                     _testStatus.value = "فشل التحقق من السحابة، يرجى فحص الشبكة ❌"
@@ -101,6 +102,7 @@ class StudentSettingsViewModel @Inject constructor(
                 repository.syncDirectMessages()
                 val deviceId = repository.getDeviceId()
                 repository.syncAttendance(schoolId, deviceId)
+                com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                 _testStatus.value = "تم تحديث كافة البيانات بنجاح 🔄"
                 onComplete(true)
             } catch (e: Exception) {

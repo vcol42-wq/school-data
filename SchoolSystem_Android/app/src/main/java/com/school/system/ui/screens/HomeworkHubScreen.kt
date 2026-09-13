@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -410,16 +411,74 @@ fun CreateAssignmentDialog(
     onDismiss: () -> Unit,
     onPublish: (String, String, String, String, String, String, Boolean, String?) -> Unit
 ) {
+    val context = LocalContext.current
+    val hwPrefs = remember(context) { context.getSharedPreferences("homework_hub_drafts", android.content.Context.MODE_PRIVATE) }
+    
+    val savedTitle = remember { hwPrefs.getString("hub_draft_title", "") ?: "" }
+    val savedDesc = remember { hwPrefs.getString("hub_draft_desc", "") ?: "" }
+    val savedDue = remember { hwPrefs.getString("hub_draft_due", "غداً") ?: "غداً" }
+
     var selectedPackage by remember { mutableStateOf(packages.firstOrNull()) }
-    var title by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var dueDate by remember { mutableStateOf("غداً") }
+    var title by remember { mutableStateOf(savedTitle) }
+    var description by remember { mutableStateOf(savedDesc) }
+    var dueDate by remember { mutableStateOf(if (savedDue.isNotBlank()) savedDue else "غداً") }
     var isPrivateTutoring by remember { mutableStateOf(false) }
     var studentRecord by remember { mutableStateOf("") }
 
+    val saveDraft: (String, String, String) -> Unit = { t, d, due ->
+        hwPrefs.edit()
+            .putString("hub_draft_title", t)
+            .putString("hub_draft_desc", d)
+            .putString("hub_draft_due", due)
+            .apply()
+    }
+
+    val clearDraft: () -> Unit = {
+        title = ""
+        description = ""
+        dueDate = "غداً"
+        hwPrefs.edit()
+            .remove("hub_draft_title")
+            .remove("hub_draft_desc")
+            .remove("hub_draft_due")
+            .apply()
+        Toast.makeText(context, "تم تصفير الواجب بنجاح 🧹", Toast.LENGTH_SHORT).show()
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("إرسال واجب / درس يومي") },
+        onDismissRequest = {
+            saveDraft(title, description, dueDate)
+            onDismiss()
+        },
+        title = { 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PostAdd, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(22.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("إرسال واجب / درس يومي 📝", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFEE2E2),
+                    border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                    modifier = Modifier.clickable { clearDraft() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = "تصفير الواجب", tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("تصفير", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                    }
+                }
+            }
+        },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -465,7 +524,10 @@ fun CreateAssignmentDialog(
 
                 OutlinedTextField(
                     value = title,
-                    onValueChange = { title = it },
+                    onValueChange = { 
+                        title = it
+                        saveDraft(it, description, dueDate)
+                    },
                     label = { Text("عنوان الواجب أو الدرس") },
                     placeholder = { Text("مثال: حل تمارين ص 34") },
                     modifier = Modifier.fillMaxWidth()
@@ -473,7 +535,10 @@ fun CreateAssignmentDialog(
 
                 OutlinedTextField(
                     value = description,
-                    onValueChange = { description = it },
+                    onValueChange = { 
+                        description = it
+                        saveDraft(title, it, dueDate)
+                    },
                     label = { Text("تفاصيل وملاحظات إضافية") },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 2
@@ -481,7 +546,10 @@ fun CreateAssignmentDialog(
 
                 OutlinedTextField(
                     value = dueDate,
-                    onValueChange = { dueDate = it },
+                    onValueChange = { 
+                        dueDate = it
+                        saveDraft(title, description, it)
+                    },
                     label = { Text("موعد التسليم / الإنجاز") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -491,6 +559,7 @@ fun CreateAssignmentDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank()) {
+                        saveDraft(title, description, dueDate)
                         val pkg = selectedPackage
                         val cls = pkg?.grade ?: "الكل"
                         val sec = pkg?.section ?: "عام"
@@ -503,7 +572,10 @@ fun CreateAssignmentDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("إلغاء") }
+            TextButton(onClick = {
+                saveDraft(title, description, dueDate)
+                onDismiss()
+            }) { Text("إلغاء") }
         }
     )
 }

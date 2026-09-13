@@ -92,33 +92,75 @@ object WidgetScheduleHelper {
         return parts.firstOrNull() ?: raw
     }
 
-    fun isLessonMatchingTeacher(input: String, teacher: String, subject: String): Boolean {
-        val q = input.trim().lowercase()
-        if (q.isEmpty()) return true
-
-        val cleanTeacher = cleanTeacherFirstName(teacher).lowercase()
-        val cleanSubj = cleanSubjectName(subject).lowercase()
-
-        return teacher.lowercase().contains(q) ||
-               subject.lowercase().contains(q) ||
-               cleanTeacher.contains(q) ||
-               cleanSubj.contains(q)
+    fun normArabic(s: String): String {
+        return s.replace("[أإآ]".toRegex(), "ا")
+            .replace("ة", "ه")
+            .replace("ى", "ي")
+            .trim()
+            .lowercase()
     }
 
-    fun getTodayTeacherLessons(context: Context): List<LessonTimeInfo> {
-        val calendar = Calendar.getInstance()
-        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+    fun isLessonMatchingTeacher(input: String, teacher: String, subject: String): Boolean {
+        val q = normArabic(input)
+        if (q.isEmpty()) return true
 
-        val currentDayArabic = when (dayOfWeek) {
+        val normTeacher = normArabic(teacher)
+        val normSubj = normArabic(subject)
+        val cleanTeacher = normArabic(cleanTeacherFirstName(teacher))
+        val cleanSubj = normArabic(cleanSubjectName(subject))
+
+        return normTeacher.contains(q) ||
+               normSubj.contains(q) ||
+               cleanTeacher.contains(q) ||
+               cleanSubj.contains(q) ||
+               (normTeacher.length >= 3 && q.contains(normTeacher)) ||
+               (cleanTeacher.length >= 3 && q.contains(cleanTeacher))
+    }
+
+    val SCHOOL_DAYS = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
+
+    fun getRealCurrentDayArabic(): String {
+        val calendar = Calendar.getInstance()
+        return when (calendar.get(Calendar.DAY_OF_WEEK)) {
             Calendar.SUNDAY -> "الأحد"
             Calendar.MONDAY -> "الإثنين"
             Calendar.TUESDAY -> "الثلاثاء"
             Calendar.WEDNESDAY -> "الأربعاء"
             Calendar.THURSDAY -> "الخميس"
-            else -> return emptyList()
+            else -> ""
         }
+    }
 
-        return getTeacherLessonsForDay(context, currentDayArabic)
+    fun getDefaultDayIndex(): Int {
+        val calendar = Calendar.getInstance()
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        val hourOfDay = calendar.get(Calendar.HOUR_OF_DAY)
+        val minute = calendar.get(Calendar.MINUTE)
+
+        return when (dayOfWeek) {
+            Calendar.SUNDAY -> 0
+            Calendar.MONDAY -> 1
+            Calendar.TUESDAY -> 2
+            Calendar.WEDNESDAY -> 3
+            Calendar.THURSDAY -> {
+                // If past 12:45 PM on Thursday, show Sunday (0)
+                if (hourOfDay > 12 || (hourOfDay == 12 && minute >= 45)) 0 else 4
+            }
+            Calendar.FRIDAY, Calendar.SATURDAY -> 0 // Weekend -> show Sunday
+            else -> 0
+        }
+    }
+
+    fun getEffectiveDayArabic(context: Context): String {
+        val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+        val selectedIdx = prefs.getInt("widget_selected_day_idx", -1)
+        val dayIdx = if (selectedIdx in 0..4) selectedIdx else getDefaultDayIndex()
+        return SCHOOL_DAYS[dayIdx]
+    }
+
+    fun getTodayTeacherLessons(context: Context): List<LessonTimeInfo> {
+        val dayArabic = getEffectiveDayArabic(context)
+        return getTeacherLessonsForDay(context, dayArabic)
     }
 
     fun getTeacherLessonsForDay(context: Context, dayArabic: String): List<LessonTimeInfo> {
@@ -126,7 +168,10 @@ object WidgetScheduleHelper {
         try {
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
             val rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
-            val teacherNameInput = prefs.getString("teacher_name", "")?.trim() ?: ""
+            var teacherNameInput = prefs.getString("teacher_name", "")?.trim() ?: ""
+            if (teacherNameInput.isEmpty()) {
+                teacherNameInput = prefs.getString("user_name", "")?.trim() ?: ""
+            }
 
             val startH = prefs.getInt("bell_start_hour", 8)
             val startM = prefs.getInt("bell_start_minute", 0)

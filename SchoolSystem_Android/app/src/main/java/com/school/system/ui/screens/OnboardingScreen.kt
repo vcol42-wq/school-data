@@ -51,6 +51,8 @@ fun OnboardingScreen(
     var showManualFields by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showPairWarningDialog by remember { mutableStateOf(false) }
+    var showManualCodeDialog by remember { mutableStateOf(false) }
+    var directCodeInput by remember { mutableStateOf("") }
 
     val quickSubjects = listOf(
         "اللغة العربية", "الرياضيات", "التربية الإسلامية", "اللغة الإنكليزية",
@@ -494,6 +496,24 @@ fun OnboardingScreen(
                         }
                     }
 
+                    // زر الربط بواسطة كود المدرسة مباشرة
+                    OutlinedButton(
+                        onClick = { showManualCodeDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1E3A8A)),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF3B82F6).copy(alpha = 0.5f)),
+                        enabled = !isLoading
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Key, null, modifier = Modifier.size(18.dp), tint = Color(0xFF2563EB))
+                            Spacer(Modifier.width(8.dp))
+                            Text("أو الربط بواسطة كود المدرسة (الرمز) 🔢", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
                     if (statusText != null) {
                         Surface(
                             color = Color(0xFFFEF3C7),
@@ -555,6 +575,77 @@ fun OnboardingScreen(
                 dismissButton = {
                     TextButton(onClick = { showPairWarningDialog = false }) {
                         Text("إلغاء", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
+        if (showManualCodeDialog) {
+            AlertDialog(
+                onDismissRequest = { showManualCodeDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFF2563EB))
+                        Spacer(Modifier.width(8.dp))
+                        Text("الربط برمز المدرسة 🔑", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "أدخل رمز الاقتران الخاص بمدرستك (المكون عادة من 6 أرقام مثل: 112233، أو معرّف المدرسة SCH-...) المعروض في حاسبة الإدارة:",
+                            fontSize = 12.5.sp,
+                            color = Color(0xFF475569),
+                            lineHeight = 18.sp
+                        )
+                        OutlinedTextField(
+                            value = directCodeInput,
+                            onValueChange = { directCodeInput = it },
+                            label = { Text("رمز أو كود المدرسة") },
+                            placeholder = { Text("مثال: 112233 أو SCH-...") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val codeToVerify = directCodeInput.trim()
+                            if (codeToVerify.isNotBlank()) {
+                                showManualCodeDialog = false
+                                isLoading = true
+                                statusText = "جاري التحقق من كود المدرسة والاقتران..."
+                                scope.launch {
+                                    val ok = viewModel.syncManager.connectAndPairQr(codeToVerify)
+                                    isLoading = false
+                                    if (ok) {
+                                        if (teacherNameInput.isNotBlank()) {
+                                            prefs.edit().putString("teacher_name", teacherNameInput.trim()).apply()
+                                        }
+                                        Toast.makeText(context, "تم الربط والاقتران بكود المدرسة بنجاح ✓", Toast.LENGTH_SHORT).show()
+                                        onActivationComplete()
+                                    } else {
+                                        statusText = "تعذر الاقتران: تأكد من صحة كود المدرسة والاتصال بالسحابة"
+                                        Toast.makeText(context, "تعذر الاقتران بكود المدرسة", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = directCodeInput.isNotBlank() && !isLoading,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("ربط وتحقق الآن ✓", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showManualCodeDialog = false },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("إلغاء")
                     }
                 }
             )

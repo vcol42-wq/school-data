@@ -215,7 +215,11 @@ class StudentRepository @Inject constructor(
             val teachersRes = try { api.getTeachers("eq.$schoolId") } catch (e: Exception) { null }
 
             val assignments = if (assignRes?.isSuccessful == true) assignRes.body() ?: emptyList() else emptyList()
-            val subAssignments = if (subAssignRes?.isSuccessful == true) subAssignRes.body() ?: emptyList() else emptyList()
+            val rawSubAssignments = if (subAssignRes?.isSuccessful == true) subAssignRes.body() ?: emptyList() else emptyList()
+            val subAssignments = rawSubAssignments.filter { s ->
+                val subj = (s.subject ?: "").trim()
+                subj.length > 1 && !subj.matches("^[أ-يa-zA-Z]$".toRegex()) && !subj.contains("مفرغ") && !subj.contains("إدارة") && !subj.contains("تفرغ")
+            }
             val teachers = if (teachersRes?.isSuccessful == true) teachersRes.body() ?: emptyList() else emptyList()
 
             val teacherMap = teachers.associateBy { it.id }
@@ -357,7 +361,15 @@ class StudentRepository @Inject constructor(
                 val gson = com.google.gson.Gson()
                 val scheduleJson = gson.toJson(scheduleDto.scheduleMap)
                 val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-                prefs.edit().putString("synced_schedule", scheduleJson).apply()
+                val editor = prefs.edit().putString("synced_schedule", scheduleJson)
+                val timingObj = scheduleDto.scheduleMap["_timing"] as? Map<*, *>
+                if (timingObj != null) {
+                    timingObj["schoolStartHour"]?.toString()?.let { editor.putString("school_start_hour", it) }
+                    (timingObj["lessonDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("lesson_duration_minutes", it) }
+                    (timingObj["breakDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("break_duration_minutes", it) }
+                }
+                editor.apply()
+                com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                 return Result.success(true)
             }
             Result.failure(Exception("لم يتم العثور على جدول مرفوع للمدرسة"))
@@ -374,7 +386,7 @@ class StudentRepository @Inject constructor(
             return try {
                 val response = api.getStudentDirectives(
                     schoolFilter = "eq.$schoolId",
-                    roleFilter = "in.(all,student)"
+                    roleFilter = "in.(all,student,students)"
                 )
                 if (!response.isSuccessful) {
                     return Result.failure(Exception("تعذر جلب تعاميم المدرسة"))
@@ -452,6 +464,10 @@ class StudentRepository @Inject constructor(
                 dao.clearAssignments()
                 if (assignmentEntities.isNotEmpty()) {
                     dao.insertAssignments(assignmentEntities)
+                    val activeSubjects = assignmentEntities.filter { !it.isCompleted }.map { it.subjectName }.toSet()
+                    val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putString("active_homework_subjects", com.google.gson.Gson().toJson(activeSubjects)).apply()
+                    com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                 }
             }
         } catch (e: Exception) {
@@ -579,7 +595,19 @@ class StudentRepository @Inject constructor(
         }
     }
 
-    fun getSchoolId() = sessionManager.getSchoolId()
-    fun getSchoolName() = sessionManager.getSchoolName()
+    fun getSchoolId(): String? {
+        val sId = sessionManager.getSchoolId()
+        if (!sId.isNullOrBlank()) return sId
+        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("school_id", null)?.takeIf { it.isNotBlank() } ?: "SCH-VCOL-6072"
+    }
+
+    fun getSchoolName(): String? {
+        val sName = sessionManager.getSchoolName()
+        if (!sName.isNullOrBlank()) return sName
+        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("school_name", null)?.takeIf { it.isNotBlank() } ?: "م.كعب بن مالك المسائية للبنين"
+    }
+
     fun getDeviceId() = sessionManager.getDeviceId()
 }

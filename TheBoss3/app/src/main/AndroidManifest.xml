@@ -41,9 +41,13 @@
         <!-- ودجت جدول الدروس للشاشة الرئيسية -->
         <receiver
             android:name=".widget.StudentScheduleWidgetProvider"
-            android:exported="true">
+            android:exported="true"
+            android:label="جدول الدروس والحصص">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.theboss.widget.ACTION_PREV_DAY" />
+                <action android:name="com.example.theboss.widget.ACTION_NEXT_DAY" />
+                <action android:name="com.example.theboss.widget.ACTION_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

@@ -31,8 +31,17 @@ class DashboardViewModel @Inject constructor(
     val config = configDao.getConfig()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val directives = syncRepository.directives
+
     init {
         refreshAiStatus()
+        refreshDirectives()
+    }
+
+    fun refreshDirectives() {
+        viewModelScope.launch {
+            syncRepository.fetchAndNotifyDirectives()
+        }
     }
 
     private fun refreshAiStatus() {

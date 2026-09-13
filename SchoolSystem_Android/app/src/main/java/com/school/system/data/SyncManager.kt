@@ -137,7 +137,10 @@ class SyncManager @Inject constructor(
                 teacherName = "المشرف العام"
             } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
                 url = trimmed
-            } else if (trimmed.length in 4..12 && trimmed.all { it.isDigit() || it.isLetter() || it == '-' }) {
+            } else if (trimmed.startsWith("SCH-", ignoreCase = true)) {
+                schoolId = trimmed
+                pairingCode = trimmed
+            } else if (trimmed.length in 4..14 && trimmed.all { it.isDigit() || it.isLetter() || it == '-' || it == '_' }) {
                 pairingCode = trimmed
             }
 
@@ -152,14 +155,30 @@ class SyncManager @Inject constructor(
                 )
             )
 
-            // Auto-verify with school in background
-            val pairRes = requestPairing(
-                teacherName = teacherName,
-                grade = "",
-                section = "",
-                subject = "",
-                pairingCode = pairingCode
-            )
+            // Auto-verify with school: if only pairingCode was provided, search school by code
+            val pairRes = if (schoolId == "school_01" || schoolId.isEmpty() || pairingCode.isNotBlank()) {
+                val codeResult = pairSchoolByCode(
+                    pairingCode = pairingCode.ifBlank { schoolId },
+                    teacherName = teacherName
+                )
+                if (codeResult.success) codeResult else {
+                    requestPairing(
+                        teacherName = teacherName,
+                        grade = "",
+                        section = "",
+                        subject = "",
+                        pairingCode = pairingCode
+                    )
+                }
+            } else {
+                requestPairing(
+                    teacherName = teacherName,
+                    grade = "",
+                    section = "",
+                    subject = "",
+                    pairingCode = pairingCode
+                )
+            }
 
             pairRes.success
         } catch (e: Exception) {

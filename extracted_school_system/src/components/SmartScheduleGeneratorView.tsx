@@ -251,7 +251,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
   // School timing settings
   const [startHour, setStartHour] = useState(config.schoolStartHour || '08:00');
-  const [lessonDuration, setLessonDuration] = useState(config.lessonDurationMinutes || 40);
+  const [lessonDuration, setLessonDuration] = useState(config.lessonDurationMinutes || 45);
   const [breakDuration, setBreakDuration] = useState(config.breakDurationMinutes || 10);
 
   // Student Roster stats and auto-discovered classes
@@ -827,7 +827,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
     setTimeout(() => {
       const freshSeed = Date.now() + Math.random() * 1000000;
-      const result = generateSmartFairSchedule(sections, 350, freshSeed);
+      const result = generateSmartFairSchedule(sections, 500, freshSeed);
       setGeneratedMap(result.scheduleMap);
       setCollisions(result.collisions);
       setIsGenerating(false);
