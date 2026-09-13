@@ -37,9 +37,13 @@ import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.local.AttendanceEntity
 import com.example.theboss.data.local.SubjectEntity
 import com.example.theboss.data.repository.StudentRepository
+import android.content.Context
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.ui.workspace.WorkspaceToolsScreen
+import com.example.theboss.widget.StudentScheduleWidgetProvider
+import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -49,6 +53,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val dao: AppDao,
     private val repository: StudentRepository
 ) : ViewModel() {
@@ -119,7 +124,16 @@ class DashboardViewModel @Inject constructor(
 
     fun toggleAssignment(assignment: AssignmentEntity) {
         viewModelScope.launch {
-            dao.updateAssignmentStatus(assignment.id, !assignment.isCompleted)
+            val newStatus = !assignment.isCompleted
+            dao.updateAssignmentStatus(assignment.id, newStatus)
+            try {
+                val allActive = dao.getAllAssignments().firstOrNull()?.filter { !it.isCompleted }?.map { it.subjectName }?.toSet() ?: emptySet()
+                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("active_homework_subjects", Gson().toJson(allActive)).apply()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
         }
     }
 }

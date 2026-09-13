@@ -8,6 +8,8 @@ import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.remote.SupabaseApi
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.data.remote.JoinRequest
+import com.example.theboss.widget.StudentScheduleWidgetProvider
+import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -464,11 +466,11 @@ class StudentRepository @Inject constructor(
                 dao.clearAssignments()
                 if (assignmentEntities.isNotEmpty()) {
                     dao.insertAssignments(assignmentEntities)
-                    val activeSubjects = assignmentEntities.filter { !it.isCompleted }.map { it.subjectName }.toSet()
-                    val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putString("active_homework_subjects", com.google.gson.Gson().toJson(activeSubjects)).apply()
-                    com.example.theboss.widget.StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
                 }
+                val activeSubjects = assignmentEntities.filter { !it.isCompleted }.map { it.subjectName }.toSet()
+                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("active_homework_subjects", Gson().toJson(activeSubjects)).apply()
+                StudentScheduleWidgetProvider.sendRefreshBroadcast(context)
             }
         } catch (e: Exception) {
             e.printStackTrace()

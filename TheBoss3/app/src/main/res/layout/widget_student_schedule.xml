@@ -94,8 +94,7 @@
     <!-- 6 Columns for Lessons 1 to 6 with Homework Highlighting -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_height="match_parent"
         android:orientation="horizontal"
         android:gravity="center_vertical">
 

@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.util.Calendar
+import java.util.Locale
 
 data class LessonTimeInfo(
     val lessonNumber: Int,
@@ -158,6 +159,67 @@ object WidgetScheduleHelper {
         return SCHOOL_DAYS[dayIdx]
     }
 
+    fun getTimingFromScheduleJson(context: Context): Triple<String, Int, Int> {
+        return try {
+            val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+            val rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
+            val rootObj = Gson().fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
+            val timingObj = rootObj?.get("_timing") as? Map<*, *>
+
+            val startHour = timingObj?.get("schoolStartHour")?.toString()
+                ?.ifBlank { null }
+                ?: prefs.getString("school_start_hour", null)
+                ?: "08:00"
+
+            val lessonDur = (timingObj?.get("lessonDurationMinutes") as? Number)?.toInt()
+                ?: prefs.getInt("lesson_duration_minutes", 0).takeIf { it > 0 }
+                ?: prefs.getInt("bell_lesson_duration", 0).takeIf { it > 0 }
+                ?: 45
+
+            val breakDur = (timingObj?.get("breakDurationMinutes") as? Number)?.toInt()
+                ?: prefs.getInt("break_duration_minutes", 0).takeIf { it > 0 }
+                ?: prefs.getInt("bell_break_duration", 0).takeIf { it > 0 }
+                ?: 10
+
+            Triple(startHour, lessonDur, breakDur)
+        } catch (e: Exception) {
+            Triple("08:00", 45, 10)
+        }
+    }
+
+    fun calculateLessonTiming(
+        lessonNumber: Int,
+        startHourStr: String = "08:00",
+        lessonDuration: Int = 45,
+        breakDuration: Int = 10,
+        isShort: Boolean = true
+    ): String {
+        if (lessonNumber < 1) return ""
+        val parts = startHourStr.split(":").mapNotNull { it.toIntOrNull() }
+        val startH = if (parts.isNotEmpty()) parts[0] else 8
+        val startM = if (parts.size > 1) parts[1] else 0
+
+        var currentTotalMinutes = startH * 60 + startM
+        for (i in 1 until lessonNumber) {
+            currentTotalMinutes += lessonDuration + breakDuration
+        }
+
+        val lessonStartMin = currentTotalMinutes
+        val lessonEndMin = currentTotalMinutes + lessonDuration
+
+        fun formatMin(min: Int): String {
+            var h = min / 60
+            val m = min % 60
+            var period = if (h in 12..23) "م" else "ص"
+            h %= 12
+            if (h == 0) h = 12
+            val timeStr = String.format(Locale.US, "%02d:%02d", h, m)
+            return if (isShort) timeStr else "$timeStr $period"
+        }
+
+        return "${formatMin(lessonStartMin)} - ${formatMin(lessonEndMin)}"
+    }
+
     fun getTodayTeacherLessons(context: Context): List<LessonTimeInfo> {
         val dayArabic = getEffectiveDayArabic(context)
         return getTeacherLessonsForDay(context, dayArabic)
@@ -166,17 +228,17 @@ object WidgetScheduleHelper {
     fun getTeacherLessonsForDay(context: Context, dayArabic: String): List<LessonTimeInfo> {
         val result = mutableListOf<LessonTimeInfo>()
         try {
+            val (startHourStr, lessonD, breakD) = getTimingFromScheduleJson(context)
+            val parts = startHourStr.split(":").mapNotNull { it.toIntOrNull() }
+            val startH = if (parts.isNotEmpty()) parts[0] else 8
+            val startM = if (parts.size > 1) parts[1] else 0
+
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
             val rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
             var teacherNameInput = prefs.getString("teacher_name", "")?.trim() ?: ""
             if (teacherNameInput.isEmpty()) {
                 teacherNameInput = prefs.getString("user_name", "")?.trim() ?: ""
             }
-
-            val startH = prefs.getInt("bell_start_hour", 8)
-            val startM = prefs.getInt("bell_start_minute", 0)
-            val lessonD = prefs.getInt("bell_lesson_duration", 40)
-            val breakD = prefs.getInt("bell_break_duration", 10)
 
             val gson = Gson()
             val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type) ?: return emptyList()

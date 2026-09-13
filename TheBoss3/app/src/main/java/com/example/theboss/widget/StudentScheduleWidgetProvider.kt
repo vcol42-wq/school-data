@@ -270,6 +270,8 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
         )
 
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
+            val views = RemoteViews(context.packageName, R.layout.widget_student_schedule)
+
             try {
                 val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
                 val studentGrade = prefs.getString("student_grade", "الصف الأول المتوسط") ?: "الصف الأول المتوسط"
@@ -277,8 +279,6 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                 val rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
                 val customOverridesJson = prefs.getString("custom_subject_overrides", "{}") ?: "{}"
                 val activeHwJson = prefs.getString("active_homework_subjects", "[]") ?: "[]"
-
-                val views = RemoteViews(context.packageName, R.layout.widget_student_schedule)
 
                 val selectedDayIdx = prefs.getInt("widget_selected_day_idx", -1)
                 val dayIdx = if (selectedDayIdx in 0..4) selectedDayIdx else getDefaultDayIndex()
@@ -299,7 +299,7 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                         context.applicationContext,
                         com.example.theboss.data.local.AppDatabase::class.java,
                         "the_boss_db"
-                    ).build()
+                    ).allowMainThreadQueries().fallbackToDestructiveMigration().build()
                     val cursor = db.openHelper.readableDatabase.query(
                         "SELECT DISTINCT subjectName FROM assignments WHERE isCompleted = 0"
                     )
@@ -309,8 +309,10 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                         if (!name.isNullOrBlank()) set.add(name)
                     }
                     cursor.close()
+                    db.close()
                     set
                 } catch (e: Exception) {
+                    Log.e(TAG, "Error querying DB for widget: ${e.message}", e)
                     emptySet<String>()
                 }
 
@@ -437,7 +439,7 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
 
                 // Pass 4: Fallback to defaultLessonsMap
                 if (!foundSchedule) {
-                    val def = defaultLessonsMap[targetDayArabic] ?: emptyMap()
+                    val def = defaultLessonsMap.entries.find { normDay(it.key) == normDay(targetDayArabic) }?.value ?: emptyMap()
                     slots.putAll(def)
                 }
 
@@ -448,7 +450,7 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                 try {
                     val type = object : TypeToken<Map<String, Map<String, String>>>() {}.type
                     val customMap: Map<String, Map<String, String>> = Gson().fromJson(customOverridesJson, type) ?: emptyMap()
-                    val dayOverrides = customMap[targetDayArabic]
+                    val dayOverrides = customMap.entries.find { normDay(it.key) == normDay(targetDayArabic) }?.value
                     if (dayOverrides != null) {
                         for (i in 1..6) {
                             val overrideSubj = dayOverrides[i.toString()]
@@ -462,10 +464,6 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                     Log.w(TAG, "Notice customOverrides: ${e.message}")
                 }
 
-                val colIds = listOf(
-                    R.id.col_student_lesson_1, R.id.col_student_lesson_2, R.id.col_student_lesson_3,
-                    R.id.col_student_lesson_4, R.id.col_student_lesson_5, R.id.col_student_lesson_6
-                )
                 val numIds = listOf(
                     R.id.student_num_1, R.id.student_num_2, R.id.student_num_3,
                     R.id.student_num_4, R.id.student_num_5, R.id.student_num_6
@@ -481,7 +479,6 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
 
                 for (i in 1..6) {
                     val slot = slots[i]
-                    val colId = colIds[i - 1]
                     val numId = numIds[i - 1]
                     val subjId = subjIds[i - 1]
                     val hwId = hwIds[i - 1]
@@ -492,14 +489,12 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                         val isHomework = hasHomework(slot.subject)
                         if (isHomework) {
                             // Highlight with Warm Amber Gold matching in-app timetable design
-                            views.setInt(colId, "setBackgroundResource", R.drawable.widget_student_prep_bg)
-                            views.setTextColor(numId, Color.parseColor("#D97706"))
-                            views.setTextColor(subjId, Color.parseColor("#78350F"))
+                            views.setTextColor(numId, Color.parseColor("#F59E0B"))
+                            views.setTextColor(subjId, Color.parseColor("#FBBF24"))
                             views.setTextViewText(hwId, "📝 واجب")
-                            views.setTextColor(hwId, Color.parseColor("#B45309"))
+                            views.setTextColor(hwId, Color.parseColor("#F59E0B"))
                         } else {
                             // Standard lesson card
-                            views.setInt(colId, "setBackgroundResource", R.drawable.widget_student_card_bg)
                             views.setTextColor(numId, Color.parseColor("#38BDF8"))
                             views.setTextColor(subjId, Color.WHITE)
                             val subText = slot.teacherName.ifBlank { "-" }
@@ -508,7 +503,6 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                         }
                     } else {
                         // Empty / vacant
-                        views.setInt(colId, "setBackgroundResource", R.drawable.widget_student_empty_bg)
                         views.setTextColor(numId, Color.parseColor("#475569"))
                         views.setTextViewText(subjId, "شاغر")
                         views.setTextColor(subjId, Color.parseColor("#64748B"))
@@ -552,10 +546,16 @@ class StudentScheduleWidgetProvider : AppWidgetProvider() {
                     context, 0, clickIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
                 views.setOnClickPendingIntent(R.id.widget_student_info, pendingIntent)
+                views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
 
+            } catch (t: Throwable) {
+                Log.e(TAG, "Fatal error populating widget views: ${t.message}", t)
+            }
+
+            try {
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             } catch (t: Throwable) {
-                Log.e(TAG, "Fatal error updating widget: ${t.message}", t)
+                Log.e(TAG, "Error calling updateAppWidget: ${t.message}", t)
             }
         }
     }

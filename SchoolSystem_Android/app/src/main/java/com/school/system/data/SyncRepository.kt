@@ -2108,9 +2108,23 @@ class SyncRepository @Inject constructor(
                     val root = com.google.gson.Gson().fromJson<Map<String, Any>>(scheduleJson, object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type)
                     val timingObj = root?.get("_timing") as? Map<*, *>
                     if (timingObj != null) {
-                        timingObj["schoolStartHour"]?.toString()?.let { editor.putString("school_start_hour", it) }
-                        (timingObj["lessonDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("lesson_duration_minutes", it) }
-                        (timingObj["breakDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("break_duration_minutes", it) }
+                        val startHourStr = timingObj["schoolStartHour"]?.toString() ?: ""
+                        val lessonDur = (timingObj["lessonDurationMinutes"] as? Number)?.toInt() ?: 40
+                        val breakDur = (timingObj["breakDurationMinutes"] as? Number)?.toInt() ?: 10
+
+                        editor.putString("school_start_hour", startHourStr)
+                        editor.putInt("lesson_duration_minutes", lessonDur)
+                        editor.putInt("break_duration_minutes", breakDur)
+
+                        if (startHourStr.contains(":")) {
+                            val p = startHourStr.split(":")
+                            p.getOrNull(0)?.toIntOrNull()?.let { editor.putInt("bell_start_hour", it) }
+                            p.getOrNull(1)?.toIntOrNull()?.let { editor.putInt("bell_start_minute", it) }
+                        } else if (startHourStr.toIntOrNull() != null) {
+                            editor.putInt("bell_start_hour", startHourStr.toInt())
+                        }
+                        editor.putInt("bell_lesson_duration", lessonDur)
+                        editor.putInt("bell_break_duration", breakDur)
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()

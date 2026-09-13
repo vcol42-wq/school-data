@@ -201,6 +201,12 @@ fun StudentTimetableScreen(
     var showTasksSheet by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showPomodoroDialog by remember { mutableStateOf(false) }
+    var showTimingDialog by remember { mutableStateOf(false) }
+
+    // Timing States
+    var schoolStartHour by remember { mutableStateOf(prefs.getString("school_start_hour", "08:00") ?: "08:00") }
+    var lessonDuration by remember { mutableIntStateOf(prefs.getInt("lesson_duration_minutes", 45)) }
+    var breakDuration by remember { mutableIntStateOf(prefs.getInt("break_duration_minutes", 10)) }
 
     // Pomodoro Timer State
     var pomodoroSeconds by remember { mutableIntStateOf(1500) }
@@ -539,15 +545,15 @@ fun StudentTimetableScreen(
         }
     }
 
-    val periodHeaders = remember(rawScheduleJson) {
+    val periodHeaders = remember(rawScheduleJson, schoolStartHour, lessonDuration, breakDuration) {
         val timingObj = try {
             val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
             rootObj?.get("_timing") as? Map<*, *>
         } catch (e: Exception) { null }
 
-        val startHourStr = timingObj?.get("schoolStartHour")?.toString() ?: prefs.getString("school_start_hour", "08:00") ?: "08:00"
-        val lessonDur = (timingObj?.get("lessonDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("lesson_duration_minutes", 45)
-        val breakDur = (timingObj?.get("breakDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("break_duration_minutes", 10)
+        val startHourStr = if (schoolStartHour.isNotBlank()) schoolStartHour else (timingObj?.get("schoolStartHour")?.toString() ?: prefs.getString("school_start_hour", "08:00") ?: "08:00")
+        val lessonDur = if (lessonDuration > 0) lessonDuration else ((timingObj?.get("lessonDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("lesson_duration_minutes", 45))
+        val breakDur = if (breakDuration >= 0) breakDuration else ((timingObj?.get("breakDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("break_duration_minutes", 10))
 
         val names = listOf("الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة")
         val bgColors = listOf(
@@ -806,7 +812,11 @@ fun StudentTimetableScreen(
                             IconButton(onClick = { showThemeDialog = true }, modifier = Modifier.size(34.dp)) {
                                 Icon(Icons.Default.Palette, contentDescription = "الثيمات", tint = Color(0xFFC084FC), modifier = Modifier.size(20.dp))
                             }
-                            // 2: Pomodoro Timer
+                            // 2: Timing
+                            IconButton(onClick = { showTimingDialog = true }, modifier = Modifier.size(34.dp)) {
+                                Icon(Icons.Default.AccessTime, contentDescription = "توقيت الدوام", tint = Color(0xFFF59E0B), modifier = Modifier.size(20.dp))
+                            }
+                            // 3: Pomodoro Timer
                             IconButton(onClick = { showPomodoroDialog = true }, modifier = Modifier.size(34.dp)) {
                                 Icon(Icons.Default.Timer, contentDescription = "بومودورو", tint = Color(0xFFF43F5E), modifier = Modifier.size(20.dp))
                             }
@@ -1043,7 +1053,11 @@ fun StudentTimetableScreen(
                             IconButton(onClick = { showThemeDialog = true }) {
                                 Icon(Icons.Default.Palette, contentDescription = "الثيمات", tint = Color(0xFFC084FC), modifier = Modifier.size(24.dp))
                             }
-                            // 2: Pomodoro
+                            // 2: Timing
+                            IconButton(onClick = { showTimingDialog = true }) {
+                                Icon(Icons.Default.AccessTime, contentDescription = "توقيت الدوام", tint = Color(0xFFF59E0B), modifier = Modifier.size(24.dp))
+                            }
+                            // 3: Pomodoro
                             IconButton(onClick = { showPomodoroDialog = true }) {
                                 Icon(Icons.Default.Timer, contentDescription = "بومودورو", tint = Color(0xFFF43F5E), modifier = Modifier.size(24.dp))
                             }
@@ -2055,6 +2069,108 @@ fun StudentTimetableScreen(
                     }
                 }
             }
+        }
+
+        // ----------------------------------------------------
+        // SCHOOL TIMING CONFIGURATION DIALOG (تعديل توقيت بدء الدوام للحصة الأولى)
+        // ----------------------------------------------------
+        if (showTimingDialog) {
+            var selectedHourText by remember { mutableStateOf(schoolStartHour) }
+            var selectedLessonMinutes by remember { mutableIntStateOf(lessonDuration) }
+
+            AlertDialog(
+                onDismissRequest = { showTimingDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("توقيت بدء الدوام المدرسي ⏰", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            "حدد توقيت بدء الحصة الأولى ومعدل مدة الحصة ليتوافق جدول الدروس مع الدوام الفعلي لمدرستك 100%:",
+                            fontSize = 12.5.sp,
+                            color = Color(0xFF475569),
+                            lineHeight = 18.sp
+                        )
+
+                        Text("اختيار توقيت بدء الحصة الأولى (الصباحي / المسائي):", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF0F172A))
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val presets = listOf(
+                                "08:00" to "08:00 ص (صباحي)",
+                                "08:30" to "08:30 ص (صباحي)",
+                                "12:00" to "12:00 م (مسائي)",
+                                "12:30" to "12:30 م (مسائي)",
+                                "13:00" to "01:00 م (ظهري)"
+                            )
+                            presets.forEach { (timeVal, label) ->
+                                FilterChip(
+                                    selected = (selectedHourText == timeVal),
+                                    onClick = { selectedHourText = timeVal },
+                                    label = { Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = selectedHourText,
+                            onValueChange = { selectedHourText = it },
+                            label = { Text("توقيت مخصص (HH:mm)") },
+                            placeholder = { Text("08:00 أو 12:30") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        HorizontalDivider(color = Color(0xFFE2E8F0))
+
+                        Text("مدة الحصة الواحدة:", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF0F172A))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(40, 45, 50).forEach { mins ->
+                                FilterChip(
+                                    selected = (selectedLessonMinutes == mins),
+                                    onClick = { selectedLessonMinutes = mins },
+                                    label = { Text("$mins دقيقة", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val cleanHour = selectedHourText.trim()
+                            if (cleanHour.isNotBlank()) {
+                                schoolStartHour = cleanHour
+                                lessonDuration = selectedLessonMinutes
+                                prefs.edit()
+                                    .putString("school_start_hour", cleanHour)
+                                    .putInt("lesson_duration_minutes", selectedLessonMinutes)
+                                    .apply()
+                                showTimingDialog = false
+                                Toast.makeText(context, "تم حفظ توقيت الدوام المخصص ⚡", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
+                    ) {
+                        Text("تأكيد التوقيت ⏰", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(onClick = { showTimingDialog = false }) {
+                        Text("إلغاء", fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
         }
 
         // ----------------------------------------------------

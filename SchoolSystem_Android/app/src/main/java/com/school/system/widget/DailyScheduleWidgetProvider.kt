@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.widget.RemoteViews
 import com.school.system.MainActivity
@@ -112,19 +113,20 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(subjViewId, cleanSubj)
                     views.setTextViewText(classViewId, cleanCls)
 
-                    views.setTextColor(subjViewId, android.graphics.Color.WHITE)
-                    views.setTextColor(classViewId, android.graphics.Color.parseColor("#93C5FD"))
-
                     if (i == activeLessonNum) {
+                        views.setTextColor(subjViewId, Color.WHITE)
+                        views.setTextColor(classViewId, Color.parseColor("#FEF08A"))
                         views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_teacher_highlight_bg)
                     } else {
+                        views.setTextColor(subjViewId, Color.WHITE)
+                        views.setTextColor(classViewId, Color.parseColor("#E0F2FE"))
                         views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                     }
                 } else {
                     views.setTextViewText(subjViewId, "شاغر")
                     views.setTextViewText(classViewId, "-")
-                    views.setTextColor(subjViewId, android.graphics.Color.parseColor("#64748B"))
-                    views.setTextColor(classViewId, android.graphics.Color.parseColor("#475569"))
+                    views.setTextColor(subjViewId, Color.parseColor("#CBD5E1"))
+                    views.setTextColor(classViewId, Color.parseColor("#94A3B8"))
                     views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_item_bg)
                 }
             }
