@@ -393,7 +393,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // Available subjects list
   const availableSubjects = [
     'اللغة العربية', 'التربية الإسلامية', 'الرياضيات', 'العلوم', 
-    'اللغة الإنجليزية', 'الاجتماعيات', 'التربية الفنية', 'التربية الرياضية'
+    'اللغة الإنجليزية', 'الاجتماعيات', 'التربية الفنية', 'النشاط البدني'
   ];
 
   const availableGrades = [

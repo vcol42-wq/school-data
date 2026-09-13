@@ -383,6 +383,23 @@ interface SupabaseApi {
         @Query("is_active") activeFilter: String = "eq.true",
         @Query("order") order: String = "created_at.desc"
     ): Response<List<SupabaseDirectiveDto>>
+
+    @POST("rest/v1/directives")
+    suspend fun sendDirective(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Header("Prefer") prefer: String = "return=representation",
+        @Body directive: Map<String, @JvmSuppressWildcards Any>
+    ): Response<List<SupabaseDirectiveDto>>
+
+    @DELETE("rest/v1/directives")
+    suspend fun deleteDirective(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Query("id") idFilter: String
+    ): Response<Unit>
 }
 
 @Singleton
@@ -565,7 +582,7 @@ class SyncRepository @Inject constructor(
         "الكيمياء",
         "الفيزياء",
         "الحاسوب",
-        "التربية الرياضية",
+        "النشاط البدني",
         "التربية الفنية",
         "التربية الأخلاقية",
         "العلوم",
@@ -636,14 +653,14 @@ class SyncRepository @Inject constructor(
             return "الفيزياء"
         }
 
-        // 6. التربية الرياضية
+        // 6. النشاط البدني
         if (norm == "رياضه" || norm.contains("تربيهرياض") || norm.contains("العاب") ||
             norm.contains("بدني") || rawLower == "pe" || rawLower.contains("sport")
         ) {
-            return "التربية الرياضية"
+            return "النشاط البدني"
         }
 
-        // 7. الرياضيات (مع استثناء التربية الرياضية)
+        // 7. الرياضيات
         if ((norm.contains("رياض") && !norm.contains("بدني") && !norm.contains("العاب") && !norm.contains("تربيه")) ||
             norm.contains("حساب") || norm.contains("جبر") || norm.contains("هندس") ||
             norm.contains("تفاضل") || norm.contains("تكامل") || rawLower.contains("math")
@@ -2286,6 +2303,79 @@ class SyncRepository @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             emptyList()
+        }
+    }
+
+    suspend fun sendSupervisorDirective(
+        title: String,
+        content: String,
+        targetRole: String = "teacher"
+    ): Result<Boolean> {
+        return try {
+            val conf = configDao.getConfig().first() ?: return Result.failure(Exception("لم يتم العثور على إعدادات المدرسة"))
+            val schoolId = conf.schoolId
+            if (schoolId.isEmpty() || schoolId == "school_01") {
+                return Result.failure(Exception("معرّف المدرسة غير صالح أو غير مقترن بالسحابة"))
+            }
+
+            val (url, apiKey) = resolveCredentials(null, null)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            val body = mapOf<String, Any>(
+                "school_id" to schoolId,
+                "title" to title.trim(),
+                "content" to content.trim(),
+                "target_role" to targetRole,
+                "is_active" to true
+            )
+
+            val resp = api.sendDirective(
+                apiKey = apiKey,
+                auth = authHeader,
+                schoolId = schoolId,
+                directive = body
+            )
+
+            if (resp.isSuccessful) {
+                // Refresh local directives cache immediately
+                fetchAndNotifyDirectives(schoolId)
+                Result.success(true)
+            } else {
+                val errorMsg = resp.errorBody()?.string() ?: "كود الخطأ: ${resp.code()}"
+                Log.e("SyncRepository", "Failed to broadcast directive: $errorMsg")
+                Result.failure(Exception("فشل إرسال التوجيه: $errorMsg"))
+            }
+        } catch (e: Exception) {
+            Log.e("SyncRepository", "Exception broadcasting directive", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteSupervisorDirective(directiveId: String): Result<Boolean> {
+        return try {
+            val conf = configDao.getConfig().first() ?: return Result.failure(Exception("لم يتم العثور على إعدادات المدرسة"))
+            val schoolId = conf.schoolId
+            val (url, apiKey) = resolveCredentials(null, null)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            val resp = api.deleteDirective(
+                apiKey = apiKey,
+                auth = authHeader,
+                schoolId = schoolId,
+                idFilter = "eq.$directiveId"
+            )
+
+            if (resp.isSuccessful) {
+                fetchAndNotifyDirectives(schoolId)
+                Result.success(true)
+            } else {
+                val errorMsg = resp.errorBody()?.string() ?: "كود الخطأ: ${resp.code()}"
+                Result.failure(Exception("فشل حذف التوجيه: $errorMsg"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

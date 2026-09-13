@@ -12,6 +12,7 @@ import com.school.system.data.model.SchoolConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -30,6 +31,10 @@ class DashboardViewModel @Inject constructor(
 
     val config = configDao.getConfig()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val isSupervisor = configDao.getConfig()
+        .map { it?.role == "supervisor" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val directives = syncRepository.directives
 
@@ -136,4 +141,59 @@ class DashboardViewModel @Inject constructor(
 
     suspend fun downloadSelectedClasses(selectedItems: List<com.school.system.data.SchoolClassSubjectItem>): Boolean =
         syncManager.downloadSelectedClasses(selectedItems)
+
+    fun sendSupervisorDirective(
+        title: String,
+        content: String,
+        targetRole: String = "teacher",
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            if (title.isBlank()) {
+                onResult(false, "يرجى كتابة عنوان للتوجيه")
+                return@launch
+            }
+            if (content.isBlank()) {
+                onResult(false, "يرجى كتابة نص التوجيه والتعليمات")
+                return@launch
+            }
+            val result = syncRepository.sendSupervisorDirective(title, content, targetRole)
+            if (result.isSuccess) {
+                onResult(true, "تم إرسال وبث التوجيه بنجاح لكافة الكادر 📢")
+            } else {
+                onResult(false, result.exceptionOrNull()?.message ?: "فشل إرسال التوجيه")
+            }
+        }
+    }
+
+    fun deleteSupervisorDirective(
+        directiveId: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = syncRepository.deleteSupervisorDirective(directiveId)
+            if (result.isSuccess) {
+                onResult(true, "تم حذف التوجيه بنجاح 🗑️")
+            } else {
+                onResult(false, result.exceptionOrNull()?.message ?: "فشل حذف التوجيه")
+            }
+        }
+    }
+
+    fun syncAllSchoolClasses(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: return@launch onResult(false, "لم يتم العثور على إعدادات المدرسة")
+            val success = syncRepository.downloadRoster(
+                schoolId = current.schoolId,
+                teacherId = "__supervisor__",
+                providedUrl = current.cloudUrl,
+                providedKey = current.cloudKey
+            )
+            if (success) {
+                onResult(true, "تم سحب وتحديث كافة شعب وصفوف المدرسة بنجاح 🏫✓")
+            } else {
+                onResult(false, "تعذر سحب الشعب. يرجى التأكد من اتصال الإنترنت أو اتصال السحابة.")
+            }
+        }
+    }
 }

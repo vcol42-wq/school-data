@@ -95,7 +95,7 @@ export const VACANT_SLOT_SEQUENCE: { day: DayOfWeek; dayIndex: number; periodInd
 export function isForbiddenInPeriod6(subjectName: string, weeklyQuota?: number): boolean {
   if (!subjectName) return false;
   const s = subjectName.trim().toLowerCase();
-  if (s === 'شاغر' || s.includes('شاغر') || s.includes('نشاط')) return false;
+  if (s === 'شاغر' || s.includes('شاغر') || s.includes('نشاط حر') || s.includes('حصة فراغ')) return false;
 
   // Rule 1: Subjects with quota <= 2 are forbidden in Period 6
   if (weeklyQuota !== undefined && weeklyQuota <= 2) return true;
@@ -120,7 +120,7 @@ export function isForbiddenInPeriod6(subjectName: string, weeklyQuota?: number):
     s.includes('دين');
 
   const isEthics = s.includes('اخلاق') || s.includes('أخلاق');
-  const isPE = s.includes('رياض') || s.includes('sport');
+  const isPE = (s.includes('بدني') || s.includes('رياضة') || s.includes('رياضي') || s.includes('sport')) && !s.includes('رياضيات');
   const isArt = s.includes('فني') || s.includes('رسم') || s.includes('art');
 
   return isScience || isIslamic || isEthics || isPE || isArt;
@@ -452,10 +452,13 @@ export function generateSmartFairSchedule(
     }
   }
 
-  // 2. Multi-Pass Backtracking Solver
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const seed = randomSeed + attempt * 47.3 + Math.random() * 5000;
-    const scheduleResult = solveWithCSP(sections, sectionDecks, totalTeacherLoad, seed);
+  // 2. Multi-Pass Backtracking Solver (Fast, deadlock-proof, non-blocking)
+  const globalDeadline = Date.now() + 1200; // max 1.2s total budget
+  const effectiveMaxAttempts = Math.min(maxAttempts || 25, 25);
+
+  for (let attempt = 0; attempt < effectiveMaxAttempts && Date.now() < globalDeadline; attempt++) {
+    const seed = randomSeed + attempt * 53.7 + Math.random() * 500;
+    const scheduleResult = solveWithCSP(sections, sectionDecks, totalTeacherLoad, seed, globalDeadline);
 
     if (scheduleResult) {
       const audit = auditScheduleMathematicalCorrectness(scheduleResult, sections);
@@ -469,7 +472,7 @@ export function generateSmartFairSchedule(
     }
   }
 
-  // If deterministic backtrack hit iteration limit, build master-crafted non-repetitive fallback
+  // If randomized CSP hit iteration limit or timeout, build master-crafted fallback
   const fallback = buildDeterministicFallback(sections, sectionDecks);
   const collisions = checkScheduleCollisions(fallback);
 
@@ -483,14 +486,21 @@ export function generateSmartFairSchedule(
   };
 }
 
+interface SolverContext {
+  steps: number;
+  maxSteps: number;
+  deadline: number;
+}
+
 /**
- * Core Constraint Satisfaction Solver with Backtracking & Anti-Repetition Forward Checking
+ * Core Constraint Satisfaction Solver with Period 6 Pre-Allocation & Anti-Repetition Forward Checking
  */
 function solveWithCSP(
   sections: SmartScheduleSection[],
   sectionDecks: Map<string, LessonCard[]>,
   teacherTotalLoads: Map<string, number>,
-  seed: number
+  seed: number,
+  globalDeadline: number
 ): DayScheduleMap | null {
   // Grid matrix: [sectionKey][slotIndex] -> LessonCard
   const assignment: Record<string, (LessonCard | null)[]> = {};
@@ -504,22 +514,11 @@ function solveWithCSP(
   // Anti-repetition: Period-index tracker per subject [sectionKey][subject] -> array of size 6 counting occurrences in lesson 1..6
   const subjectPeriodCount: Record<string, Record<string, number[]>> = {};
 
-  // Period 6 counter per section: [sectionKey][subject] -> count in Period 6
-  const period6SubjectCount: Record<string, Record<string, number>> = {};
-
-  // Periods 1-5 counter per section: [sectionKey][subject] -> count in Periods 1-5
-  const period1to5SubjectCount: Record<string, Record<string, number>> = {};
-
-  // Global Period 6 teacher counter across the school for Fair Rotation (Rule 4)
-  const schoolPeriod6TeacherCount: Map<string, number> = new Map();
-
   sections.forEach(sec => {
     const sKey = `${sec.grade}_${sec.section}`;
     assignment[sKey] = new Array(30).fill(null);
     dailySubjectCount[sKey] = { 0: {}, 1: {}, 2: {}, 3: {}, 4: {} };
     subjectPeriodCount[sKey] = {};
-    period6SubjectCount[sKey] = {};
-    period1to5SubjectCount[sKey] = {};
   });
 
   // Sort sections by constraint degree (sections with heaviest shared teachers first)
@@ -530,49 +529,115 @@ function solveWithCSP(
   });
 
   // Solve section by section using CSP
-  for (const sec of sortedSections) {
+  for (let secIdx = 0; secIdx < sortedSections.length; secIdx++) {
+    const sec = sortedSections[secIdx];
     const sKey = `${sec.grade}_${sec.section}`;
     const fullDeck = [...(sectionDecks.get(sKey) || [])];
 
     const vacantCards = fullDeck.filter(c => c.isVacant);
     const realCards = fullDeck.filter(c => !c.isVacant);
 
-    // Rule 2 & 3: Pre-allocate all vacant cards directly to designated Lesson 6 slots
+    // 1. Rule 2 & 3: Pre-allocate all vacant cards directly to designated Lesson 6 slots
     // (Starting Thursday 6th, Wednesday 6th, Tuesday 6th, Monday 6th, Sunday 6th)
     vacantCards.forEach((vCard, idx) => {
       const vSlot = VACANT_SLOT_SEQUENCE[idx];
       if (vSlot) {
         assignment[sKey][vSlot.slotIndex] = vCard;
         dailySubjectCount[sKey][vSlot.dayIndex][vCard.subject] = (dailySubjectCount[sKey][vSlot.dayIndex][vCard.subject] || 0) + 1;
-        if (vSlot.periodIndex === 5) {
-          period6SubjectCount[sKey][vCard.subject] = (period6SubjectCount[sKey][vCard.subject] || 0) + 1;
-        }
       }
     });
 
-    // Order real deck: Heaviest teacher loads & morning sciences first
-    realCards.sort((a, b) => {
-      const tLoadA = teacherTotalLoads.get(a.teacher) || 0;
-      const tLoadB = teacherTotalLoads.get(b.teacher) || 0;
-      if (tLoadA !== tLoadB) return tLoadB - tLoadA;
-      const aSci = isForbiddenInPeriod6(a.subject, a.weeklyQuota);
-      const bSci = isForbiddenInPeriod6(b.subject, b.weeklyQuota);
-      if (aSci !== bSci) return aSci ? -1 : 1;
-      return (Math.sin(seed + a.id.length * 11) - 0.5);
+    // 2. Rule 1 & 4: Pre-allocate open Period 6 slots using eligible subjects (quota >= 3, non-science)
+    const openP6Slots = VACANT_SLOT_SEQUENCE.slice(vacantCards.length).map(v => v.slotIndex);
+    const eligibleBySubject = new Map<string, LessonCard[]>();
+    realCards.forEach(c => {
+      if (!isForbiddenInPeriod6(c.subject, c.weeklyQuota) && c.weeklyQuota > 2) {
+        if (!eligibleBySubject.has(c.subject)) eligibleBySubject.set(c.subject, []);
+        eligibleBySubject.get(c.subject)!.push(c);
+      }
     });
 
-    const success = backtrackSection(
+    const eligibleSubjectNames = Array.from(eligibleBySubject.keys());
+    // Rotate eligible subjects dynamically based on section index and seed to prevent teacher clashes
+    const rotatedSubjectNames = [...eligibleSubjectNames].sort((a, b) => {
+      const valA = Math.sin(seed + secIdx * 17.3 + a.charCodeAt(0));
+      const valB = Math.sin(seed + secIdx * 17.3 + b.charCodeAt(0));
+      return valA - valB;
+    });
+
+    const chosenP6Cards: LessonCard[] = [];
+    for (const slotIdx of openP6Slots) {
+      const dayIdx = Math.floor(slotIdx / 6);
+      let chosen: LessonCard | null = null;
+      let chosenSubject = '';
+
+      for (const sName of rotatedSubjectNames) {
+        const list = eligibleBySubject.get(sName);
+        if (list && list.length > 0) {
+          const cand = list[0];
+          const isBusy = cand.isSpecialTeacher && teacherOccupancyMap.get(cand.teacher)?.has(slotIdx);
+          if (!isBusy) {
+            chosen = cand;
+            chosenSubject = sName;
+            break;
+          }
+        }
+      }
+
+      // Fallback to any eligible subject if preferred had clash
+      if (!chosen) {
+        for (const sName of eligibleSubjectNames) {
+          const list = eligibleBySubject.get(sName);
+          if (list && list.length > 0) {
+            chosen = list[0];
+            chosenSubject = sName;
+            break;
+          }
+        }
+      }
+
+      if (chosen) {
+        assignment[sKey][slotIdx] = chosen;
+        dailySubjectCount[sKey][dayIdx][chosen.subject] = (dailySubjectCount[sKey][dayIdx][chosen.subject] || 0) + 1;
+        if (chosen.isSpecialTeacher) {
+          if (!teacherOccupancyMap.has(chosen.teacher)) teacherOccupancyMap.set(chosen.teacher, new Set());
+          teacherOccupancyMap.get(chosen.teacher)!.add(slotIdx);
+        }
+        chosenP6Cards.push(chosen);
+        eligibleBySubject.delete(chosenSubject); // Max 1 per subject in Period 6 (Rule 4)
+      }
+    }
+
+    // 3. Exactly 25 remaining cards for Periods 1 to 5 (5 days x 5 periods)
+    const periods1to5Deck = realCards.filter(c => !chosenP6Cards.includes(c));
+
+    // Sort deck: heavy sciences & single/dual quota subjects first for prime morning slots
+    periods1to5Deck.sort((a, b) => {
+      const aSci = isForbiddenInPeriod6(a.subject, a.weeklyQuota) || a.weeklyQuota <= 2;
+      const bSci = isForbiddenInPeriod6(b.subject, b.weeklyQuota) || b.weeklyQuota <= 2;
+      if (aSci !== bSci) return aSci ? -1 : 1;
+      const loadA = teacherTotalLoads.get(a.teacher) || 0;
+      const loadB = teacherTotalLoads.get(b.teacher) || 0;
+      if (loadA !== loadB) return loadB - loadA;
+      return b.weeklyQuota - a.weeklyQuota;
+    });
+
+    const context: SolverContext = {
+      steps: 0,
+      maxSteps: 3000,
+      deadline: Math.min(globalDeadline, Date.now() + 180)
+    };
+
+    const success = backtrackPeriods1to5(
       0,
-      realCards,
+      periods1to5Deck,
       sKey,
       assignment[sKey],
       teacherOccupancyMap,
       dailySubjectCount[sKey],
       subjectPeriodCount[sKey],
-      period6SubjectCount[sKey],
-      period1to5SubjectCount[sKey],
-      schoolPeriod6TeacherCount,
-      seed
+      context,
+      seed + secIdx * 19.1
     );
 
     if (!success) {
@@ -607,9 +672,9 @@ function solveWithCSP(
 }
 
 /**
- * Recursive Backtracking with Dynamic Anti-Repetition and Pedagogical Priority
+ * Recursive Backtracking for Periods 1 to 5 with Circuit-Breaker and Anti-Repetition
  */
-function backtrackSection(
+function backtrackPeriods1to5(
   cardIndex: number,
   deck: LessonCard[],
   sectionKey: string,
@@ -617,32 +682,26 @@ function backtrackSection(
   teacherOccupancyMap: Map<string, Set<number>>,
   dailySubjectCount: Record<number, Record<string, number>>,
   subjectPeriodCount: Record<string, number[]>,
-  period6SubjectCount: Record<string, number>,
-  period1to5SubjectCount: Record<string, number>,
-  schoolPeriod6TeacherCount: Map<string, number>,
+  context: SolverContext,
   seed: number
 ): boolean {
   if (cardIndex >= deck.length) {
     return true; // All cards successfully allocated
   }
 
+  // Circuit breaker: Prevent freezing by limiting recursive steps and enforcing deadline
+  if (++context.steps > context.maxSteps || Date.now() > context.deadline) {
+    return false;
+  }
+
   const card = deck[cardIndex];
 
-  // Generate and score candidate slots (0 to 29)
+  // Generate and score candidate slots in Periods 1 to 5 only (periodIndex 0..4)
   const candidateSlots: { slot: TimeSlot; penalty: number }[] = [];
 
   for (const slot of ALL_SLOTS) {
-    if (grid[slot.slotIndex] !== null) continue; // Already occupied (including pre-allocated vacancies)
-
-    // Hard Constraint: Vacant cards are forbidden from Periods 1 to 5 (Rule 3)
-    if (card.isVacant && slot.periodIndex < 5) {
-      continue;
-    }
-
-    // Hard Constraint: Real cards are strictly forbidden from Thursday Period 6 (Rule 2)
-    if (!card.isVacant && slot.slotIndex === 29) {
-      continue;
-    }
+    if (slot.periodIndex === 5) continue; // Period 6 is already allocated!
+    if (grid[slot.slotIndex] !== null) continue; // Already occupied
 
     // 1. HARD CONSTRAINT: Teacher clash in another section
     if (card.isSpecialTeacher) {
@@ -655,64 +714,29 @@ function backtrackSection(
     // 2. HARD CONSTRAINT: Daily subject repetition (Rule 5: Max 1 per day unless quota > 5)
     const currentToday = dailySubjectCount[slot.dayIndex][card.subject] || 0;
     const maxPerDay = card.weeklyQuota > 5 ? Math.ceil(card.weeklyQuota / 5) : 1;
-    if (!card.isVacant && currentToday >= maxPerDay) {
+    if (currentToday >= maxPerDay) {
       continue; // Strictly no duplicate subject on the same day
     }
 
-    // 3. PERIOD 6 HARD CONSTRAINTS (Rule 1 & Rule 4)
-    if (slot.periodIndex === 5) {
-      // 3a. Forbidden in Period 6: Science, Islamic, Ethics, PE, Art, or quota <= 2
-      if (isForbiddenInPeriod6(card.subject, card.weeklyQuota) || (!card.isVacant && card.weeklyQuota <= 2)) {
-        continue;
-      }
-
-      // 3b. Max 1 lesson in Period 6 per subject across the entire week
-      const currentInP6 = period6SubjectCount[card.subject] || 0;
-      if (!card.isVacant && currentInP6 >= 1) {
-        continue;
-      }
-    }
-
-    // 4. SCORING & PROFESSIONAL PEDAGOGICAL HEURISTICS
+    // 3. SCORING & PROFESSIONAL PEDAGOGICAL HEURISTICS
     let penalty = 0;
 
-    // 4a. ANTI-REPETITION (Dynamic Period Rotation):
-    // Heavily penalize placing the same subject at the same period number more than once in a week!
-    // (Prevents Arabic/English/Math from being Lesson 1 every single day)
+    // 3a. ANTI-REPETITION (Dynamic Period Rotation):
     const pHistory = subjectPeriodCount[card.subject] || [0, 0, 0, 0, 0, 0];
     const timesInThisPeriod = pHistory[slot.periodIndex] || 0;
     if (timesInThisPeriod === 1) {
-      penalty += 450; // Heavy penalty for putting the subject at the same period number twice
+      penalty += 350;
     } else if (timesInThisPeriod >= 2) {
-      penalty += 2200; // Strictly prevent 3rd repetition of the same period number
+      penalty += 1800;
     }
 
-    // 4b. MORNING PRIORITY for Heavy Sciences & Single/Dual Quota Subjects:
-    // Place sciences, math, and single-quota subjects in Periods 1, 2, 3 where focus is highest
+    // 3b. MORNING PRIORITY for Heavy Sciences & Single/Dual Quota Subjects (Lessons 1-3)
     const isMorningPriority = isForbiddenInPeriod6(card.subject, card.weeklyQuota) || card.weeklyQuota <= 2;
-    if (isMorningPriority && slot.periodIndex < 5) {
+    if (isMorningPriority) {
       penalty -= (4 - slot.periodIndex) * 75; // Earlier periods preferred
     }
 
-    // 4c. Rule 4: Fair Rotation of Period 6 among teachers across the school
-    if (slot.periodIndex === 5 && !card.isVacant) {
-      const p6TeacherLoad = schoolPeriod6TeacherCount.get(card.teacher) || 0;
-      penalty += p6TeacherLoad * 250;
-      if (card.weeklyQuota >= 5) {
-        penalty -= 100;
-      }
-    }
-
-    // 4d. Avoid two consecutive heavy academic/science lessons on the same day
-    if (slot.periodIndex > 0) {
-      const prevSlot = slot.slotIndex - 1;
-      const prevCard = grid[prevSlot];
-      if (prevCard && !prevCard.isVacant && isMorningPriority && isForbiddenInPeriod6(prevCard.subject, prevCard.weeklyQuota)) {
-        penalty += 150; // Soft penalty for consecutive heavy subjects
-      }
-    }
-
-    // 4e. Natural dispersion tie-breaker
+    // 3c. Natural dispersion tie-breaker
     const noise = (Math.sin(seed + cardIndex * 19.3 + slot.slotIndex * 31.7) - 0.5) * 35;
     candidateSlots.push({ slot, penalty: penalty + noise });
   }
@@ -738,17 +762,8 @@ function backtrackSection(
     }
     subjectPeriodCount[card.subject][slot.periodIndex] = (subjectPeriodCount[card.subject][slot.periodIndex] || 0) + 1;
 
-    if (slot.periodIndex === 5) {
-      period6SubjectCount[card.subject] = (period6SubjectCount[card.subject] || 0) + 1;
-      if (card.isSpecialTeacher) {
-        schoolPeriod6TeacherCount.set(card.teacher, (schoolPeriod6TeacherCount.get(card.teacher) || 0) + 1);
-      }
-    } else {
-      period1to5SubjectCount[card.subject] = (period1to5SubjectCount[card.subject] || 0) + 1;
-    }
-
     // Recurse to next card
-    if (backtrackSection(
+    if (backtrackPeriods1to5(
       cardIndex + 1,
       deck,
       sectionKey,
@@ -756,9 +771,7 @@ function backtrackSection(
       teacherOccupancyMap,
       dailySubjectCount,
       subjectPeriodCount,
-      period6SubjectCount,
-      period1to5SubjectCount,
-      schoolPeriod6TeacherCount,
+      context,
       seed
     )) {
       return true;
@@ -771,15 +784,6 @@ function backtrackSection(
     }
     dailySubjectCount[slot.dayIndex][card.subject] = (dailySubjectCount[slot.dayIndex][card.subject] || 0) - 1;
     subjectPeriodCount[card.subject][slot.periodIndex] = Math.max(0, (subjectPeriodCount[card.subject][slot.periodIndex] || 1) - 1);
-
-    if (slot.periodIndex === 5) {
-      period6SubjectCount[card.subject] = (period6SubjectCount[card.subject] || 0) - 1;
-      if (card.isSpecialTeacher) {
-        schoolPeriod6TeacherCount.set(card.teacher, Math.max(0, (schoolPeriod6TeacherCount.get(card.teacher) || 1) - 1));
-      }
-    } else {
-      period1to5SubjectCount[card.subject] = (period1to5SubjectCount[card.subject] || 0) - 1;
-    }
   }
 
   return false;

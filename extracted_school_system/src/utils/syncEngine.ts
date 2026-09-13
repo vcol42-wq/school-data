@@ -154,7 +154,7 @@ export function standardizeSubjectName(raw: string): string {
   if (norm.includes('رياضيات') || norm.includes('رياضي') || norm.includes('جبر') || norm.includes('هندس')) return 'الرياضيات';
   if (norm.includes('حاسوب') || norm.includes('كمبيوتر') || norm.includes('برمج')) return 'الحاسوب';
   if (norm.includes('فني') || norm.includes('رسم') || norm.includes('فنون')) return 'التربية الفنية';
-  if (norm.includes('رياضه') || norm.includes('العاب') || norm.includes('بدني')) return 'التربية الرياضية';
+  if (norm.includes('رياضه') || norm.includes('العاب') || norm.includes('بدني')) return 'النشاط البدني';
   if (norm.includes('اخلاق')) return 'التربية الأخلاقية';
   if (norm.includes('علوم')) return 'العلوم';
 

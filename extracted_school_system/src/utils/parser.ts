@@ -28,7 +28,7 @@ export const STAGE_SUBJECTS: Record<SchoolStage, string[]> = {
     'العلوم العامة',
     'الاجتماعيات',
     'التربية الفنية',
-    'التربية الرياضية'
+    'النشاط البدني'
   ],
   intermediate: [
     'التربية الإسلامية',
@@ -42,7 +42,7 @@ export const STAGE_SUBJECTS: Record<SchoolStage, string[]> = {
     'الجغرافيا',
     'التربية الوطنية',
     'الحاسوب',
-    'التربية الرياضية'
+    'النشاط البدني'
   ],
   preparatory: [
     'التربية الإسلامية',
@@ -57,7 +57,7 @@ export const STAGE_SUBJECTS: Record<SchoolStage, string[]> = {
     'الفلسفة والاجتماع',
     'الاقتصاد',
     'الحاسوب',
-    'التربية الرياضية'
+    'النشاط البدني'
   ],
   secondary: [
     'التربية الإسلامية',
@@ -73,7 +73,7 @@ export const STAGE_SUBJECTS: Record<SchoolStage, string[]> = {
     'الاقتصاد',
     'الفلسفة والاجتماع',
     'الحاسوب',
-    'التربية الرياضية'
+    'النشاط البدني'
   ]
 };
 

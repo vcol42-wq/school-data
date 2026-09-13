@@ -65,7 +65,7 @@ export const StatisticsView: React.FC<StatisticsViewProps> = ({
     'الكيمياء',
     'الفيزياء',
     'الحاسوب',
-    'التربية الرياضية',
+    'النشاط البدني',
     'التربية الفنية'
   ];
 

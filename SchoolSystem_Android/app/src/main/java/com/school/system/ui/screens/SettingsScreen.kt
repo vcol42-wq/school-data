@@ -59,7 +59,8 @@ class SettingsViewModel @Inject constructor(
     val syncManager: SyncManager,
     val authRepository: AuthRepository,
     val schoolRepository: SchoolRepository,
-    val secureKeyStorage: SecureKeyStorage
+    val secureKeyStorage: SecureKeyStorage,
+    val syncRepository: com.school.system.data.SyncRepository
 ) : ViewModel() {
     val config = configDao.getConfig()
         .map { it ?: SchoolConfig(isActivated = false) }
@@ -261,10 +262,38 @@ class SettingsViewModel @Inject constructor(
                     role = "supervisor",
                     syncSealToken = if (current.syncSealToken.isNullOrEmpty()) "__supervisor__" else current.syncSealToken
                 ))
-                onResult(true, "تم تفعيل وضع المشرف التربوي بنجاح 🛡️")
+                // سحب كافة شعب وصفوف المدرسة فورياً
+                if (current.schoolId.isNotEmpty() && current.schoolId != "school_01") {
+                    try {
+                        syncRepository.downloadRoster(
+                            schoolId = current.schoolId,
+                            teacherId = "__supervisor__",
+                            providedUrl = current.cloudUrl,
+                            providedKey = current.cloudKey
+                        )
+                    } catch (_: Exception) {}
+                }
+                onResult(true, "تم تفعيل وضع المشرف التربوي وسحب كافة شعب المدرسة بنجاح 🛡️")
             } else {
                 configDao.saveConfig(current.copy(role = "teacher"))
                 onResult(true, "تم العودة إلى وضع الأستاذ التدريسي 👨‍🏫")
+            }
+        }
+    }
+
+    fun syncAllSchoolClassesForSupervisor(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: return@launch onResult(false, "لم يتم العثور على إعدادات المدرسة")
+            val success = syncRepository.downloadRoster(
+                schoolId = current.schoolId,
+                teacherId = "__supervisor__",
+                providedUrl = current.cloudUrl,
+                providedKey = current.cloudKey
+            )
+            if (success) {
+                onResult(true, "تم سحب وتحديث كافة شعب وصفوف المدرسة بنجاح 🏫✓")
+            } else {
+                onResult(false, "تعذر سحب الشعب. يرجى التحقق من اتصال الإنترنت أو اتصال السحابة.")
             }
         }
     }
@@ -417,7 +446,7 @@ fun SettingsScreen(
     val quickSubjects = listOf(
         "اللغة العربية", "الرياضيات", "التربية الإسلامية", "اللغة الإنكليزية",
         "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
-        "الحاسوب", "التربية الأخلاقية", "التربية الفنية", "التربية الرياضية", "النشيد والموسيقى", "الفرنسية"
+        "الحاسوب", "التربية الأخلاقية", "التربية الفنية", "النشاط البدني", "النشيد والموسيقى", "الفرنسية"
     )
 
     val schoolGenders = listOf("بنين", "بنات", "مختلط")
@@ -1005,6 +1034,28 @@ fun SettingsScreen(
                                 textAlign = TextAlign.Center,
                                 maxLines = 1
                             )
+                        }
+                    }
+
+                    if (isSupervisorMode) {
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.syncAllSchoolClassesForSupervisor { success, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFD97706)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF92400E))
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("سحب وتحديث كافة شعب وصفوف المدرسة 🏫🔄", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                         }
                     }
                 }

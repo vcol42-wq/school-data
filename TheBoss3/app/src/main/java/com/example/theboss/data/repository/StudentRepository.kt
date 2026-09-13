@@ -191,7 +191,7 @@ class StudentRepository @Inject constructor(
             norm.contains("حاسوب") || norm.contains("كمبيوتر") || norm.contains("حاسبات") -> "الحاسوب"
             norm.contains("فرنسي") -> "اللغة الفرنسية"
             norm.contains("فني") || norm.contains("رسم") -> "التربية الفنية"
-            norm.contains("رياضه") || norm.contains("بدني") -> "التربية الرياضية"
+            norm.contains("رياضه") || norm.contains("بدني") -> "النشاط البدني"
             else -> clean
         }
     }

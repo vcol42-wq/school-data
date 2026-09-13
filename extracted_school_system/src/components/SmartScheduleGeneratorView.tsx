@@ -69,7 +69,7 @@ const STANDARD_SUBJECTS_TEMPLATE: { name: string; quota: number }[] = [
   { name: 'الفيزياء', quota: 3 },
   { name: 'الأحياء', quota: 2 },
   { name: 'الاجتماعيات', quota: 3 },
-  { name: 'التربية الرياضية', quota: 2 },
+  { name: 'النشاط البدني', quota: 2 },
   { name: 'التربية الفنية', quota: 1 },
   { name: 'التربية الأخلاقية', quota: 1 },
 ];

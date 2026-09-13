@@ -40,10 +40,12 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val config by viewModel.config.collectAsState()
+    val isSupervisor by viewModel.isSupervisor.collectAsState()
     val packages by viewModel.packages.collectAsState()
     val directives by viewModel.directives.collectAsState()
     var showSummonDialog by remember { mutableStateOf(false) }
     var showSelectClassesDialog by remember { mutableStateOf(false) }
+    var showSupervisorDirectivesDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showEditTeacherNameDialog by remember { mutableStateOf(false) }
@@ -269,6 +271,20 @@ fun DashboardScreen(
             }
 
             Spacer(Modifier.height(6.dp))
+
+            // كارت لوحة المشرف التربوي (يظهر حصراً عند تفعيل وضع المشرف)
+            if (isSupervisor) {
+                SupervisorHubCard(
+                    schoolName = config?.schoolName ?: "",
+                    onOpenDirectives = { showSupervisorDirectivesDialog = true },
+                    onSyncAllClasses = {
+                        viewModel.syncAllSchoolClasses { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+                Spacer(Modifier.height(6.dp))
+            }
 
             // 3. قائمة السجلات (مستطيلات محددة ومضللة بلون مختلف عن الأرضية)
             if (packages.isEmpty()) {
@@ -523,6 +539,24 @@ fun DashboardScreen(
         if (showThemeDialog) {
             com.school.system.ui.theme.ThemeSelectionDialog(
                 onDismiss = { showThemeDialog = false }
+            )
+        }
+
+        // Dialog 7: إدارة وبث توجيهات المشرف التربوي
+        if (showSupervisorDirectivesDialog) {
+            SupervisorDirectivesDialog(
+                directives = directives,
+                onDismiss = { showSupervisorDirectivesDialog = false },
+                onSendDirective = { title, content, targetRole ->
+                    viewModel.sendSupervisorDirective(title, content, targetRole) { success, msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onDeleteDirective = { directiveId ->
+                    viewModel.deleteSupervisorDirective(directiveId) { success, msg ->
+                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                }
             )
         }
     }
@@ -1092,7 +1126,7 @@ fun SetupClassSubjectDialog(
     val quickSubjects = listOf(
         "التربية الإسلامية", "اللغة العربية", "اللغة الإنكليزية", "الرياضيات",
         "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
-        "الحاسوب", "التربية الرياضية", "التربية الفنية", "التربية الأخلاقية",
+        "الحاسوب", "النشاط البدني", "التربية الفنية", "التربية الأخلاقية",
         "التاريخ", "الجغرافيا", "الاقتصاد", "الفلسفة وعلم النفس", "اللغة الفرنسية"
     )
 
@@ -1285,7 +1319,7 @@ fun EditClassSubjectDialog(
     val quickSubjects = listOf(
         "التربية الإسلامية", "اللغة العربية", "اللغة الإنكليزية", "الرياضيات",
         "العلوم", "الفيزياء", "الكيمياء", "الأحياء", "الاجتماعيات",
-        "الحاسوب", "التربية الرياضية", "التربية الفنية", "التربية الأخلاقية",
+        "الحاسوب", "النشاط البدني", "التربية الفنية", "التربية الأخلاقية",
         "التاريخ", "الجغرافيا", "الاقتصاد", "الفلسفة وعلم النفس", "اللغة الفرنسية"
     )
 
@@ -1878,6 +1912,297 @@ fun TeacherDirectivesCard(
             }
         }
     }
+}
+
+@Composable
+fun SupervisorHubCard(
+    schoolName: String,
+    onOpenDirectives: () -> Unit,
+    onSyncAllClasses: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 2.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = Color(0xFFFFFBEB),
+        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFF59E0B)),
+        shadowElevation = 3.dp
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Surface(
+                        color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("🛡️", fontSize = 18.sp)
+                        }
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "لوحة المشرف التربوي 🛡️",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.5.sp,
+                            color = Color(0xFF92400E)
+                        )
+                        Text(
+                            text = if (schoolName.isNotBlank()) "الإشراف والمتابعة لمدرسة: $schoolName" else "الإشراف والمتابعة الشاملة لكافة شعب المدرسة",
+                            fontSize = 11.sp,
+                            color = Color(0xFFB45309),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                Surface(
+                    color = Color(0xFFF59E0B),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        text = "وضع إشرافي",
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Button 1: بث التوجيهات
+                Button(
+                    onClick = onOpenDirectives,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("بث توجيهات 📢", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Button 2: مزامنة وسحب كافة الشعب
+                OutlinedButton(
+                    onClick = onSyncAllClasses,
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFD97706)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF92400E)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("سحب الشعب 🏫", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SupervisorDirectivesDialog(
+    directives: List<com.school.system.data.SupabaseDirectiveDto>,
+    onDismiss: () -> Unit,
+    onSendDirective: (title: String, content: String, targetRole: String) -> Unit,
+    onDeleteDirective: (directiveId: String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var content by remember { mutableStateOf("") }
+    var targetRole by remember { mutableStateOf("teacher") }
+    var isSending by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إغلاق", fontWeight = FontWeight.Bold)
+            }
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("📢", fontSize = 18.sp)
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("بث وإدارة التوجيهات والتعليمات", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    Text("إرسال التوجيهات لكافة كادر المدرسة فورياً", fontSize = 11.sp, color = Color.Gray)
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Form card
+                Surface(
+                    color = Color(0xFFFFFBEB),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("إنشاء توجيه جديد ✍️", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF92400E))
+
+                        OutlinedTextField(
+                            value = title,
+                            onValueChange = { title = it },
+                            label = { Text("عنوان التوجيه (مثال: موعد رصد الدرجات)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+
+                        OutlinedTextField(
+                            value = content,
+                            onValueChange = { content = it },
+                            label = { Text("نص التوجيه والتعليمات التفصيلية") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            maxLines = 5,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("الفئة المستهدفة:", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF78350F))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Surface(
+                                    color = if (targetRole == "teacher") Color(0xFFD97706) else Color(0xFFFEF3C7),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)),
+                                    modifier = Modifier.clickable { targetRole = "teacher" }
+                                ) {
+                                    Text(
+                                        text = "الأساتذة",
+                                        color = if (targetRole == "teacher") Color.White else Color(0xFF92400E),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                                Surface(
+                                    color = if (targetRole == "all") Color(0xFFD97706) else Color(0xFFFEF3C7),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF59E0B)),
+                                    modifier = Modifier.clickable { targetRole = "all" }
+                                ) {
+                                    Text(
+                                        text = "الجميع",
+                                        color = if (targetRole == "all") Color.White else Color(0xFF92400E),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                isSending = true
+                                onSendDirective(title, content, targetRole)
+                                title = ""
+                                content = ""
+                                isSending = false
+                            },
+                            enabled = !isSending && title.isNotBlank() && content.isNotBlank(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (isSending) "جاري البث..." else "بث التوجيه السحابي فوراً 🚀",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                // Directives List
+                if (directives.isNotEmpty()) {
+                    Text(
+                        "التوجيهات النشطة حالياً بالمدرسة (${directives.size}) 📋",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Color(0xFF1E293B)
+                    )
+
+                    directives.forEach { dir ->
+                        Surface(
+                            color = Color(0xFFF8FAFC),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = dir.title,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = dir.content,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF475569),
+                                        maxLines = 3
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onDeleteDirective(dir.id) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "حذف التوجيه",
+                                        tint = Color(0xFFEF4444),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
 }
 
 

@@ -14,7 +14,7 @@ export const StudentTranscriptModal: React.FC<StudentTranscriptModalProps> = ({ 
   const subjects = [
     'اللغة العربية', 'الرياضيات', 'العلوم', 'اللغة الإنجليزية',
     'التربية الإسلامية', 'التربية الفنية', 'التربية الأخلاقية',
-    'التربية الرياضية', 'حقوق الإنسان', 'الاجتماعيات'
+    'النشاط البدني', 'حقوق الإنسان', 'الاجتماعيات'
   ];
 
   const getMark = (subject: string): StudentMark | undefined => {

@@ -58,7 +58,7 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
         'الكيمياء',
         'الأحياء',
         'الفيزياء',
-        'التربية الرياضية',
+        'النشاط البدني',
         'التربية الفنية',
         'التربية الأخلاقية',
         'الحاسوب'
@@ -73,7 +73,7 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
         'الكيمياء',
         'الأحياء',
         'الفيزياء',
-        'التربية الرياضية',
+        'النشاط البدني',
         'التربية الفنية',
         'التربية الأخلاقية',
         'الحاسوب'

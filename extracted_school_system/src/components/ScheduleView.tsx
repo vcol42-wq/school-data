@@ -35,7 +35,7 @@ export const COMMON_SCHEDULE_SUBJECTS = [
   'الأحياء',
   'الاجتماعيات',
   'التربية الأخلاقية',
-  'التربية الرياضية',
+  'النشاط البدني',
   'التربية الفنية',
   'العلوم',
   'الحاسوب',
@@ -142,6 +142,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const handleDirectAutoGenerateAndSave = async () => {
     setIsDirectGenerating(true);
     setDirectSuccessMsg('');
+    // Yield execution to allow React UI to immediately paint the loading indicator
+    await new Promise(resolve => setTimeout(resolve, 60));
 
     try {
       const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
@@ -210,7 +212,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           { name: 'الأحياء', quota: 2 },
           { name: 'الاجتماعيات', quota: 3 },
           { name: 'التربية الأخلاقية', quota: 1 },
-          { name: 'التربية الرياضية', quota: 1 },
+          { name: 'النشاط البدني', quota: 1 },
           { name: 'التربية الفنية', quota: 1 },
           { name: 'شاغر / نشاط حر', quota: 1 },
         ];
