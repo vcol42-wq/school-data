@@ -66,7 +66,6 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.widget_full_schedule)
 
             val currentDayName = WidgetScheduleHelper.getEffectiveDayArabic(context)
-            views.setViewVisibility(R.id.widget_countdown_banner, View.GONE)
 
             val dayButtons = listOf(
                 R.id.btn_day_sun,

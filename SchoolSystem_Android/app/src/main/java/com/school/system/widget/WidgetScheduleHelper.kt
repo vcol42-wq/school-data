@@ -52,6 +52,54 @@ object WidgetScheduleHelper {
         return text.trim().ifEmpty { raw }
     }
 
+    fun formatClassLabelForWidget(raw: String): String {
+        var text = raw.trim()
+        val stage = when {
+            text.contains("متوسط") -> "متوسط"
+            text.contains("ابتدائ") -> "ابتدائي"
+            text.contains("إعداد") || text.contains("اعداد") -> "إعدادي"
+            text.contains("ثانو") -> "ثانوي"
+            else -> ""
+        }
+
+        var cleaned = text.replace("الصف ", "")
+            .replace("صف ", "")
+            .replace("متوسطة", "").replace("متوسط", "")
+            .replace("ابتدائية", "").replace("ابتدائي", "")
+            .replace("إعدادية", "").replace("اعدادية", "").replace("إعدادي", "").replace("اعدادي", "")
+            .replace("ثانوية", "").replace("ثانوي", "")
+            .replace("الأول", "1").replace("الاول", "1").replace("أول", "1")
+            .replace("الثاني", "2").replace("ثاني", "2")
+            .replace("الثالث", "3").replace("ثالث", "3")
+            .replace("الرابع", "4").replace("رابع", "4")
+            .replace("الخامس", "5").replace("خامس", "5")
+            .replace("السادس", "6").replace("سادس", "6")
+            .replace("_", "")
+            .trim()
+
+        val digit = cleaned.firstOrNull { it.isDigit() }?.toString() ?: ""
+        var section = cleaned.filter { !it.isDigit() }
+            .replace("(", "").replace(")", "").replace("[", "").replace("]", "").replace(" ", "").trim()
+
+        if (section.startsWith("ل") && section.length > 1) {
+            section = section.substring(1).trim()
+        }
+
+        val formattedLabel = if (digit.isNotEmpty() && section.isNotEmpty()) {
+            "$digit($section)"
+        } else if (digit.isNotEmpty()) {
+            digit
+        } else {
+            cleaned.ifBlank { raw }
+        }
+
+        return if (stage.isNotEmpty()) {
+            "$formattedLabel\n$stage"
+        } else {
+            formattedLabel
+        }
+    }
+
     fun cleanClassName(raw: String): String {
         var text = raw.trim()
         text = text.replace("الصف ", "")

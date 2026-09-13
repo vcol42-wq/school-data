@@ -3,6 +3,7 @@ package com.school.system.widget
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.util.TypedValue
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import com.google.gson.Gson
@@ -69,6 +70,12 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             val display = subj
             views.setTextViewText(cellViewId, display)
 
+            if (subj == "اجتماعيات") {
+                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 7.5f)
+            } else {
+                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 9.5f)
+            }
+
             val isTeacherLesson = if (teacherName.isNotEmpty() && subj != "-") {
                 WidgetScheduleHelper.isLessonMatchingTeacher(teacherName, teacher, subj)
             } else false
@@ -131,8 +138,8 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
                         if (row is Map<*, *>) {
                             val grade = row["grade"]?.toString() ?: ""
                             val section = row["section"]?.toString() ?: ""
-                            val rawClassName = "$grade ($section)".trim()
-                            val className = WidgetScheduleHelper.cleanClassName(rawClassName)
+                            val rawClassName = if (grade.isNotBlank()) "$grade ($section)" else section
+                            val className = WidgetScheduleHelper.formatClassLabelForWidget(rawClassName)
                             val lessons = row["lessons"] as? Map<*, *>
                             val lessonMap = mutableMapOf<Int, Pair<String, String>>()
 
@@ -157,7 +164,7 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
                     }
                 } else if (dayData is Map<*, *>) {
                     for ((clsKey, lessonsList) in dayData) {
-                        val className = WidgetScheduleHelper.cleanClassName(clsKey.toString())
+                        val className = WidgetScheduleHelper.formatClassLabelForWidget(clsKey.toString())
                         val lessonMap = mutableMapOf<Int, Pair<String, String>>()
                         if (lessonsList is List<*>) {
                             lessonsList.forEachIndexed { idx, item ->

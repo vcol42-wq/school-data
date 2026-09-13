@@ -96,22 +96,7 @@
             android:padding="4dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="تحديث" />
-    </LinearLayout>
-
-    <!-- Live Decreasing Countdown Banner -->
-    <TextView
-        android:id="@+id/widget_countdown_banner"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="4dp"
-        android:background="@drawable/widget_teacher_badge_bg"
-        android:padding="4dp"
-        android:text="⏱️ متبقي 18m على نهاية الحصة 3"
-        android:textColor="#FFFFFF"
-        android:textSize="11sp"
-        android:textStyle="bold"
-        android:gravity="center" />
+</LinearLayout>
 
     <!-- 6 Columns Table Header Row -->
     <LinearLayout
