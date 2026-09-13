@@ -394,7 +394,10 @@ export function parseSingleSheetRows(sheetName: string, rawRows: any[][], starti
           !normHeader.includes('ام')
         ) {
           nameColIndex = cIdx;
-        } else if (normHeader.includes('قيد') || normHeader.includes('سجل') || normHeader.includes('امتحاني') || normHeader.includes('رقم الطالب') || normHeader === 'ت') {
+        } else if (
+          (normHeader.includes('قيد') || normHeader.includes('سجل عام') || normHeader.includes('رقم القيد') || normHeader.includes('امتحاني') || normHeader.includes('رقم الطالب')) &&
+          !normHeader.includes('تاريخ') && !normHeader.includes('صفحة') && normHeader !== 'ت'
+        ) {
           recordNumColIndex = cIdx;
         } else if (normHeader.includes('صف') && (normHeader.includes('شعب') || normHeader.includes('فرع'))) {
           gradeColIndex = cIdx;
@@ -481,6 +484,7 @@ export function parseSingleSheetRows(sheetName: string, rawRows: any[][], starti
   }
 
   const students: Student[] = [];
+  const usedRecordNumbers = new Set<string>();
 
   // 4. Process student rows
   for (let r = headerRowIndex + 1; r < rawRows.length; r++) {
@@ -540,11 +544,7 @@ export function parseSingleSheetRows(sheetName: string, rawRows: any[][], starti
 
     const seq = startingSeq + students.length;
 
-    const recordNumber = recordNumColIndex >= 0 && row[recordNumColIndex] 
-      ? String(row[recordNumColIndex]).trim() 
-      : `${1000 + seq}`;
-
-    // Resolve Grade & Section for this specific row
+    // Resolve Grade & Section for this specific row first
     let currentGrade = inferredGrade;
     let section = inferredSection || 'أ';
 
@@ -572,6 +572,21 @@ export function parseSingleSheetRows(sheetName: string, rawRows: any[][], starti
     // Standardize to official Iraqi stages
     currentGrade = standardizeGradeName(currentGrade);
     section = standardizeSectionName(section);
+
+    // Guaranteed Unique Record Number
+    let recordNumber = '';
+    const rawRec = recordNumColIndex >= 0 && row[recordNumColIndex] ? String(row[recordNumColIndex]).trim() : '';
+    if (rawRec && rawRec !== 'ت' && !usedRecordNumbers.has(rawRec)) {
+      recordNumber = rawRec;
+    } else if (rawRec && usedRecordNumbers.has(rawRec)) {
+      recordNumber = `${rawRec}-${section}`;
+      if (usedRecordNumbers.has(recordNumber)) {
+        recordNumber = `${1000 + seq}`;
+      }
+    } else {
+      recordNumber = `${1000 + seq}`;
+    }
+    usedRecordNumbers.add(recordNumber);
 
     const motherName = motherColIndex >= 0 && row[motherColIndex] 
       ? String(row[motherColIndex]).trim() 

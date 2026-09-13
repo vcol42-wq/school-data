@@ -416,8 +416,23 @@ function normalizeForSearch(str: string): string {
       updatedList = [...students, ...imported];
     }
 
-    // Ensure continuous sequence numbering
-    updatedList = updatedList.map((s, idx) => ({ ...s, sequence: idx + 1 }));
+    // Ensure continuous sequence numbering & unique record numbers
+    const seenRecs = new Set<string>();
+    updatedList = updatedList.map((s, idx) => {
+      let rec = (s.recordNumber || '').trim();
+      if (!rec || seenRecs.has(rec)) {
+        rec = rec ? `${rec}-${s.section || idx + 1}` : `${1000 + idx + 1}`;
+        if (seenRecs.has(rec)) {
+          rec = `${1000 + idx + 1}`;
+        }
+      }
+      seenRecs.add(rec);
+      return {
+        ...s,
+        sequence: idx + 1,
+        recordNumber: rec
+      };
+    });
 
     setStudents(updatedList);
     localStorage.setItem('diyala_school_students', JSON.stringify(updatedList));

@@ -764,15 +764,25 @@ export async function exportSchoolDataWithProgress(
       return nameA.localeCompare(nameB, 'ar', { sensitivity: 'base' });
     });
 
-    const studentsPayload = sortedStudentsList.map(std => {
+    const seenRecordNumbers = new Set<string>();
+    const studentsPayload = sortedStudentsList.map((std, idx) => {
       const computedFullName = [std.firstName, std.secondName, std.thirdName, std.fourthName, std.titleName]
         .filter(Boolean)
         .join(' ')
         .trim() || (std.fullName && std.fullName.trim()) || std.firstName;
 
+      let recNum = (std.recordNumber || '').trim();
+      if (!recNum || seenRecordNumbers.has(recNum)) {
+        recNum = recNum ? `${recNum}-${std.section || idx + 1}` : `${1000 + idx + 1}`;
+        if (seenRecordNumbers.has(recNum)) {
+          recNum = `${1000 + idx + 1}`;
+        }
+      }
+      seenRecordNumbers.add(recNum);
+
       return {
         school_id: schoolId,
-        record_number: std.recordNumber || String(Math.floor(1000 + Math.random() * 9000)),
+        record_number: recNum,
         first_name: std.firstName,
         second_name: std.secondName || '',
         third_name: std.thirdName || '',
@@ -786,11 +796,24 @@ export async function exportSchoolDataWithProgress(
       };
     });
 
-    if (studentsPayload.length > 0) {
-      const { error: studentError } = await client.from('students').upsert(studentsPayload, { onConflict: 'school_id,record_number' });
-      if (studentError) throw new Error(`خطأ في رفع سجل الطلاب: ${studentError.message}`);
+    // Deduplicate payload strictly by record_number
+    const uniqueStudentsMap = new Map<string, typeof studentsPayload[0]>();
+    for (const s of studentsPayload) {
+      uniqueStudentsMap.set(s.record_number, s);
     }
-    emit('step_students', 8, 'تصدير سجل الطلاب الموحد والأسماء الكاملة', 96, `تم تصدير ${studentsPayload.length} طالب بنجاح مع أسمائهم الكاملة ✓`, 'success', studentsPayload.length);
+    const safeStudentsPayload = Array.from(uniqueStudentsMap.values());
+
+    if (safeStudentsPayload.length > 0) {
+      for (let i = 0; i < safeStudentsPayload.length; i += 100) {
+        const chunk = safeStudentsPayload.slice(i, i + 100);
+        const { error: studentError } = await client.from('students').upsert(chunk, { 
+          onConflict: 'school_id,record_number',
+          ignoreDuplicates: false 
+        });
+        if (studentError) throw new Error(`خطأ في رفع سجل الطلاب: ${studentError.message}`);
+      }
+    }
+    emit('step_students', 8, 'تصدير سجل الطلاب الموحد والأسماء الكاملة', 96, `تم تصدير ${safeStudentsPayload.length} طالب بنجاح مع أسمائهم الكاملة ✓`, 'success', safeStudentsPayload.length);
 
     // ----------------------------------------------------
     // Step 9: Export Schedule Map

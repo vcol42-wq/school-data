@@ -894,15 +894,26 @@ export async function quickSyncStudentsToSupabase(schoolId: string, students: St
   if (!students || students.length === 0) return { success: true, message: 'لا توجد بيانات' };
   try {
     const client = getSupabase(schoolId);
-    const payload = students.map(std => {
+    const seenRecordNumbers = new Set<string>();
+
+    const payload = students.map((std, idx) => {
       const computedFullName = [std.firstName, std.secondName, std.thirdName, std.fourthName, std.titleName]
         .filter(Boolean)
         .join(' ')
         .trim() || (std.fullName && std.fullName.trim()) || std.firstName;
 
+      let recNum = (std.recordNumber || '').trim();
+      if (!recNum || seenRecordNumbers.has(recNum)) {
+        recNum = recNum ? `${recNum}-${std.section || idx + 1}` : `${1000 + idx + 1}`;
+        if (seenRecordNumbers.has(recNum)) {
+          recNum = `${1000 + idx + 1}`;
+        }
+      }
+      seenRecordNumbers.add(recNum);
+
       return {
         school_id: schoolId,
-        record_number: std.recordNumber || String(Math.floor(1000 + Math.random() * 9000)),
+        record_number: recNum,
         first_name: std.firstName,
         second_name: std.secondName || '',
         third_name: std.thirdName || '',
@@ -916,8 +927,22 @@ export async function quickSyncStudentsToSupabase(schoolId: string, students: St
       };
     });
 
-    const { error } = await client.from('students').upsert(payload, { onConflict: 'school_id,record_number', ignoreDuplicates: false });
-    if (error) throw error;
+    // Deduplicate payload strictly by record_number to guarantee no duplicate rows in batch
+    const uniqueMap = new Map<string, typeof payload[0]>();
+    for (const item of payload) {
+      uniqueMap.set(item.record_number, item);
+    }
+    const safePayload = Array.from(uniqueMap.values());
+
+    // Batch upsert in chunks of 100
+    for (let i = 0; i < safePayload.length; i += 100) {
+      const chunk = safePayload.slice(i, i + 100);
+      const { error } = await client.from('students').upsert(chunk, { 
+        onConflict: 'school_id,record_number', 
+        ignoreDuplicates: false 
+      });
+      if (error) throw error;
+    }
 
     return { success: true, message: 'تمت مزامنة بيانات الطلاب مع السحابة بنجاح!' };
   } catch (e: any) {
