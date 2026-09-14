@@ -4,11 +4,10 @@ Stop-Process -Name "electron", "The Principal v6.0" -Force -ErrorAction Silently
 Start-Sleep -Milliseconds 500
 
 Write-Host "[1/5] Running Vite Build (Synchronous)..."
-$env:ELECTRON_RUN_AS_NODE = "1"
-Start-Process -FilePath ".\node_modules\electron\dist\electron.exe" -ArgumentList ".\node_modules\vite\bin\vite.js build" -Wait -NoNewWindow
+cmd.exe /c "set ELECTRON_RUN_AS_NODE=1 && .\node_modules\electron\dist\electron.exe .\node_modules\vite\bin\vite.js build"
 
 Write-Host "[2/5] Bundling Internal Server (Synchronous)..."
-Start-Process -FilePath ".\node_modules\@esbuild\win32-x64\esbuild.exe" -ArgumentList "server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs --external:vite --external:electron" -Wait -NoNewWindow
+cmd.exe /c ".\node_modules\@esbuild\win32-x64\esbuild.exe server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs --external:vite --external:electron"
 
 Write-Host "[3/5] Preparing Staging Directory..."
 Remove-Item -Path "app_staging" -Recurse -Force -ErrorAction SilentlyContinue
@@ -25,7 +24,7 @@ New-Item -ItemType Directory -Path "dist_electron\win-unpacked\resources" -Force
 Copy-Item -Path ".\node_modules\electron\dist\*" -Destination "dist_electron\win-unpacked\" -Recurse -Force -Exclude "default_app.asar"
 Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.0.exe" -Force
 Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.0 Super Edition.exe" -Force
-Start-Process -FilePath ".\node_modules\electron\dist\electron.exe" -ArgumentList ".\node_modules\@electron\asar\bin\asar.js pack .\app_staging .\dist_electron\win-unpacked\resources\app.asar" -Wait -NoNewWindow
+cmd.exe /c "set ELECTRON_RUN_AS_NODE=1 && .\node_modules\electron\dist\electron.exe .\node_modules\@electron\asar\bin\asar.js pack .\app_staging .\dist_electron\win-unpacked\resources\app.asar"
 
 Write-Host "[5/5] Exporting Final Package to LATEST_BUILDS..."
 Stop-Process -Name "electron", "The Principal v6.0", "The Principal v6.0 Super Edition" -Force -ErrorAction SilentlyContinue
