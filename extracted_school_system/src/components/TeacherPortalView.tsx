@@ -880,28 +880,33 @@ ${gradesDataText}
 
     setIsSyncingCloud(true);
     setTimeout(() => {
-      setStudents(prev => prev.map(s => {
-        const updatedMark = sessionMarks[s.id];
-        if (updatedMark && s.currentGrade === currentGrade && s.section === currentSection) {
-          const marks = [...(s.marksHistory || [])];
-          const currentYear = s.registrationYear || '2024-2025';
-          const markIdx = marks.findIndex(m => m.subject === currentSubject && m.year === currentYear);
+      setStudents(prev => {
+        const updated = prev.map(s => {
+          const updatedMark = sessionMarks[s.id];
+          if (updatedMark && s.currentGrade === currentGrade && s.section === currentSection) {
+            const marks = [...(s.marksHistory || [])];
+            const currentYear = s.registrationYear || '2024-2025';
+            const markIdx = marks.findIndex(m => m.subject === currentSubject && m.year === currentYear);
 
-          if (markIdx !== -1) {
-            marks[markIdx] = updatedMark;
-          } else {
-            marks.push(updatedMark);
+            if (markIdx !== -1) {
+              marks[markIdx] = updatedMark;
+            } else {
+              marks.push(updatedMark);
+            }
+
+            return {
+              ...s,
+              marksHistory: marks,
+              finalYearScore: updatedMark.finalGrade,
+              previousYearResult: (updatedMark.finalGrade || 0) >= 50 ? `ناجح (${updatedMark.finalGrade})` : `راسب (${updatedMark.finalGrade})`
+            };
           }
-
-          return {
-            ...s,
-            marksHistory: marks,
-            finalYearScore: updatedMark.finalGrade,
-            previousYearResult: (updatedMark.finalGrade || 0) >= 50 ? `ناجح (${updatedMark.finalGrade})` : `راسب (${updatedMark.finalGrade})`
-          };
-        }
-        return s;
-      }));
+          return s;
+        });
+        localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+        window.dispatchEvent(new Event('school_data_updated'));
+        return updated;
+      });
 
       setIsSyncingCloud(false);
       setShowReviewModal(false);

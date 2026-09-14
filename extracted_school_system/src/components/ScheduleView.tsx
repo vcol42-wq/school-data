@@ -23,7 +23,7 @@ import { PrintPreviewModal } from './PrintPreviewModal';
 import { Portal } from './common/Portal';
 import { getSupabase } from '../utils/supabaseClient';
 import { generateSmartFairSchedule, sanitizeAndRepairSections, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS, LESSON_LABELS } from '../utils/scheduleSolver';
-import { sortSectionsList } from '../utils/syncEngine';
+import { sortSectionsList, findBestTeacherForSubjectAndSection, isExemptStaff } from '../utils/syncEngine';
 import { SmartScheduleSection, SectionSubjectAssignment, StaffMember, Student } from '../types';
 
 export const COMMON_SCHEDULE_SUBJECTS = [
@@ -232,23 +232,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               };
             }
 
-            // Match teacher by specialization or subject taught
-            const matchingTeachers = staffList.filter(st => {
-              const spec = (st.specialization || '').trim().toLowerCase();
-              const act = (st.actualSubjectTaught || '').trim().toLowerCase();
-              const sTitle = tmpl.name.toLowerCase();
-              return (spec && (sTitle.includes(spec) || spec.includes(sTitle))) ||
-                     (act && (sTitle.includes(act) || act.includes(sTitle)));
-            });
-
-            let assignedTeacher = 'أ. أستاذ المادة';
-            if (matchingTeachers.length > 0) {
-              const chosen = matchingTeachers[idx % matchingTeachers.length];
-              assignedTeacher = chosen.fullName || `${chosen.firstName} ${chosen.secondName}`.trim();
-            } else if (staffList.length > 0) {
-              const chosen = staffList[(sIdx + idx) % staffList.length];
-              assignedTeacher = chosen.fullName || `${chosen.firstName} ${chosen.secondName}`.trim();
-            }
+            // Match teacher strictly by specialization and section from staff register, excluding mufarragh
+            const assignedTeacher = findBestTeacherForSubjectAndSection(
+              item.grade,
+              item.section,
+              tmpl.name,
+              staffList
+            );
 
             return {
               id: `sub-${idx}-${sIdx}`,
@@ -282,9 +272,14 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       setScheduleMap(result.scheduleMap);
       localStorage.setItem('diyala_school_schedule', JSON.stringify(result.scheduleMap));
 
-      // 4. Update Staff assignments & teaching quotas automatically
+      // 4. Update Staff assignments & teaching quotas automatically (excluding exempt/mufarragh staff)
       if (staffList && staffList.length > 0 && setStaffList) {
         const updatedStaffList = staffList.map(staff => {
+          if (isExemptStaff(staff)) {
+            // المفرغ إدارياً يبقى محافظاً على نصابه (0) وتفريغه دون أي تغيير
+            return staff;
+          }
+
           let totalLessons = 0;
           const classesSet = new Set<string>();
           const subjectsSet = new Set<string>();

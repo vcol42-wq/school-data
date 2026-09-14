@@ -114,7 +114,10 @@ fun SchoolSystemNavHost(navController: NavHostController) {
             val dashboardViewModel: com.school.system.ui.screens.DashboardViewModel = hiltViewModel()
             ScheduleScreen(
                 syncManager = dashboardViewModel.syncManager,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToGrades = { grade, section, subject ->
+                    navController.navigate("grades/$grade/$section/$subject")
+                }
             )
         }
 

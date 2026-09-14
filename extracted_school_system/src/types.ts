@@ -240,6 +240,7 @@ export interface StaffMember {
   classesTaught: string[];
   sectionsTaughtCount: number;
   teachingQuota: number;
+  salaryAccountNumber?: string;
   leaveType?: string;
   releaseOrderNoAndDate?: string;
 }

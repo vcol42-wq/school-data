@@ -68,7 +68,7 @@ export const PrintReportModal: React.FC<PrintReportModalProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-300">
-              {student.marksHistory.map((m, i) => (
+              {(student.marksHistory || []).map((m, i) => (
                 <tr key={i}>
                   <td className="py-2 border-r border-slate-300 font-bold">{m.subject}</td>
                   <td className="py-2 border-r border-slate-300 font-bold">{m.midterm}</td>

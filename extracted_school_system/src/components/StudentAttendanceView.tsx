@@ -90,18 +90,18 @@ export const StudentAttendanceView: React.FC<StudentAttendanceViewProps> = ({
   const dangerAbsencesCount = students.filter(s => (s.absencesCount || 0) > 6).length;
   const totalAbsencesSum = students.reduce((acc, s) => acc + (s.absencesCount || 0), 0);
 
-  // Update Absences directly
+  // Update Absences directly (strictly targets only the requested student)
   const handleAdjustAbsence = (studentId: string, delta: number) => {
-    const updated = students.map(s => {
-      if (s.id === studentId) {
-        const current = s.absencesCount || 0;
-        const next = Math.max(0, current + delta);
-        return { ...s, absencesCount: next };
-      }
-      return s;
+    setStudents(prev => {
+      const targetIndex = prev.findIndex(s => s.id === studentId);
+      if (targetIndex === -1) return prev;
+      const updated = [...prev];
+      const current = updated[targetIndex].absencesCount || 0;
+      const next = Math.max(0, current + delta);
+      updated[targetIndex] = { ...updated[targetIndex], absencesCount: next };
+      localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+      return updated;
     });
-    setStudents(updated);
-    localStorage.setItem('diyala_school_students', JSON.stringify(updated));
   };
 
   // Pull Absences from Cloud

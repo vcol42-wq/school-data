@@ -52,11 +52,32 @@ data class TeacherLessonInfo(
     val teacherName: String
 )
 
+fun parseGradeAndSection(rawCls: String): Pair<String, String> {
+    var text = rawCls.trim().replace("الصف ", "").replace("صف ", "")
+    var section = ""
+    val regex = "\\((.*?)\\)".toRegex()
+    val match = regex.find(text)
+    if (match != null) {
+        section = match.groupValues[1].trim()
+        text = text.replace(match.value, "").trim()
+    } else {
+        val parts = text.split(" ").filter { it.isNotBlank() }
+        if (parts.size > 1) {
+            section = parts.last().trim()
+            text = parts.dropLast(1).joinToString(" ").trim()
+        }
+    }
+    val grade = text.ifBlank { rawCls }
+    val sec = section.ifBlank { "أ" }
+    return grade to sec
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen(
     syncManager: SyncManager,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToGrades: ((grade: String, section: String, subject: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val currentTheme = LocalAppTheme.current
@@ -64,6 +85,7 @@ fun ScheduleScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val coroutineScope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
+    var selectedLessonForInspection by remember { mutableStateOf<TeacherLessonInfo?>(null) }
 
     // Read synced schedule from SharedPreferences
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
@@ -341,10 +363,127 @@ fun ScheduleScreen(
                         lazyListState = lazyListState,
                         startHourStr = timingStartHour,
                         lessonDuration = timingLessonDur,
-                        breakDuration = timingBreakDur
+                        breakDuration = timingBreakDur,
+                        onLessonSelect = { lesson ->
+                            selectedLessonForInspection = lesson
+                        }
                     )
                 }
             }
+        }
+
+        // Supervisor / Teacher Lesson Inspection Dialog
+        selectedLessonForInspection?.let { lesson ->
+            val (parsedGrade, parsedSection) = parseGradeAndSection(lesson.className)
+            var isSyncingLesson by remember { mutableStateOf(false) }
+
+            AlertDialog(
+                onDismissRequest = { selectedLessonForInspection = null },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = Color(0xFF0284C7).copy(alpha = 0.15f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🏫", fontSize = 18.sp)
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("استعراض وتدقيق الحصة 🏫", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                            Text("الدرس ${lesson.lessonNumber} | مادة ${lesson.subject}", fontSize = 12.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            color = Color(0xFFF0F9FF),
+                            border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("الصف والشعبة: $parsedGrade ($parsedSection)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0369A1))
+                                Text("المادة الدراسية: ${lesson.subject}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0284C7))
+                                if (lesson.teacherName.isNotBlank()) {
+                                    Text("أستاذ المادة: ${lesson.teacherName}", fontWeight = FontWeight.Medium, fontSize = 12.sp, color = Color(0xFF475569))
+                                }
+                            }
+                        }
+
+                        Text("اختر الإجراء المطلوب لهذا الدرس:", fontSize = 11.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    }
+                },
+                confirmButton = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Button 1: فتح سجل الأسماء والدرجات
+                        Button(
+                            onClick = {
+                                val targetGrade = parsedGrade
+                                val targetSec = parsedSection
+                                val targetSubj = lesson.subject
+                                selectedLessonForInspection = null
+                                if (onNavigateToGrades != null) {
+                                    onNavigateToGrades(targetGrade, targetSec, targetSubj)
+                                } else {
+                                    Toast.makeText(context, "فتح سجل $targetGrade ($targetSec) - $targetSubj", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("فتح سجل الأسماء والدرجات المخزونة 📋", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+
+                        // Button 2: تحديث ومزامنة الدرجات من السحابة
+                        OutlinedButton(
+                            onClick = {
+                                isSyncingLesson = true
+                                coroutineScope.launch {
+                                    val ok = syncManager.downloadSimpleRosterForClass(parsedGrade, parsedSection, lesson.subject)
+                                    isSyncingLesson = false
+                                    if (ok) {
+                                        Toast.makeText(context, "تم تحديث ومزامنة درجات $parsedGrade ($parsedSection) من السحابة بنجاح! ⚡", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(context, "تعذر التحديث من السحابة. تأكد من توفر الاتصال بالإنترنت", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            enabled = !isSyncingLesson,
+                            border = BorderStroke(1.2.dp, Color(0xFF0EA5E9)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isSyncingLesson) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF0EA5E9))
+                                Spacer(Modifier.width(6.dp))
+                                Text("جاري المزامنة...", fontSize = 12.sp)
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFF0EA5E9), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("تحديث ومزامنة الدرجات من السحابة 🔄", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                            }
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { selectedLessonForInspection = null }) {
+                        Text("إغلاق")
+                    }
+                }
+            )
         }
     }
 }
@@ -535,7 +674,8 @@ fun GeneralDayScheduleGrid(
     lazyListState: LazyListState = rememberLazyListState(),
     startHourStr: String = "08:00",
     lessonDuration: Int = 45,
-    breakDuration: Int = 10
+    breakDuration: Int = 10,
+    onLessonSelect: ((TeacherLessonInfo) -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
     val hScroll = rememberScrollState()
@@ -598,7 +738,13 @@ fun GeneralDayScheduleGrid(
                 }
 
                 // Rows for each class
-                LazyColumn(state = lazyListState, modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    state = lazyListState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 32.dp)
+                ) {
                     items(classes) { clsName ->
                         val classLessonsMap = remember(allLessons, clsName) {
                             allLessons.filter { it.className == clsName }.associateBy { it.lessonNumber }
@@ -659,6 +805,11 @@ fun GeneralDayScheduleGrid(
                                             .width(lessonColW)
                                             .height(rowH)
                                             .padding(1.5.dp)
+                                            .clickable(enabled = (item != null && onLessonSelect != null)) {
+                                                if (item != null && onLessonSelect != null) {
+                                                    onLessonSelect(item)
+                                                }
+                                            }
                                     ) {
                                         if (item != null) {
                                             val cleanSubj = WidgetScheduleHelper.cleanSubjectName(item.subject)

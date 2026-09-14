@@ -1,5 +1,6 @@
 import { getSupabase } from './supabaseClient';
 import { Student, StaffMember, StudentMark, DayScheduleMap } from '../types';
+import { canonicalSubject } from './subjectHelper';
 
 export interface SyncStepInfo {
   id: string;
@@ -294,8 +295,14 @@ export function isExemptStaff(member: StaffMember): boolean {
   if (!member) return true;
   const job = (member.jobTitle || '').trim();
   const spec = (member.specialization || '').trim();
-  const nonTeaching = ['مدير', 'مديرة', 'معاون', 'معاونة', 'مرشد', 'مرشدة', 'أمين مكتبة', 'كاتب', 'إداري', 'متفرغ', 'تفرغ', 'مشرف', 'خدمة', 'حارس'];
-  return nonTeaching.some(kw => job.includes(kw)) || member.teachingQuota === 0 || spec.includes('إدارة') || spec.includes('تفرغ');
+  const actual = (member.actualSubjectTaught || '').trim();
+  const status = (member.status || '').trim();
+  const nonTeaching = ['مدير', 'مديرة', 'معاون', 'معاونة', 'مرشد', 'مرشدة', 'أمين مكتبة', 'كاتب', 'إداري', 'متفرغ', 'مفرغ', 'تفرغ', 'مشرف', 'خدمة', 'حارس'];
+  return nonTeaching.some(kw => job.includes(kw)) || 
+         member.teachingQuota === 0 || 
+         spec.includes('إدارة') || spec.includes('تفرغ') || spec.includes('مفرغ') ||
+         actual.includes('مفرغ') || actual.includes('إدارة') || actual.includes('تفرغ') ||
+         status === 'مجاز إجازة طويلة' || status === 'منسب خارج المدرسة';
 }
 
 export function standardizeSubjectName(raw: string): string {
@@ -393,6 +400,80 @@ export function parseClassTaught(classStr: string, defaultSubject: string) {
   const rawSub = explicitSubject || defaultSubject || '';
   const subject = standardizeSubjectName(rawSub);
   return { grade, section, subject };
+}
+
+/**
+ * المطابقة الذكية للمدرس وفق الاختصاص والشعبة المسندة له في سجل الكادر، مع استبعاد المفرغين إدارياً تماماً
+ */
+export function findBestTeacherForSubjectAndSection(
+  grade: string,
+  section: string,
+  subjectName: string,
+  staffList: StaffMember[]
+): string {
+  if (!staffList || staffList.length === 0) return 'أ. أستاذ المادة';
+
+  const cleanSubj = (subjectName || '').trim();
+  if (cleanSubj.includes('شاغر') || cleanSubj.includes('نشاط')) {
+    return 'شاغر';
+  }
+
+  // 1. استبعاد المفرغين إدارياً تماماً من الجدول الآلي
+  const activeStaff = staffList.filter(st => !isExemptStaff(st));
+  if (activeStaff.length === 0) return 'أ. أستاذ المادة';
+
+  const subCanon = canonicalSubject(cleanSubj);
+  const stdGrade = standardizeGradeName(grade);
+  const stdSection = standardizeSectionName(section);
+  const gradeNorm = grade.replace(/^(الصف|صف)\s+/, '').trim();
+
+  // 2. حصر أساتذة الاختصاص النشطين
+  const subjectTeachers = activeStaff.filter(st => {
+    const actCanon = canonicalSubject(st.actualSubjectTaught || '');
+    const specCanon = canonicalSubject(st.specialization || '');
+    return actCanon === subCanon || specCanon === subCanon ||
+           (st.actualSubjectTaught && cleanSubj.includes(st.actualSubjectTaught)) ||
+           (st.specialization && cleanSubj.includes(st.specialization));
+  });
+
+  if (subjectTeachers.length === 0) {
+    return 'أ. أستاذ المادة';
+  }
+
+  // 3. الأولوية القصوى: مدرس يدرّس نفس الصف والشعبة المحددة في سجل الكادر
+  const exactMatch = subjectTeachers.find(st => {
+    if (!Array.isArray(st.classesTaught) || st.classesTaught.length === 0) return false;
+    return st.classesTaught.some(cStr => {
+      const parsed = parseClassTaught(cStr, '');
+      const pGradeNorm = parsed.grade.replace(/^(الصف|صف)\s+/, '').trim();
+      const matchGrade = parsed.grade === stdGrade || pGradeNorm.includes(gradeNorm) || gradeNorm.includes(pGradeNorm) || cStr.includes(gradeNorm);
+      const matchSec = parsed.section === stdSection || cStr.includes(stdSection);
+      return matchGrade && matchSec;
+    });
+  });
+
+  if (exactMatch) {
+    return exactMatch.fullName || `${exactMatch.firstName} ${exactMatch.secondName}`.trim();
+  }
+
+  // 4. الأولوية الثانية: مدرس يدرّس نفس الصف في سجل الكادر
+  const gradeMatch = subjectTeachers.find(st => {
+    if (!Array.isArray(st.classesTaught) || st.classesTaught.length === 0) return false;
+    return st.classesTaught.some(cStr => {
+      const parsed = parseClassTaught(cStr, '');
+      const pGradeNorm = parsed.grade.replace(/^(الصف|صف)\s+/, '').trim();
+      return parsed.grade === stdGrade || pGradeNorm.includes(gradeNorm) || gradeNorm.includes(pGradeNorm) || cStr.includes(gradeNorm);
+    });
+  });
+
+  if (gradeMatch) {
+    return gradeMatch.fullName || `${gradeMatch.firstName} ${gradeMatch.secondName}`.trim();
+  }
+
+  // 5. الأولوية الثالثة: تدوير وتوزيع الشعب بالتساوي بين أساتذة الاختصاص النشطين
+  const secCharCode = stdSection.charCodeAt(0) || 0;
+  const chosenTeacher = subjectTeachers[secCharCode % subjectTeachers.length];
+  return chosenTeacher.fullName || `${chosenTeacher.firstName} ${chosenTeacher.secondName}`.trim();
 }
 
 /**
@@ -1264,5 +1345,45 @@ export async function deepCleanSchoolCloudData(
   } catch (err: any) {
     return { success: false, message: err.message || 'فشل التطهير السحابي' };
   }
+}
+
+/**
+ * Generates a collision-resistant unique ID for students.
+ */
+export function generateUniqueStudentId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `std_${crypto.randomUUID()}`;
+  }
+  return `std_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Validates and repairs student records to ensure each student has a strictly unique ID
+ * and completely independent marksHistory array (breaking any accidental links between students).
+ */
+export function sanitizeStudents(list: Student[]): { sanitized: Student[]; hasRepairs: boolean } {
+  if (!Array.isArray(list)) return { sanitized: [], hasRepairs: false };
+  const seenIds = new Set<string>();
+  let hasRepairs = false;
+
+  const sanitized = list.map((s, idx) => {
+    let id = s.id ? String(s.id).trim() : '';
+    // Deep clone marksHistory to prevent shared object reference leaks
+    let marksHistory = s.marksHistory ? JSON.parse(JSON.stringify(s.marksHistory)) : [];
+
+    if (!id || seenIds.has(id)) {
+      hasRepairs = true;
+      id = generateUniqueStudentId();
+    }
+    seenIds.add(id);
+
+    return {
+      ...s,
+      id,
+      marksHistory
+    };
+  });
+
+  return { sanitized, hasRepairs };
 }
 

@@ -46,7 +46,7 @@ import {
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { getSupabase } from '../utils/supabaseClient';
 import { canonicalSubject, MASTER_SUBJECTS_LIST, matchStaffWithScheduleCell } from '../utils/subjectHelper';
-import { standardizeGradeName, standardizeSectionName, standardizeSubjectName, sortSectionsList } from '../utils/syncEngine';
+import { standardizeGradeName, standardizeSectionName, standardizeSubjectName, sortSectionsList, findBestTeacherForSubjectAndSection, isExemptStaff } from '../utils/syncEngine';
 import { Student } from '../types';
 
 interface SmartScheduleGeneratorViewProps {
@@ -377,48 +377,32 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
         });
 
         if (directAuthority && directAuthority.teacher_name) {
-          return {
-            id: `sub-${idx}-${sIdx}`,
-            subjectName: tmpl.name,
-            teacherName: directAuthority.teacher_name.trim(),
-            weeklyLessons: tmpl.quota
-          };
-        }
-
-        // Priority 2: Staff member with classesTaught matching this class and section
-        const staffWithClass = staffList.find(stf => {
-          const stfSubCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
-          if (stfSubCanon !== subCanon) return false;
-          return (stf.classesTaught || []).some(cls => {
-            const clsClean = cls.replace(/^الصف\s+/, '').trim();
-            return clsClean.includes(gradeNorm) && clsClean.includes(item.section);
+          const tStaff = staffList.find(s => {
+            const fullName = s.fullName || `${s.firstName} ${s.secondName}`.trim();
+            return fullName.includes(directAuthority.teacher_name.trim()) || directAuthority.teacher_name.trim().includes(fullName);
           });
-        });
-
-        if (staffWithClass) {
-          const tName = staffWithClass.fullName || `${staffWithClass.firstName} ${staffWithClass.secondName}`.trim();
-          return {
-            id: `sub-${idx}-${sIdx}`,
-            subjectName: tmpl.name,
-            teacherName: tName,
-            weeklyLessons: tmpl.quota
-          };
+          if (!tStaff || !isExemptStaff(tStaff)) {
+            return {
+              id: `sub-${idx}-${sIdx}`,
+              subjectName: tmpl.name,
+              teacherName: directAuthority.teacher_name.trim(),
+              weeklyLessons: tmpl.quota
+            };
+          }
         }
 
-        // Priority 3: Staff member with matching specialization or actualSubjectTaught
-        const staffBySpec = staffList.find(stf => {
-          const stfSubCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
-          return stfSubCanon === subCanon;
-        });
-
-        const fallbackTeacher = staffBySpec
-          ? (staffBySpec.fullName || `${staffBySpec.firstName} ${staffBySpec.secondName}`.trim())
-          : 'أ. أستاذ المادة';
+        // Priority 2 & 3: Match best teacher by specialization and section from staff register, strictly excluding mufarragh
+        const assignedTeacher = findBestTeacherForSubjectAndSection(
+          item.grade,
+          item.section,
+          tmpl.name,
+          staffList
+        );
 
         return {
           id: `sub-${idx}-${sIdx}`,
           subjectName: tmpl.name,
-          teacherName: fallbackTeacher,
+          teacherName: assignedTeacher,
           weeklyLessons: tmpl.quota
         };
       });
@@ -462,7 +446,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
         subjects: sec.subjects.map(sub => {
           const subCanon = canonicalSubject(sub.subjectName);
 
-          // Priority 1: Direct assignment from TeacherAuthorityHub
+          // Priority 1: Direct assignment from TeacherAuthorityHub (if teacher is not exempt)
           const directAuthority = authorityAssignments.find(ass => {
             const assGradeNorm = (ass.grade || '').replace(/^الصف\s+/, '').trim();
             const assSec = (ass.section || '').trim();
@@ -473,36 +457,24 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
           });
 
           if (directAuthority && directAuthority.teacher_name) {
-            return { ...sub, teacherName: directAuthority.teacher_name.trim() };
-          }
-
-          // Priority 2: Staff member with classesTaught matching this class and section
-          const staffWithClass = staffList.find(stf => {
-            const stfSubCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
-            if (stfSubCanon !== subCanon) return false;
-            return (stf.classesTaught || []).some(cls => {
-              const clsClean = cls.replace(/^الصف\s+/, '').trim();
-              return clsClean.includes(gradeNorm) && clsClean.includes(sec.section);
+            const tStaff = staffList.find(s => {
+              const fullName = s.fullName || `${s.firstName} ${s.secondName}`.trim();
+              return fullName.includes(directAuthority.teacher_name.trim()) || directAuthority.teacher_name.trim().includes(fullName);
             });
-          });
-
-          if (staffWithClass) {
-            const tName = staffWithClass.fullName || `${staffWithClass.firstName} ${staffWithClass.secondName}`.trim();
-            return { ...sub, teacherName: tName };
+            if (!tStaff || !isExemptStaff(tStaff)) {
+              return { ...sub, teacherName: directAuthority.teacher_name.trim() };
+            }
           }
 
-          // Priority 3: Staff member matching specialization or actual subject
-          const matchingStaff = staffList.find(stf => {
-            const stfCanon = canonicalSubject(stf.actualSubjectTaught || stf.specialization || '');
-            return stfCanon === subCanon;
-          });
+          // Priority 2 & 3: Match best teacher strictly by specialization and section from staff register, excluding mufarragh
+          const assignedTeacher = findBestTeacherForSubjectAndSection(
+            sec.grade,
+            sec.section,
+            sub.subjectName,
+            staffList
+          );
 
-          if (matchingStaff) {
-            const tName = matchingStaff.fullName || `${matchingStaff.firstName} ${matchingStaff.secondName}`.trim();
-            return { ...sub, teacherName: tName };
-          }
-
-          return sub;
+          return { ...sub, teacherName: assignedTeacher };
         })
       };
     }));

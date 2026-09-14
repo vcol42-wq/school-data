@@ -22,7 +22,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { importGradesAndAttendance, normalizeArabic } from '../utils/syncService';
-import { standardizeSubjectName, standardizeGradeName, standardizeSectionName, sortGradesList, sortSectionsAlphabetically } from '../utils/syncEngine';
+import { standardizeSubjectName, standardizeGradeName, standardizeSectionName, sortGradesList, sortSectionsAlphabetically, sanitizeStudents } from '../utils/syncEngine';
 import { Portal } from './common/Portal';
 
 interface StudentGradesViewProps {
@@ -132,53 +132,57 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
   };
 
   // Helper: Update single mark in table directly
+  // Helper: Update single mark in table directly (strictly targets only the requested student)
   const handleUpdateLatestMark = (studentId: string, subject: string, newMark: number) => {
     const currentYear = '2025-2026';
     setStudents(prev => {
-      const updated = prev.map(s => {
-        if (s.id !== studentId) return s;
+      const targetIndex = prev.findIndex(s => s.id === studentId);
+      if (targetIndex === -1) return prev;
 
-        const history = [...(s.marksHistory || [])];
-        const normSubj = normalizeArabic(subject);
-        let markIndex = history.findIndex(m => normalizeArabic(m.subject) === normSubj);
-        let markObj: StudentMark;
+      const updated = [...prev];
+      const targetStudent = { ...updated[targetIndex] };
+      const history = [...(targetStudent.marksHistory || [])];
+      const normSubj = normalizeArabic(subject);
+      let markIndex = history.findIndex(m => normalizeArabic(m.subject) === normSubj);
+      let markObj: StudentMark;
 
-        if (markIndex > -1) {
-          markObj = { 
-            ...history[markIndex], 
-            m1MonthAvg: newMark,
-            annualAverage: newMark,
-            finalGrade: newMark 
-          };
-          history[markIndex] = markObj;
-        } else {
-          markObj = {
-            year: currentYear,
-            subject,
-            term1Avg: newMark,
-            midtermFinalGrade: newMark,
-            term2Avg: newMark,
-            annualAverage: newMark,
-            finalWrittenD1: newMark,
-            finalWrittenD2: null,
-            finalGrade: newMark,
-            m1MonthAvg: newMark,
-            m2MonthAvg: newMark,
-            m3MonthAvg: newMark,
-            m4MonthAvg: newMark
-          };
-          history.push(markObj);
-        }
+      if (markIndex > -1) {
+        markObj = { 
+          ...history[markIndex], 
+          m1MonthAvg: newMark,
+          annualAverage: newMark,
+          finalGrade: newMark 
+        };
+        history[markIndex] = markObj;
+      } else {
+        markObj = {
+          year: currentYear,
+          subject,
+          term1Avg: newMark,
+          midtermFinalGrade: newMark,
+          term2Avg: newMark,
+          annualAverage: newMark,
+          finalWrittenD1: newMark,
+          finalWrittenD2: null,
+          finalGrade: newMark,
+          m1MonthAvg: newMark,
+          m2MonthAvg: newMark,
+          m3MonthAvg: newMark,
+          m4MonthAvg: newMark
+        };
+        history.push(markObj);
+      }
 
-        return { ...s, marksHistory: history };
-      });
+      targetStudent.marksHistory = history;
+      updated[targetIndex] = targetStudent;
+
       localStorage.setItem('diyala_school_students', JSON.stringify(updated));
       return updated;
     });
   };
 
 
-  // Helper: Update detailed field in Expansion Modal
+  // Helper: Update detailed field in Expansion Modal (strictly targets only the requested student)
   const handleUpdateDetailedMark = (
     studentId: string,
     subject: string,
@@ -186,10 +190,13 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
     value: number | null
   ) => {
     const currentYear = '2024-2025';
-    setStudents(prev => prev.map(s => {
-      if (s.id !== studentId) return s;
+    setStudents(prev => {
+      const targetIndex = prev.findIndex(s => s.id === studentId);
+      if (targetIndex === -1) return prev;
 
-      const history = [...(s.marksHistory || [])];
+      const updated = [...prev];
+      const targetStudent = { ...updated[targetIndex] };
+      const history = [...(targetStudent.marksHistory || [])];
       let markIndex = history.findIndex(m => m.subject === subject && m.year === currentYear);
       let markObj: StudentMark;
 
@@ -258,13 +265,16 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
         history.push(markObj);
       }
 
-      const updatedStudent = { ...s, marksHistory: history };
+      targetStudent.marksHistory = history;
+      updated[targetIndex] = targetStudent;
+
       if (expandedStudent && expandedStudent.id === studentId) {
-        setExpandedStudent(updatedStudent);
+        setExpandedStudent(targetStudent);
       }
 
-      return updatedStudent;
-    }));
+      localStorage.setItem('diyala_school_students', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   // Helper: Auto Result Calculation
@@ -293,7 +303,7 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
     }
   };
 
-  // Sync students from localStorage if updated elsewhere
+  // Sync students from localStorage if updated elsewhere and sanitize
   React.useEffect(() => {
     const handleDataUpdate = () => {
       try {
@@ -301,11 +311,28 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
         if (saved && saved !== 'undefined') {
           const list = JSON.parse(saved);
           if (Array.isArray(list) && list.length > 0) {
-            setStudents(list);
+            const { sanitized, hasRepairs } = sanitizeStudents(list);
+            if (hasRepairs) {
+              localStorage.setItem('diyala_school_students', JSON.stringify(sanitized));
+            }
+            setStudents(sanitized);
           }
         }
       } catch (e) {}
     };
+
+    // Perform immediate sanitization check on mount to heal existing data
+    setStudents(prev => {
+      if (Array.isArray(prev) && prev.length > 0) {
+        const { sanitized, hasRepairs } = sanitizeStudents(prev);
+        if (hasRepairs) {
+          localStorage.setItem('diyala_school_students', JSON.stringify(sanitized));
+          return sanitized;
+        }
+      }
+      return prev;
+    });
+
     window.addEventListener('school_data_updated', handleDataUpdate);
     window.addEventListener('storage', handleDataUpdate);
     return () => {

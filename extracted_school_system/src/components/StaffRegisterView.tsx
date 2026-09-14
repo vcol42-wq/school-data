@@ -27,7 +27,9 @@ import {
   ChevronDown,
   Trash2,
   Edit3,
-  Save
+  Save,
+  Sparkles,
+  Check
 } from 'lucide-react';
 import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
 import { printElement } from '../utils/printHelper';
@@ -53,6 +55,18 @@ export const JOB_TITLE_OPTIONS = [
 
 import { canonicalSubject, matchStaffWithScheduleCell, MASTER_SUBJECTS_LIST } from '../utils/subjectHelper';
 import { getSupabase } from '../utils/supabaseClient';
+import { isExemptStaff, parseClassTaught, standardizeGradeName, standardizeSectionName } from '../utils/syncEngine';
+
+export const GRADE_OPTIONS = [
+  'الأول',
+  'الثاني',
+  'الثالث',
+  'الرابع',
+  'الخامس',
+  'السادس'
+];
+
+export const SECTION_OPTIONS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'];
 
 export const ALL_SUBJECTS = [
   'مفرغ إدارياً / إدارة',
@@ -86,7 +100,8 @@ const AddStaffModal: React.FC<AddStaffModalProps> = ({ onClose, onAdd }) => {
     thirdName: '',
     titleName: '',
     specialization: 'اللغة العربية',
-    classesTaughtText: 'الصف الأول',
+    classesTaughtList: ['الأول أ'] as string[],
+    modalGrade: 'الأول',
     phoneNumber: '',
     nationalCardNumber: '',
     academicDegree: 'بكالوريوس',
@@ -104,7 +119,7 @@ const AddStaffModal: React.FC<AddStaffModalProps> = ({ onClose, onAdd }) => {
     const finalQuota = isZero ? 0 : formData.teachingQuota;
     const spec = canonicalSubject(formData.specialization || 'اللغة العربية');
     const actualSub = isZero ? 'مفرغ إدارياً / إدارة' : spec;
-    const classParts = formData.classesTaughtText.split(/[،,]/).map(c => c.trim()).filter(Boolean);
+    const classParts = formData.classesTaughtList;
 
     const newMember: StaffMember = {
       id: `stf-manual-${Date.now()}`,
@@ -271,15 +286,71 @@ const AddStaffModal: React.FC<AddStaffModalProps> = ({ onClose, onAdd }) => {
             </select>
           </div>
 
-          <div>
-            <label className="block font-black text-slate-800 mb-1">الصفوف والشعب المكلف بها:</label>
-            <input 
-              type="text" 
-              placeholder="مثال: الأول أ، الثاني ب"
-              value={formData.classesTaughtText} 
-              onChange={e => setFormData(p => ({ ...p, classesTaughtText: e.target.value }))} 
-              className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold focus:border-purple-600 focus:outline-none" 
-            />
+          <div className="space-y-1.5">
+            <label className="block font-black text-slate-800 text-xs">الصفوف والشعب المكلف بها:</label>
+            
+            {/* Badges List */}
+            <div className="flex flex-wrap gap-1 min-h-[36px] p-2 bg-slate-50 border border-slate-300 rounded-xl">
+              {formData.classesTaughtList.length === 0 ? (
+                <span className="text-xs text-slate-400 font-bold">لم يتم تحديد صفوف أو شعب بعد</span>
+              ) : (
+                formData.classesTaughtList.map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-950 border border-indigo-300 rounded-lg text-xs font-bold shadow-2xs">
+                    <span>{tag}</span>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(p => ({ ...p, classesTaughtList: p.classesTaughtList.filter(t => t !== tag) }))}
+                      className="text-slate-400 hover:text-rose-600 font-black cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+
+            {/* Quick Add Grade + Section Toolbar */}
+            <div className="flex items-center gap-2 pt-1">
+              <select
+                value={formData.modalGrade}
+                onChange={e => setFormData(p => ({ ...p, modalGrade: e.target.value }))}
+                className="p-1.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold text-xs"
+                title="اختر الصف"
+              >
+                {GRADE_OPTIONS.map(g => (
+                  <option key={g} value={g}>الصف {g}</option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-1 flex-wrap">
+                {SECTION_OPTIONS.map(sec => {
+                  const tag = `${formData.modalGrade} ${sec}`;
+                  const isSelected = formData.classesTaughtList.includes(tag);
+                  return (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => {
+                        setFormData(p => ({
+                          ...p,
+                          classesTaughtList: isSelected
+                            ? p.classesTaughtList.filter(t => t !== tag)
+                            : [...p.classesTaughtList, tag]
+                        }));
+                      }}
+                      className={`w-7 h-7 rounded-lg font-bold text-xs flex items-center justify-center transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-700 text-white font-black shadow-xs'
+                          : 'bg-white hover:bg-indigo-50 text-indigo-950 border border-slate-300'
+                      }`}
+                      title={isSelected ? `إلغاء الشعبة (${tag})` : `إضافة الشعبة (${tag})`}
+                    >
+                      {sec}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div>
@@ -369,6 +440,7 @@ interface EditStaffModalProps {
 
 const EditStaffModal: React.FC<EditStaffModalProps> = ({ staff, onClose, onSave }) => {
   const [formData, setFormData] = useState<StaffMember>(() => ({ ...staff }));
+  const [editGrade, setEditGrade] = useState('الأول');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -581,8 +653,73 @@ const EditStaffModal: React.FC<EditStaffModalProps> = ({ staff, onClose, onSave 
                   </button>
                 </div>
               </div>
-              <div className="col-span-2 md:col-span-4">
-                <label className="text-slate-800 font-bold block mb-1">الصفوف والشعب المكلف بتدريسها (افصل بينها بفارزة):</label>
+              <div className="col-span-2 md:col-span-4 space-y-2">
+                <label className="text-slate-800 font-bold block mb-1">الصفوف والشعب المكلف بتدريسها:</label>
+                
+                {/* Badges */}
+                <div className="flex flex-wrap gap-1 min-h-[36px] p-2 bg-slate-50 border border-slate-300 rounded-xl">
+                  {(!formData.classesTaught || formData.classesTaught.length === 0) ? (
+                    <span className="text-xs text-slate-400 font-bold">لم تُسند أي شعب بعد</span>
+                  ) : (
+                    formData.classesTaught.map((item, idx) => (
+                      <span key={idx} className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-100 text-indigo-950 border border-indigo-300 rounded-lg text-xs font-bold shadow-2xs">
+                        <span>{item}</span>
+                        <button
+                          type="button"
+                          onClick={() => setFormData(p => ({ ...p, classesTaught: (p.classesTaught || []).filter(t => t !== item) }))}
+                          className="text-slate-400 hover:text-rose-600 font-black cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+
+                {/* Grade & Section Quick Toolbar */}
+                <div className="flex items-center gap-2 pt-1">
+                  <select
+                    value={editGrade}
+                    onChange={e => setEditGrade(e.target.value)}
+                    className="p-1.5 border-2 border-slate-300 rounded-xl bg-white text-slate-900 font-bold text-xs"
+                    title="اختر الصف"
+                  >
+                    {GRADE_OPTIONS.map(g => (
+                      <option key={g} value={g}>الصف {g}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {SECTION_OPTIONS.map(sec => {
+                      const tag = `${editGrade} ${sec}`;
+                      const isSelected = (formData.classesTaught || []).includes(tag);
+                      return (
+                        <button
+                          key={sec}
+                          type="button"
+                          onClick={() => {
+                            setFormData(p => ({
+                              ...p,
+                              classesTaught: isSelected
+                                ? (p.classesTaught || []).filter(t => t !== tag)
+                                : [...(p.classesTaught || []), tag]
+                            }));
+                          }}
+                          className={`w-7 h-7 rounded-lg font-bold text-xs flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-700 text-white font-black shadow-xs'
+                              : 'bg-white hover:bg-indigo-50 text-indigo-950 border border-slate-300'
+                          }`}
+                          title={isSelected ? `إلغاء الشعبة (${tag})` : `إضافة الشعبة (${tag})`}
+                        >
+                          {sec}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Direct Text Input for convenience */}
                 <input 
                   type="text" 
                   value={Array.isArray(formData.classesTaught) ? formData.classesTaught.join('، ') : (formData.classesTaught || '')} 
@@ -593,8 +730,8 @@ const EditStaffModal: React.FC<EditStaffModalProps> = ({ staff, onClose, onSave 
                       classesTaught: parts.length > 0 ? parts : (e.target.value.trim() ? [e.target.value.trim()] : []) 
                     }));
                   }} 
-                  placeholder="مثال: الأول أ، الثاني ب، الثالث ج" 
-                  className="w-full p-2.5 border-2 border-slate-300 rounded-xl bg-white text-slate-950 font-bold" 
+                  placeholder="أو اكتب مباشرة مفصولاً بفارزة: مثال: الأول أ، الثاني ب" 
+                  className="w-full p-2 border border-slate-300 rounded-xl bg-white text-slate-800 text-xs font-bold" 
                 />
               </div>
             </div>
@@ -640,6 +777,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
   const [showImportModal, setShowImportModal] = useState(false);
   const [customSubjectStaffId, setCustomSubjectStaffId] = useState<string | null>(null);
   const [customSubjectInput, setCustomSubjectInput] = useState('');
+  const [rowActiveGrade, setRowActiveGrade] = useState<Record<string, string>>({});
 
   // Filter Logic
   const filteredStaff = staffList.filter(s => {
@@ -779,13 +917,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
 
   // Helper: Determine if staff is administrative / zero quota role
   const isAdministrativeOrZero = (staff: StaffMember) => {
-    const title = staff.jobTitle || '';
-    return (
-      staff.teachingQuota === 0 ||
-      staff.actualSubjectTaught === 'مفرغ إدارياً' ||
-      staff.actualSubjectTaught === 'مفرغ إدارياً / إدارة' ||
-      ['مدير', 'معاون مدير', 'مرشد تربوي', 'أمين مكتبة', 'كاتب', 'موظف خدمة', 'مشرف'].includes(title)
-    );
+    return isExemptStaff(staff);
   };
 
   // Memoized calculation of schedule metrics per staff (prevents re-render lag)
@@ -884,6 +1016,80 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
           ...s,
           classesTaught: parts.length > 0 ? parts : (newClassesText.trim() ? [newClassesText.trim()] : [])
         };
+      });
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleAddGrade = (staffId: string, grade: string) => {
+    setStaffList(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== staffId) return s;
+        const current = Array.isArray(s.classesTaught) ? [...s.classesTaught] : [];
+        const normGrade = grade.replace(/^(الصف|صف)\s+/, '').trim();
+        const hasGrade = current.some(c => c.includes(normGrade));
+        if (!hasGrade) {
+          current.push(`${grade} أ`);
+        }
+        return { ...s, classesTaught: current };
+      });
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+    setRowActiveGrade(prev => ({ ...prev, [staffId]: grade }));
+  };
+
+  const handleRemoveGrade = (staffId: string, grade: string) => {
+    const normGrade = grade.replace(/^(الصف|صف)\s+/, '').trim();
+    setStaffList(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== staffId) return s;
+        const current = Array.isArray(s.classesTaught) ? s.classesTaught : [];
+        const filtered = current.filter(c => !c.includes(normGrade));
+        return { ...s, classesTaught: filtered };
+      });
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleToggleClassSection = (staffId: string, grade: string, section: string) => {
+    const targetTag = `${grade} ${section}`;
+    const normGrade = grade.replace(/^(الصف|صف)\s+/, '').trim();
+
+    setStaffList(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== staffId) return s;
+        const current = Array.isArray(s.classesTaught) ? [...s.classesTaught] : [];
+        const existingIdx = current.findIndex(cStr => {
+          const parsed = parseClassTaught(cStr, '');
+          const pNorm = parsed.grade.replace(/^(الصف|صف)\s+/, '').trim();
+          const matchG = parsed.grade === grade || pNorm.includes(normGrade) || normGrade.includes(pNorm) || cStr.includes(normGrade);
+          const matchS = parsed.section === section || cStr.includes(section);
+          return matchG && matchS;
+        });
+
+        if (existingIdx !== -1) {
+          current.splice(existingIdx, 1);
+        } else {
+          current.push(targetTag);
+        }
+
+        return { ...s, classesTaught: current };
+      });
+      localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleRemoveClassSection = (staffId: string, targetTag: string) => {
+    setStaffList(prev => {
+      const updated = prev.map(s => {
+        if (s.id !== staffId) return s;
+        const current = Array.isArray(s.classesTaught) ? s.classesTaught : [];
+        const filtered = current.filter(c => c !== targetTag && c.trim() !== targetTag.trim());
+        return { ...s, classesTaught: filtered };
       });
       localStorage.setItem('diyala_school_staff', JSON.stringify(updated));
       return updated;
@@ -1120,7 +1326,8 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                 <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">الموقف / الحالة</th>
                 <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">الاختصاص الأكاديمي</th>
                 <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">المادة التي يدرّسها</th>
-                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap min-w-[180px]">الصفوف والشعب المكلف بها ✍️</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap min-w-[150px]">الصفوف المكلف بها 🎓</th>
+                <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap min-w-[260px]">الشعب المكلف بها 🏷️ (أ، ب، ...)</th>
                 <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">عدد الحصص (من الجدول الأسبوعي)</th>
                 <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">الوظيفة في المدرسة</th>
                 <th className="py-3.5 px-3 border-r border-indigo-600 text-center whitespace-nowrap">السجل</th>
@@ -1130,7 +1337,7 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
             <tbody className="divide-y divide-slate-200 text-xs">
               {filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-slate-500 font-bold">
+                  <td colSpan={10} className="py-8 text-center text-slate-500 font-bold">
                     لا توجد منتسبون مطابقون لخيارات الفلترة أو البحث الحالية.
                   </td>
                 </tr>
@@ -1138,9 +1345,12 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                 filteredStaff.map((staff, idx) => {
                   const scheduleInfo = staffScheduleInfo[staff.id] || { lessons: staff.teachingQuota ?? 18, classes: '' };
                   const calculatedLessons = scheduleInfo.lessons;
-                  const assignedClasses = (Array.isArray(staff.classesTaught) && staff.classesTaught.length > 0)
-                    ? staff.classesTaught.join('، ')
-                    : scheduleInfo.classes;
+                  const teacherClasses = Array.isArray(staff.classesTaught) ? staff.classesTaught : [];
+                  const assignedGrades: string[] = Array.from(new Set<string>(teacherClasses.map(c => {
+                    const parsed = parseClassTaught(c, '');
+                    return parsed.grade.replace(/^(الصف|صف)\s+/, '').trim() || c.split(' ')[0] || c;
+                  }))).filter(Boolean);
+                  const curActiveGrade = rowActiveGrade[staff.id] || (assignedGrades[0] || 'الأول');
                   const actualSubject = staff.actualSubjectTaught || staff.specialization || 'اللغة العربية';
                   const isSubjectMismatch = staff.specialization && !staff.specialization.includes(actualSubject) && !actualSubject.includes(staff.specialization);
 
@@ -1237,19 +1447,126 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
                         </div>
                       </td>
 
-                      {/* 6. Classes & Sections Taught (Directly Editable) */}
-                      <td className="py-2 px-2 border-r border-slate-200 text-center whitespace-nowrap min-w-[190px]">
-                        <div className="flex items-center gap-1 bg-indigo-50/60 p-1 rounded-xl border border-indigo-200">
-                          <GraduationCap className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-                          <input
-                            type="text"
-                            value={assignedClasses}
-                            onChange={(e) => handleClassesTaughtChange(staff.id, e.target.value)}
-                            placeholder="مثال: الأول أ، الثاني ب"
-                            className="w-full p-1.5 rounded-lg border border-indigo-300 bg-white text-indigo-950 font-bold text-xs focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
-                            title="تعديل الصفوف والشعب المكلف بها المدرس مباشرة (افصل بفاصلة)"
-                          />
-                        </div>
+                      {/* 6. Classes Taught (Dropdown from 1st to 6th) */}
+                      <td className="py-2 px-2 border-r border-slate-200 text-center whitespace-nowrap min-w-[150px]">
+                        {isExemptStaff(staff) ? (
+                          <span className="px-2.5 py-1 rounded-xl bg-purple-100 text-purple-950 border border-purple-300 font-bold text-[11px] inline-flex items-center gap-1 shadow-2xs">
+                            <span>مفرغ إدارياً</span>
+                          </span>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1.5">
+                            {assignedGrades.length > 0 && (
+                              <div className="flex flex-wrap items-center justify-center gap-1 max-w-[190px]">
+                                {assignedGrades.map(g => (
+                                  <span key={g} className="px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-900 font-bold text-[11px] flex items-center gap-1 shadow-2xs">
+                                    <span>الصف {g}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveGrade(staff.id, g)}
+                                      className="text-slate-400 hover:text-rose-600 font-black text-xs cursor-pointer transition-colors"
+                                      title={`حذف كافة شعب الصف ${g}`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleAddGrade(staff.id, e.target.value);
+                                }
+                              }}
+                              className="px-2 py-1 rounded-lg border-2 border-indigo-200 bg-white text-indigo-950 font-bold text-xs cursor-pointer hover:border-indigo-400 focus:outline-none focus:border-indigo-600 transition-all shadow-2xs"
+                              title="اختر صفاً لإضافته للمدرس"
+                            >
+                              <option value="">➕ إضافة صف...</option>
+                              {GRADE_OPTIONS.map(grade => (
+                                <option key={grade} value={grade}>الصف {grade}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 7. Sections Taught (Badges + Multi-Section Quick Selector) */}
+                      <td className="py-2 px-2 border-r border-slate-200 text-center whitespace-nowrap min-w-[260px]">
+                        {isExemptStaff(staff) ? (
+                          <span className="px-2.5 py-1 rounded-xl bg-purple-50 text-purple-900 border border-purple-200 font-bold text-[11px] inline-flex items-center gap-1 shadow-2xs">
+                            <span>معفى من الشعب (0 حصة)</span>
+                          </span>
+                        ) : (
+                          <div className="flex flex-col items-center gap-1.5">
+                            {/* Assigned Class+Section Badges */}
+                            <div className="flex flex-wrap items-center justify-center gap-1 max-w-[280px]">
+                              {teacherClasses.length === 0 ? (
+                                <span className="text-[11px] text-slate-400 font-bold">لم تُسند شعب بعد</span>
+                              ) : (
+                                teacherClasses.map((item, cIdx) => (
+                                  <span
+                                    key={cIdx}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-50 text-sky-950 border border-sky-300 font-bold text-xs shadow-2xs group"
+                                  >
+                                    <span>{item}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveClassSection(staff.id, item)}
+                                      className="text-slate-400 group-hover:text-rose-600 font-black text-xs cursor-pointer transition-colors"
+                                      title={`إلغاء تكليف شعبة (${item})`}
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))
+                              )}
+                            </div>
+
+                            {/* Section Quick Toggle Bar */}
+                            <div className="flex items-center justify-center gap-1 bg-slate-50 p-1 rounded-xl border border-slate-200 shadow-2xs">
+                              <select
+                                value={curActiveGrade}
+                                onChange={(e) => setRowActiveGrade(prev => ({ ...prev, [staff.id]: e.target.value }))}
+                                className="px-1.5 py-0.5 rounded-lg border border-slate-300 bg-white text-slate-900 font-bold text-[11px] focus:outline-none cursor-pointer"
+                                title="اختر الصف لتحديد شعبه"
+                              >
+                                {GRADE_OPTIONS.map(g => (
+                                  <option key={g} value={g}>{g}</option>
+                                ))}
+                              </select>
+
+                              <div className="flex items-center gap-0.5">
+                                {SECTION_OPTIONS.map(sec => {
+                                  const isAssigned = teacherClasses.some(cStr => {
+                                    const parsed = parseClassTaught(cStr, '');
+                                    const pNorm = parsed.grade.replace(/^(الصف|صف)\s+/, '').trim();
+                                    const curNorm = curActiveGrade.replace(/^(الصف|صف)\s+/, '').trim();
+                                    const matchG = parsed.grade === curActiveGrade || pNorm.includes(curNorm) || curNorm.includes(pNorm) || cStr.includes(curNorm);
+                                    const matchS = parsed.section === sec || cStr.includes(sec);
+                                    return matchG && matchS;
+                                  });
+
+                                  return (
+                                    <button
+                                      key={sec}
+                                      type="button"
+                                      onClick={() => handleToggleClassSection(staff.id, curActiveGrade, sec)}
+                                      className={`w-6 h-6 rounded-md font-bold text-xs flex items-center justify-center transition-all cursor-pointer shadow-2xs ${
+                                        isAssigned
+                                          ? 'bg-indigo-700 text-white font-black ring-1 ring-indigo-800 shadow-sm'
+                                          : 'bg-white hover:bg-indigo-50 text-indigo-950 border border-slate-300'
+                                      }`}
+                                      title={isAssigned ? `إلغاء تكليف شعبة (${curActiveGrade} ${sec})` : `تكليف شعبة (${curActiveGrade} ${sec})`}
+                                    >
+                                      {sec}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </td>
 
                       {/* 7. Quota (From Weekly Schedule or Direct Override) */}

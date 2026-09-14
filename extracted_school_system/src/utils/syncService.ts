@@ -6,7 +6,9 @@ import {
   standardizeSubjectName, 
   isValidSubjectName, 
   isExemptStaff, 
-  parseClassTaught 
+  parseClassTaught,
+  generateUniqueStudentId,
+  sanitizeStudents
 } from './syncEngine';
 
 // Helper to normalize Arabic characters for comparison
@@ -429,7 +431,7 @@ export async function importGradesAndAttendance(
         const fullName = (cs.full_name || `${cs.first_name} ${cs.second_name || ''} ${cs.third_name || ''}`).trim();
         const parts = fullName.split(/\s+/);
         const newStd: Student = {
-          id: cs.id || `std_t_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          id: cs.id || generateUniqueStudentId(),
           recordNumber: cs.record_number || `REC-${Math.floor(1000 + Math.random() * 9000)}`,
           firstName: cs.first_name || parts[0] || 'طالب جديد',
           secondName: cs.second_name || parts[1] || '',
@@ -462,7 +464,7 @@ export async function importGradesAndAttendance(
         const studentName = g.marks?.studentName || `طالب (${gRec})`;
         const parts = studentName.split(/\s+/);
         const newStd: Student = {
-          id: `std_grade_${gRec}`,
+          id: generateUniqueStudentId(),
           recordNumber: gRec,
           firstName: parts[0] || studentName,
           secondName: parts[1] || '',
@@ -497,7 +499,7 @@ export async function importGradesAndAttendance(
 
       const studentGrades = (dbGrades || []).filter(g => {
         const gRec = (g.student_record_number || '').trim();
-        const recMatches = (stdRec && gRec === stdRec) || (stdRec && gRec.includes(stdRec)) || gRec === stdAltId;
+        const recMatches = (stdRec && gRec === stdRec) || gRec === stdAltId;
         
         // Match by name as fallback
         const gName = g.marks?.studentName || '';
@@ -567,9 +569,10 @@ export async function importGradesAndAttendance(
       };
     });
 
-    // 6. Automatically persist back into localStorage and notify all views
+    // 6. Automatically sanitize and persist back into localStorage and notify all views
+    const { sanitized } = sanitizeStudents(updatedStudents);
     try {
-      localStorage.setItem('diyala_school_students', JSON.stringify(updatedStudents));
+      localStorage.setItem('diyala_school_students', JSON.stringify(sanitized));
       window.dispatchEvent(new Event('school_data_updated'));
     } catch (storageErr) {
       console.warn('LocalStorage save warning:', storageErr);
@@ -583,7 +586,7 @@ export async function importGradesAndAttendance(
     return {
       success: true,
       message: msg,
-      updatedStudents,
+      updatedStudents: sanitized,
       newStudentsCount: newCount
     };
   } catch (error: any) {
@@ -694,7 +697,7 @@ export async function restoreSchoolData(schoolId: string): Promise<{
       });
 
       return {
-        id: `std-${s.record_number}`,
+        id: s.id || generateUniqueStudentId(),
         sequence: idx + 1,
         recordNumber: s.record_number,
         registerPageNumber: '',
@@ -718,11 +721,13 @@ export async function restoreSchoolData(schoolId: string): Promise<{
       };
     });
 
+    const { sanitized: cleanStudentsList } = sanitizeStudents(studentsList);
+
     return {
       success: true,
       message: 'تم استعادة بيانات المدرسة من السحاب بنجاح!',
       config: schoolMeta.config,
-      students: studentsList,
+      students: cleanStudentsList,
       teachers: teachersList
     };
   } catch (error: any) {

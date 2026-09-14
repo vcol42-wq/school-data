@@ -38,7 +38,7 @@ import {
 } from 'lucide-react';
 import { getSupabase, isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
 import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
-import { standardizeGradeName, standardizeSectionName, standardizeSubjectName } from '../utils/syncEngine';
+import { standardizeGradeName, standardizeSectionName, standardizeSubjectName, parseClassTaught } from '../utils/syncEngine';
 
 // Data Transfer Interface matching cloud table & local storage
 export interface SubjectAssignmentRecord {

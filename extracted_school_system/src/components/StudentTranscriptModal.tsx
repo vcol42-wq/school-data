@@ -18,7 +18,7 @@ export const StudentTranscriptModal: React.FC<StudentTranscriptModalProps> = ({ 
   ];
 
   const getMark = (subject: string): StudentMark | undefined => {
-    return student.marksHistory.find(m => m.subject === subject);
+    return (student.marksHistory || []).find(m => m.subject === subject);
   };
 
   return (

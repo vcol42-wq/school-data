@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Student, AppConfig, StudentMark } from '../types';
 import { parseStudentsFromRawInput, parseExcelFileForStudents } from '../utils/parser';
 import { quickSyncStudentsToSupabase } from '../utils/syncService';
-import { sortGradesList, sortSectionsAlphabetically, sortSectionsList } from '../utils/syncEngine';
+import { sortGradesList, sortSectionsAlphabetically, sortSectionsList, generateUniqueStudentId, sanitizeStudents } from '../utils/syncEngine';
 import {
   GraduationCap, 
   Search, 
@@ -90,7 +90,7 @@ export const StudentRegisterView: React.FC<StudentRegisterViewProps> = ({
   // Helper: get or initialize a StudentMark object
   const getStudentMarkForSubject = (std: Student, subject: string): StudentMark => {
     const currentYear = std.registrationYear || '2024-2025';
-    let mark = std.marksHistory.find(m => m.subject === subject && m.year === currentYear);
+    let mark = (std.marksHistory || []).find(m => m.subject === subject && m.year === currentYear);
     return mark || {
       year: currentYear, subject,
       m1Daily: [0, 0, 0, 0, 0], m1Written: 0, m1MonthAvg: 0,
@@ -134,7 +134,7 @@ function normalizeForSearch(str: string): string {
 
     const studentToAdd: Student = {
       ...newStudent as Student,
-      id: `std-${Date.now()}`,
+      id: generateUniqueStudentId(),
       sequence: students.length + 1,
       currentGrade: cleanGrade,
       section: newStudent.section || 'أ',
@@ -417,8 +417,9 @@ function normalizeForSearch(str: string): string {
       updatedList = [...students, ...imported];
     }
 
-    // Ensure continuous sequence numbering & unique record numbers
+    // Ensure continuous sequence numbering & unique record numbers & strictly unique IDs
     const seenRecs = new Set<string>();
+    const seenIds = new Set<string>();
     updatedList = updatedList.map((s, idx) => {
       let rec = (s.recordNumber || '').trim();
       if (!rec || seenRecs.has(rec)) {
@@ -428,8 +429,16 @@ function normalizeForSearch(str: string): string {
         }
       }
       seenRecs.add(rec);
+
+      let id = (s.id || '').trim();
+      if (!id || seenIds.has(id)) {
+        id = generateUniqueStudentId();
+      }
+      seenIds.add(id);
+
       return {
         ...s,
+        id,
         sequence: idx + 1,
         recordNumber: rec
       };
@@ -500,7 +509,8 @@ ${replaceExisting ? '• تم استبدال وتحديث السجل لمنع ت
     }
     const imported = parseStudentsFromRawInput(importRawText, students.length + 1);
     if (imported.length > 0) {
-      const updatedList = [...students, ...imported];
+      const { sanitized } = sanitizeStudents([...students, ...imported]);
+      const updatedList = sanitized;
       setStudents(updatedList);
       localStorage.setItem('diyala_school_students', JSON.stringify(updatedList));
       window.dispatchEvent(new Event('school_data_updated'));

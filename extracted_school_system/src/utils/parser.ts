@@ -1,6 +1,6 @@
 import { Student, StaffMember, SchoolStage } from '../types';
 import * as XLSX from 'xlsx';
-import { standardizeSectionName, standardizeGradeName } from './syncEngine';
+import { standardizeSectionName, standardizeGradeName, generateUniqueStudentId } from './syncEngine';
 import { normalizeText, canonicalSubject } from './subjectHelper';
 
 export interface ExcelSheetPreview {
@@ -278,7 +278,7 @@ export function parseStudentsFromRawInput(rawText: string, startingSequence: num
     const titleName = nameTokens.slice(4).join(' ') || '';
 
     results.push({
-      id: `std-imp-${Date.now()}-${index}`,
+      id: generateUniqueStudentId(),
       sequence: seq,
       recordNumber,
       registerPageNumber: `${20 + seq}`,
@@ -607,7 +607,7 @@ export function parseSingleSheetRows(sheetName: string, rawRows: any[][], starti
     const fullName = [firstName, secondName, thirdName, fourthName, titleName].filter(Boolean).join(' ').trim();
 
     students.push({
-      id: `std-xls-${Date.now()}-${students.length}`,
+      id: generateUniqueStudentId(),
       sequence: seq,
       recordNumber,
       registerPageNumber: `${10 + seq}`,

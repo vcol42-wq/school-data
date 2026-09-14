@@ -53,50 +53,29 @@ object WidgetScheduleHelper {
     }
 
     fun formatClassLabelForWidget(raw: String): String {
-        var text = raw.trim()
-        val stage = when {
-            text.contains("متوسط") -> "متوسط"
-            text.contains("ابتدائ") -> "ابتدائي"
-            text.contains("إعداد") || text.contains("اعداد") -> "إعدادي"
-            text.contains("ثانو") -> "ثانوي"
+        val text = raw.trim()
+
+        var sectionLetter = ""
+        val secMatch = "\\b([أبجدـهوهزحطيكلمنسعفضقرشتثخذضظغa-zA-Z])\\b|\\(([أبجدـهوهزحطيكلمنسعفضقرشتثخذضظغa-zA-Z])\\)".toRegex().find(text)
+        if (secMatch != null) {
+            sectionLetter = (secMatch.groupValues[1].ifEmpty { secMatch.groupValues[2] }).trim()
+        }
+
+        val digit = text.firstOrNull { it.isDigit() }?.toString() ?: ""
+        val wordGrade = when {
+            text.contains("أول") || text.contains("الاول") || text.contains("الأول") || digit == "1" -> "اول"
+            text.contains("ثاني") || text.contains("الثاني") || digit == "2" -> "ثاني"
+            text.contains("ثالث") || text.contains("الثالث") || digit == "3" -> "ثالث"
+            text.contains("رابع") || text.contains("الرابع") || digit == "4" -> "رابع"
+            text.contains("خامس") || text.contains("الخامس") || digit == "5" -> "خامس"
+            text.contains("سادس") || text.contains("السادس") || digit == "6" -> "سادس"
             else -> ""
         }
 
-        var cleaned = text.replace("الصف ", "")
-            .replace("صف ", "")
-            .replace("متوسطة", "").replace("متوسط", "")
-            .replace("ابتدائية", "").replace("ابتدائي", "")
-            .replace("إعدادية", "").replace("اعدادية", "").replace("إعدادي", "").replace("اعدادي", "")
-            .replace("ثانوية", "").replace("ثانوي", "")
-            .replace("الأول", "1").replace("الاول", "1").replace("أول", "1")
-            .replace("الثاني", "2").replace("ثاني", "2")
-            .replace("الثالث", "3").replace("ثالث", "3")
-            .replace("الرابع", "4").replace("رابع", "4")
-            .replace("الخامس", "5").replace("خامس", "5")
-            .replace("السادس", "6").replace("سادس", "6")
-            .replace("_", "")
-            .trim()
-
-        val digit = cleaned.firstOrNull { it.isDigit() }?.toString() ?: ""
-        var section = cleaned.filter { !it.isDigit() }
-            .replace("(", "").replace(")", "").replace("[", "").replace("]", "").replace(" ", "").trim()
-
-        if (section.startsWith("ل") && section.length > 1) {
-            section = section.substring(1).trim()
-        }
-
-        val formattedLabel = if (digit.isNotEmpty() && section.isNotEmpty()) {
-            "$digit($section)"
-        } else if (digit.isNotEmpty()) {
-            digit
-        } else {
-            cleaned.ifBlank { raw }
-        }
-
-        return if (stage.isNotEmpty()) {
-            "$formattedLabel\n$stage"
-        } else {
-            formattedLabel
+        return when {
+            wordGrade.isNotEmpty() && sectionLetter.isNotEmpty() -> "$wordGrade $sectionLetter"
+            wordGrade.isNotEmpty() -> wordGrade
+            else -> text.replace("الصف ", "").replace("صف ", "").replace("(", "").replace(")", "").trim()
         }
     }
 

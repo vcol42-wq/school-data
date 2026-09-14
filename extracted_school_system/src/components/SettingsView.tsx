@@ -57,7 +57,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const getStudentAverage = (std: Student) => {
     const currentYear = std.registrationYear || '2024-2025';
-    const marks = std.marksHistory.filter(m => m.year === currentYear);
+    const marks = (std.marksHistory || []).filter(m => m.year === currentYear);
     if (marks.length === 0) return 0;
     const sum = marks.reduce((acc, m) => acc + (m.finalGrade || m.total || 0), 0);
     return sum / marks.length;

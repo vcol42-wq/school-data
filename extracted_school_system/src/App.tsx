@@ -52,6 +52,8 @@ import { MobilePrincipalDashboard } from './components/MobilePrincipalDashboard'
 import { TeacherAuthorityHub } from './components/TeacherAuthorityHub';
 import { Sparkles } from 'lucide-react';
 import { exportSchoolData } from './utils/syncService';
+import { sanitizeStudents } from './utils/syncEngine';
+
 
 export default function App() {
   // Navigation & Theme
@@ -104,7 +106,11 @@ export default function App() {
       if (saved && saved !== 'undefined') {
         const list = JSON.parse(saved);
         if (Array.isArray(list)) {
-          return list;
+          const { sanitized, hasRepairs } = sanitizeStudents(list);
+          if (hasRepairs) {
+            localStorage.setItem('diyala_school_students', JSON.stringify(sanitized));
+          }
+          return sanitized;
         }
       }
       return defaultStudents;
@@ -150,7 +156,11 @@ export default function App() {
         if (saved && saved !== 'undefined') {
           const list = JSON.parse(saved);
           if (Array.isArray(list)) {
-            setStudents(list);
+            const { sanitized, hasRepairs } = sanitizeStudents(list);
+            if (hasRepairs) {
+              localStorage.setItem('diyala_school_students', JSON.stringify(sanitized));
+            }
+            setStudents(sanitized);
           }
         }
       } catch (e) {

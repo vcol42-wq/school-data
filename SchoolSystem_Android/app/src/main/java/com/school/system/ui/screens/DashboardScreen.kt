@@ -1,8 +1,10 @@
 package com.school.system.ui.screens
 
 import android.content.Context
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,8 +20,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -116,155 +120,233 @@ fun DashboardScreen(
             )
         }
     ) { padding ->
+        val configuration = LocalConfiguration.current
+        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
         Column(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
         ) {
-            Spacer(Modifier.height(8.dp))
-
-            // 1. ROW OF 3 CLOUD/PILL BADGES (غيمات التحكم السريعة الثلاث)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // غيمة 1: وضع الاتصال (متصل / غير متصل)
-                CloudBadge(
-                    title = if (isOnlinePaired) "متصل ☁️" else "غير متصل 👤",
-                    subtitle = if (isOnlinePaired) (config?.schoolName?.take(12) ?: "السحابة") else "محلي",
-                    backgroundColor = currentTheme.surfaceColor,
-                    borderColor = currentTheme.tableBorderColor,
-                    contentColor = if (isOnlinePaired) Color(0xFF16A34A) else currentTheme.primaryColor,
-                    icon = if (isOnlinePaired) Icons.Default.CloudDone else Icons.Default.Person,
-                    onClick = onNavigateToSettings,
-                    modifier = Modifier.weight(1f)
-                )
-
-                // غيمة 2: استدعاء شعبة (متصل أو غير متصل)
-                CloudBadge(
-                    title = "استدعاء شعبة 📥",
-                    subtitle = "إضافة صف ومادة",
-                    backgroundColor = currentTheme.surfaceColor,
-                    borderColor = currentTheme.tableBorderColor,
-                    contentColor = currentTheme.primaryColor,
-                    icon = Icons.Default.AddCircleOutline,
-                    onClick = {
-                        if (isOnlinePaired) {
-                            showSelectClassesDialog = true
-                        } else {
-                            showSummonDialog = true
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-
-                // غيمة 3: رفع الدرجات (بلون مختلف ومميز)
-                CloudBadge(
-                    title = if (isUploadingGrades) "جاري الرفع..." else "رفع الدرجات ↑",
-                    subtitle = "مزامنة السحاب",
-                    backgroundColor = currentTheme.primaryColor,
-                    borderColor = currentTheme.secondaryColor,
-                    contentColor = Color.White,
-                    icon = Icons.Default.CloudUpload,
-                    onClick = {
-                        coroutineScope.launch {
-                            isUploadingGrades = true
-                            val success = viewModel.syncGradesOnly()
-                            isUploadingGrades = false
-                            if (success) {
-                                Toast.makeText(context, "تم رفع ومزامنة كافة الدرجات للسحابة بنجاح ☁️✓", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(
-                                    context, 
-                                    if (isOnlinePaired) "تعذر الرفع، يرجى مراجعة اتصال الإنترنت" else "التطبيق يعمل بالوضع المحلي (أوفلاين)", 
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(Modifier.height(6.dp))
-
-            // 2. مستطيل محدد ومضلل بشكل جميل لاسم الأستاذ
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(16.dp),
-                color = Color.Transparent,
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
-                shadowElevation = 3.dp
-            ) {
-                Box(
+            if (isLandscape) {
+                // Ultra-compact Landscape Action Row (3 Icon Chips + Teacher Badge)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(androidx.compose.ui.graphics.Brush.horizontalGradient(currentTheme.ribbonGradient))
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    // Chip 1: Connection Status
+                    Surface(
+                        color = currentTheme.surfaceColor,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.tableBorderColor),
+                        modifier = Modifier.clickable(onClick = onNavigateToSettings)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Surface(
-                                color = Color.White.copy(alpha = 0.2f),
-                                shape = CircleShape,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("👨‍🏫", fontSize = 18.sp)
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                val activeName = if (!config?.managerName.isNullOrBlank()) {
-                                    config!!.managerName
-                                } else if (teacherNameState.isNotBlank()) {
-                                    teacherNameState
+                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (isOnlinePaired) Icons.Default.CloudDone else Icons.Default.Person, contentDescription = null, tint = if (isOnlinePaired) Color(0xFF16A34A) else currentTheme.primaryColor, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (isOnlinePaired) "متصل ☁️" else "محلي 👤", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimaryColor)
+                        }
+                    }
+
+                    // Chip 2: Summon Class
+                    Surface(
+                        color = currentTheme.surfaceColor,
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.tableBorderColor),
+                        modifier = Modifier.clickable {
+                            if (isOnlinePaired) showSelectClassesDialog = true else showSummonDialog = true
+                        }
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AddCircleOutline, contentDescription = null, tint = currentTheme.primaryColor, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("استدعاء شعبة 📥", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimaryColor)
+                        }
+                    }
+
+                    // Chip 3: Upload Grades
+                    Surface(
+                        color = currentTheme.primaryColor,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.clickable {
+                            coroutineScope.launch {
+                                isUploadingGrades = true
+                                val success = viewModel.syncGradesOnly()
+                                isUploadingGrades = false
+                                if (success) {
+                                    Toast.makeText(context, "تم رفع وتحديث الدرجات بنجاح ☁️✓", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    "أستاذ المادة"
+                                    Toast.makeText(context, if (isOnlinePaired) "تعذر الرفع، يرجى مراجعة اتصال الإنترنت" else "التطبيق يعمل بالوضع المحلي (أوفلاين)", Toast.LENGTH_LONG).show()
                                 }
-                                Text(
-                                    text = "الأستاذ: $activeName",
-                                    color = Color.White,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Black,
-                                    maxLines = 1
-                                )
-                                val displaySchoolName = if (isOnlinePaired) {
-                                    val sName = config?.schoolName?.trim()
-                                    if (!sName.isNullOrEmpty() && sName != "سجل مستقل (أوفلاين)") sName else "مدرسة متصلة بالسحاب ☁️"
-                                } else {
-                                    "سجل محلي مستقل (أوفلاين)"
-                                }
-                                Text(
-                                    text = displaySchoolName,
-                                    color = Color.White.copy(alpha = 0.85f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
                             }
                         }
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (isUploadingGrades) {
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color.White, strokeWidth = 1.5.dp)
+                            } else {
+                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            }
+                            Spacer(Modifier.width(4.dp))
+                            Text("رفع الدرجات ↑", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
 
-                        IconButton(
-                            onClick = { showEditTeacherNameDialog = true },
-                            modifier = Modifier.size(32.dp)
+                    Spacer(Modifier.weight(1f))
+
+                    // Teacher Name Badge
+                    val activeName = if (!config?.managerName.isNullOrBlank()) config!!.managerName else if (teacherNameState.isNotBlank()) teacherNameState else "أستاذ المادة"
+                    Text("الأستاذ: $activeName", fontSize = 11.sp, fontWeight = FontWeight.Black, color = currentTheme.primaryColor)
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+
+                // 1. ROW OF 3 CLOUD/PILL BADGES (غيمات التحكم السريعة الثلاث)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // غيمة 1: وضع الاتصال (متصل / غير متصل)
+                    CloudBadge(
+                        title = if (isOnlinePaired) "متصل ☁️" else "غير متصل 👤",
+                        subtitle = if (isOnlinePaired) (config?.schoolName?.take(12) ?: "السحابة") else "محلي",
+                        backgroundColor = currentTheme.surfaceColor,
+                        borderColor = currentTheme.tableBorderColor,
+                        contentColor = if (isOnlinePaired) Color(0xFF16A34A) else currentTheme.primaryColor,
+                        icon = if (isOnlinePaired) Icons.Default.CloudDone else Icons.Default.Person,
+                        onClick = onNavigateToSettings,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // غيمة 2: استدعاء شعبة (متصل أو غير متصل)
+                    CloudBadge(
+                        title = "استدعاء شعبة 📥",
+                        subtitle = "إضافة صف ومادة",
+                        backgroundColor = currentTheme.surfaceColor,
+                        borderColor = currentTheme.tableBorderColor,
+                        contentColor = currentTheme.primaryColor,
+                        icon = Icons.Default.AddCircleOutline,
+                        onClick = {
+                            if (isOnlinePaired) {
+                                showSelectClassesDialog = true
+                            } else {
+                                showSummonDialog = true
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // غيمة 3: رفع الدرجات (بلون مختلف ومميز)
+                    CloudBadge(
+                        title = if (isUploadingGrades) "جاري الرفع..." else "رفع الدرجات ↑",
+                        subtitle = "مزامنة السحاب",
+                        backgroundColor = currentTheme.primaryColor,
+                        borderColor = currentTheme.secondaryColor,
+                        contentColor = Color.White,
+                        icon = Icons.Default.CloudUpload,
+                        onClick = {
+                            coroutineScope.launch {
+                                isUploadingGrades = true
+                                val success = viewModel.syncGradesOnly()
+                                isUploadingGrades = false
+                                if (success) {
+                                    Toast.makeText(context, "تم رفع ومزامنة كافة الدرجات للسحابة بنجاح ☁️✓", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(
+                                        context, 
+                                        if (isOnlinePaired) "تعذر الرفع، يرجى مراجعة اتصال الإنترنت" else "التطبيق يعمل بالوضع المحلي (أوفلاين)", 
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(Modifier.height(6.dp))
+
+                // 2. مستطيل محدد ومضلل بشكل جميل لاسم الأستاذ
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.Transparent,
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
+                    shadowElevation = 3.dp
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Brush.horizontalGradient(currentTheme.ribbonGradient))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription = "تعديل اسم الأستاذ",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Surface(
+                                    color = Color.White.copy(alpha = 0.2f),
+                                    shape = CircleShape,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text("👨‍🏫", fontSize = 18.sp)
+                                    }
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    val activeName = if (!config?.managerName.isNullOrBlank()) {
+                                        config!!.managerName
+                                    } else if (teacherNameState.isNotBlank()) {
+                                        teacherNameState
+                                    } else {
+                                        "أستاذ المادة"
+                                    }
+                                    Text(
+                                        text = "الأستاذ: $activeName",
+                                        color = Color.White,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Black,
+                                        maxLines = 1
+                                    )
+                                    val displaySchoolName = if (isOnlinePaired) {
+                                        val sName = config?.schoolName?.trim()
+                                        if (!sName.isNullOrEmpty() && sName != "سجل مستقل (أوفلاين)") sName else "مدرسة متصلة بالسحاب ☁️"
+                                    } else {
+                                        "سجل محلي مستقل (أوفلاين)"
+                                    }
+                                    Text(
+                                        text = displaySchoolName,
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+
+                            IconButton(
+                                onClick = { showEditTeacherNameDialog = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "تعديل اسم الأستاذ",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -627,9 +709,9 @@ fun RegisterCardItem(
 
     Surface(
         color = currentTheme.surfaceColor,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
-        shadowElevation = 3.dp,
+        shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
@@ -637,7 +719,7 @@ fun RegisterCardItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -649,20 +731,20 @@ fun RegisterCardItem(
                 // Section badge
                 Surface(
                     color = currentTheme.primaryColor.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.size(46.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.size(38.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
                             text = pkg.section,
                             color = currentTheme.primaryColor,
                             fontWeight = FontWeight.Black,
-                            fontSize = 20.sp
+                            fontSize = 17.sp
                         )
                     }
                 }
 
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
 
                 Column {
                     // اسم المادة
@@ -1921,92 +2003,104 @@ fun SupervisorHubCard(
     onSyncAllClasses: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var isMinimized by remember { mutableStateOf(true) }
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 2.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(12.dp),
         color = Color(0xFFFFFBEB),
-        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFF59E0B)),
-        shadowElevation = 3.dp
+        border = BorderStroke(1.2.dp, Color(0xFFF59E0B)),
+        shadowElevation = 2.dp
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isMinimized = !isMinimized }
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Surface(
                         color = Color(0xFFF59E0B).copy(alpha = 0.2f),
                         shape = CircleShape,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(28.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text("🛡️", fontSize = 18.sp)
+                            Text("🛡️", fontSize = 14.sp)
                         }
                     }
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "لوحة المشرف التربوي 🛡️",
+                            text = "لوحة المشرف التربوي 🛡️ (قراءة فقط)",
                             fontWeight = FontWeight.Black,
-                            fontSize = 13.5.sp,
+                            fontSize = 12.5.sp,
                             color = Color(0xFF92400E)
                         )
-                        Text(
-                            text = if (schoolName.isNotBlank()) "الإشراف والمتابعة لمدرسة: $schoolName" else "الإشراف والمتابعة الشاملة لكافة شعب المدرسة",
-                            fontSize = 11.sp,
-                            color = Color(0xFFB45309),
-                            fontWeight = FontWeight.Medium
-                        )
+                        if (!isMinimized && schoolName.isNotBlank()) {
+                            Text(
+                                text = "مدرسة: $schoolName",
+                                fontSize = 10.5.sp,
+                                color = Color(0xFFB45309),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
-                Surface(
-                    color = Color(0xFFF59E0B),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = "وضع إشرافي",
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Color(0xFFFEF3C7),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = if (isMinimized) "توسيع 🔽" else "تصغير 🔼",
+                            color = Color(0xFFB45309),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            AnimatedVisibility(visible = !isMinimized) {
+                Column {
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Button 1: بث التوجيهات
+                        Button(
+                            onClick = onOpenDirectives,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("بث توجيهات 📢", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Button 1: بث التوجيهات
-                Button(
-                    onClick = onOpenDirectives,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("بث توجيهات 📢", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-
-                // Button 2: مزامنة وسحب كافة الشعب
-                OutlinedButton(
-                    onClick = onSyncAllClasses,
-                    border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFD97706)),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF92400E)),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("سحب الشعب 🏫", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        // Button 2: مزامنة وسحب كافة الشعب
+                        OutlinedButton(
+                            onClick = onSyncAllClasses,
+                            border = BorderStroke(1.2.dp, Color(0xFFD97706)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF92400E)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("سحب الشعب 🏫", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
