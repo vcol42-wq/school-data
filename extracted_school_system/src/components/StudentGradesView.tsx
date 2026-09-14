@@ -22,7 +22,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { importGradesAndAttendance, normalizeArabic } from '../utils/syncService';
-import { standardizeSubjectName, standardizeGradeName, standardizeSectionName } from '../utils/syncEngine';
+import { standardizeSubjectName, standardizeGradeName, standardizeSectionName, sortGradesList, sortSectionsAlphabetically } from '../utils/syncEngine';
 import { Portal } from './common/Portal';
 
 interface StudentGradesViewProps {
@@ -36,8 +36,8 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
   setStudents,
   config
 }) => {
-  const uniqueGrades = Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)));
-  const uniqueSections = Array.from(new Set(students.map(s => s.section).filter(Boolean)));
+  const uniqueGrades = sortGradesList(Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean))));
+  const uniqueSections = sortSectionsAlphabetically(Array.from(new Set(students.map(s => s.section).filter(Boolean))));
 
   const [selectedGrade, setSelectedGrade] = useState<string>(() => uniqueGrades[0] || 'الصف الأول');
   const [selectedSection, setSelectedSection] = useState<string>(() => uniqueSections[0] || 'أ');

@@ -143,6 +143,142 @@ export function standardizeSectionName(secStr: string): string {
   return 'أ';
 }
 
+/**
+ * Calculates a numerical sorting weight for any grade name.
+ * Order:
+ * - Primary (الابتدائي): 1st to 6th (101..106)
+ * - Intermediate (المتوسط): 1st to 3rd (201..203)
+ * - Secondary/Preparatory (الإعدادي/الثانوي): 4th to 6th (304..306)
+ */
+export function getGradeOrder(gradeStr: string): number {
+  if (!gradeStr) return 999;
+  const s = gradeStr.trim().replace(/^(الصف|صف)\s+/g, '').trim();
+  const lower = s.replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+
+  let gradeNum = 1;
+  if (lower.includes('سادس') || lower.includes('6') || lower.includes('٦')) gradeNum = 6;
+  else if (lower.includes('خامس') || lower.includes('5') || lower.includes('٥')) gradeNum = 5;
+  else if (lower.includes('رابع') || lower.includes('4') || lower.includes('٤')) gradeNum = 4;
+  else if (lower.includes('ثالث') || lower.includes('3') || lower.includes('٣')) gradeNum = 3;
+  else if (lower.includes('ثاني') || lower.includes('2') || lower.includes('٢')) gradeNum = 2;
+  else if (lower.includes('اول') || lower.includes('1') || lower.includes('١')) gradeNum = 1;
+
+  let stageWeight = 200; // Default to intermediate (المتوسط)
+  if (lower.includes('ابتدائي')) {
+    stageWeight = 100;
+  } else if (
+    lower.includes('اعدادي') || lower.includes('ثانوي') ||
+    lower.includes('علمي') || lower.includes('ادبي') ||
+    lower.includes('احيائي') || lower.includes('تطبيقي') ||
+    lower.includes('مهني') || lower.includes('صناعي') || lower.includes('تجاري') ||
+    gradeNum >= 4
+  ) {
+    stageWeight = 300;
+  } else {
+    stageWeight = 200;
+  }
+
+  return stageWeight + gradeNum;
+}
+
+const ARABIC_ALPHABET_ORDER: Record<string, number> = {
+  'أ': 1, 'ا': 1, 'إ': 1, 'آ': 1, 'a': 1, '1': 1, '١': 1,
+  'ب': 2, 'b': 2, '2': 2, '٢': 2,
+  'ج': 3, 'c': 3, '3': 3, '٣': 3,
+  'د': 4, 'd': 4, '4': 4, '٤': 4,
+  'هـ': 5, 'ه': 5, 'e': 5, '5': 5, '٥': 5,
+  'و': 6, 'f': 6, '6': 6, '٦': 6,
+  'ز': 7, 'z': 7, '7': 7, '٧': 7,
+  'ح': 8, 'h': 8, '8': 8, '٨': 8,
+  'ط': 9, '9': 9, '٩': 9,
+  'ي': 10, 'j': 10, '10': 10, '١٠': 10,
+  'ك': 11, 'k': 11,
+  'ل': 12, 'l': 12,
+  'م': 13, 'm': 13,
+  'ن': 14, 'n': 14,
+  'س': 15, 's': 15,
+  'ع': 16,
+  'ف': 17,
+  'ص': 18,
+  'ق': 19,
+  'ر': 20,
+  'ش': 21,
+  'ت': 22,
+  'ث': 23,
+  'خ': 24,
+  'ذ': 25,
+  'ض': 26,
+  'ظ': 27,
+  'غ': 28
+};
+
+/**
+ * Calculates a numerical sorting weight for any section identifier (أ، ب، ج، د...).
+ */
+export function getSectionOrder(secStr: string): number {
+  if (!secStr) return 999;
+  const clean = secStr.trim();
+  if (ARABIC_ALPHABET_ORDER[clean] !== undefined) {
+    return ARABIC_ALPHABET_ORDER[clean];
+  }
+  const std = standardizeSectionName(clean);
+  if (ARABIC_ALPHABET_ORDER[std] !== undefined) {
+    return ARABIC_ALPHABET_ORDER[std];
+  }
+  return 999;
+}
+
+/**
+ * Comparator for ascending order: First grade and all its sections, then Second and its sections, etc.
+ */
+export function compareGradesAndSections(gradeA: string, secA: string, gradeB: string, secB: string): number {
+  const gOrderA = getGradeOrder(gradeA);
+  const gOrderB = getGradeOrder(gradeB);
+  if (gOrderA !== gOrderB) return gOrderA - gOrderB;
+
+  const sOrderA = getSectionOrder(secA);
+  const sOrderB = getSectionOrder(secB);
+  if (sOrderA !== sOrderB) return sOrderA - sOrderB;
+
+  return (secA || '').localeCompare(secB || '', 'ar');
+}
+
+/**
+ * Sorts an array of grade strings ascendingly (الأول ثم الثاني ثم الثالث...).
+ * Preserves 'الكل' at the beginning if present.
+ */
+export function sortGradesList(grades: string[]): string[] {
+  const hasAll = grades.includes('الكل');
+  const filtered = grades.filter(g => g && g !== 'الكل');
+  const sorted = [...new Set(filtered)].sort((a, b) => getGradeOrder(a) - getGradeOrder(b));
+  return hasAll ? ['الكل', ...sorted] : sorted;
+}
+
+/**
+ * Sorts an array of section strings ascendingly (أ ثم ب ثم ج...).
+ * Preserves 'الكل' at the beginning if present.
+ */
+export function sortSectionsAlphabetically(sections: string[]): string[] {
+  const hasAll = sections.includes('الكل');
+  const filtered = sections.filter(s => s && s !== 'الكل');
+  const sorted = [...new Set(filtered)].sort((a, b) => getSectionOrder(a) - getSectionOrder(b));
+  return hasAll ? ['الكل', ...sorted] : sorted;
+}
+
+/**
+ * Sorts any list of items containing grade and section:
+ * First grade and its sections (أ ثم ب ثم ج), then Second and its sections, then Third and its sections, etc.
+ */
+export function sortSectionsList<T extends { grade?: string; currentGrade?: string; section?: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const gA = a.grade || a.currentGrade || '';
+    const gB = b.grade || b.currentGrade || '';
+    const sA = a.section || '';
+    const sB = b.section || '';
+    return compareGradesAndSections(gA, sA, gB, sB);
+  });
+}
+
 export function isValidSubjectName(raw: string): boolean {
   if (!raw || typeof raw !== 'string') return false;
   const s = raw.trim();

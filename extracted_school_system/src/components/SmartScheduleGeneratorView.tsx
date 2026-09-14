@@ -46,7 +46,7 @@ import {
 import { PrintPreviewModal } from './PrintPreviewModal';
 import { getSupabase } from '../utils/supabaseClient';
 import { canonicalSubject, MASTER_SUBJECTS_LIST, matchStaffWithScheduleCell } from '../utils/subjectHelper';
-import { standardizeGradeName, standardizeSectionName, standardizeSubjectName } from '../utils/syncEngine';
+import { standardizeGradeName, standardizeSectionName, standardizeSubjectName, sortSectionsList } from '../utils/syncEngine';
 import { Student } from '../types';
 
 interface SmartScheduleGeneratorViewProps {
@@ -63,15 +63,16 @@ interface SmartScheduleGeneratorViewProps {
 const STANDARD_SUBJECTS_TEMPLATE: { name: string; quota: number }[] = [
   { name: 'التربية الإسلامية', quota: 2 },
   { name: 'اللغة العربية', quota: 5 },
-  { name: 'اللغة الانكليزية', quota: 4 },
+  { name: 'اللغة الانكليزية', quota: 5 },
   { name: 'الرياضيات', quota: 5 },
   { name: 'الكيمياء', quota: 2 },
-  { name: 'الفيزياء', quota: 3 },
+  { name: 'الفيزياء', quota: 2 },
   { name: 'الأحياء', quota: 2 },
-  { name: 'الاجتماعيات', quota: 3 },
-  { name: 'النشاط البدني', quota: 2 },
+  { name: 'الاجتماعيات', quota: 4 },
+  { name: 'النشاط البدني', quota: 1 },
   { name: 'التربية الفنية', quota: 1 },
   { name: 'التربية الأخلاقية', quota: 1 },
+  { name: 'شاغر / نشاط حر', quota: 1 },
 ];
 
 // High-Performance Row Component to isolate typing re-renders and eliminate lag
@@ -183,22 +184,48 @@ const SubjectRow: React.FC<SubjectRowProps> = React.memo(({
         </div>
       </td>
       <td className="p-2 text-center">
-        <input
-          type="number"
-          min="1"
-          max="15"
-          value={localQuota}
-          onChange={e => {
-            const val = Number(e.target.value);
-            setLocalQuota(val);
-          }}
-          onBlur={e => {
-            const val = Math.max(1, Number(e.target.value) || 1);
-            setLocalQuota(val);
-            onUpdateSubject(sectionId, sub.id, { weeklyLessons: val });
-          }}
-          className="w-16 p-1.5 rounded-lg border border-slate-300 font-black font-mono text-center bg-white text-slate-900 focus:border-indigo-600 focus:outline-none"
-        />
+        <div className="inline-flex items-center justify-center gap-1">
+          <button
+            type="button"
+            onClick={() => {
+              const newVal = Math.max(1, localQuota - 1);
+              setLocalQuota(newVal);
+              onUpdateSubject(sectionId, sub.id, { weeklyLessons: newVal });
+            }}
+            title="تقليل الحصة (-1)"
+            className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center transition-all cursor-pointer select-none text-xs border border-slate-300"
+          >
+            -
+          </button>
+          <input
+            type="number"
+            min="1"
+            max="15"
+            value={localQuota}
+            onChange={e => {
+              const val = Number(e.target.value);
+              setLocalQuota(val);
+            }}
+            onBlur={e => {
+              const val = Math.max(1, Number(e.target.value) || 1);
+              setLocalQuota(val);
+              onUpdateSubject(sectionId, sub.id, { weeklyLessons: val });
+            }}
+            className="w-12 p-1 rounded-md border border-slate-300 font-black font-mono text-center bg-white text-slate-900 focus:border-indigo-600 focus:outline-none text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const newVal = Math.min(15, localQuota + 1);
+              setLocalQuota(newVal);
+              onUpdateSubject(sectionId, sub.id, { weeklyLessons: newVal });
+            }}
+            title="زيادة الحصة (+1)"
+            className="w-6 h-6 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center transition-all cursor-pointer select-none text-xs border border-slate-300"
+          >
+            +
+          </button>
+        </div>
       </td>
       <td className="p-2 text-center">
         <button
@@ -269,7 +296,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
         }
       });
     }
-    const list = Array.from(secMap.values());
+    const list = sortSectionsList(Array.from(secMap.values()));
     const gradesSet = new Set(list.map(i => i.grade));
     return {
       totalStudents: students?.length || 0,
@@ -317,7 +344,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
       });
     }
 
-    const discoveredList = Array.from(studentSectionMap.values());
+    const discoveredList = sortSectionsList(Array.from(studentSectionMap.values()));
     if (discoveredList.length === 0) {
       if (showToast) alert('لم يتم العثور على سجلات طلاب أو شعب في النظام حتى الآن. يمكنك إضافة الشعب يدوياً.');
       return;
@@ -404,10 +431,11 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
       };
     });
 
-    setSections(newSections);
-    localStorage.setItem('diyala_smart_schedule_sections', JSON.stringify(newSections));
+    const sortedSections = sortSectionsList(newSections);
+    setSections(sortedSections);
+    localStorage.setItem('diyala_smart_schedule_sections', JSON.stringify(sortedSections));
     if (showToast) {
-      alert(`تم استيراد وتوزيع عدد (${newSections.length}) شعبة تلقائياً من أيقونة الطلاب، وتوزيع المناهج وإسناد الأساتذة من سجل الكادر بنجاح! ⚡`);
+      alert(`تم استيراد وتوزيع عدد (${sortedSections.length}) شعبة تلقائياً من أيقونة الطلاب، وتوزيع المناهج وإسناد الأساتذة من سجل الكادر بنجاح! ⚡`);
     }
   };
 
@@ -503,7 +531,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const { repaired } = sanitizeAndRepairSections(parsed);
-          return repaired;
+          return sortSectionsList(repaired);
         }
       }
     } catch (e) {}
@@ -567,7 +595,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
       }))
     };
 
-    setSections(prev => [...prev, newSec]);
+    setSections(prev => sortSectionsList([...prev, newSec]));
   };
 
   const handleRemoveSection = (id: string, label: string) => {
@@ -1247,7 +1275,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                   type="button"
                   onClick={() => {
                     const { repaired, wasModified, fixesSummary } = sanitizeAndRepairSections(sections);
-                    setSections(repaired);
+                    setSections(sortSectionsList(repaired));
                     if (wasModified) {
                       alert(`✅ تم إصلاح وموازنة الأنصبة بنجاح!\n\n${fixesSummary.join('\n')}\n\nأصبحت جميع الشعب مضبوطة على 30 حصة أسبوعياً.`);
                     } else {

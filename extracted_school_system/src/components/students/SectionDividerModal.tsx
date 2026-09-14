@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Student } from '../../types';
 import { Portal } from '../common/Portal';
+import { sortGradesList, sortSectionsAlphabetically } from '../../utils/syncEngine';
 import { 
   X, 
   Split, 
@@ -29,7 +30,7 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const uniqueGrades = Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)));
+  const uniqueGrades = sortGradesList(Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean))));
   const [selectedGrade, setSelectedGrade] = useState<string>(uniqueGrades[0] || 'الصف الأول');
   const [selectedSections, setSelectedSections] = useState<string[]>(['أ', 'ب', 'ج']);
   const [newSectionInput, setNewSectionInput] = useState<string>('');
@@ -50,7 +51,7 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
       }
       setSelectedSections(prev => prev.filter(s => s !== sec));
     } else {
-      setSelectedSections(prev => [...prev, sec]);
+      setSelectedSections(prev => sortSectionsAlphabetically([...prev, sec]));
     }
   };
 
@@ -61,7 +62,7 @@ export const SectionDividerModal: React.FC<SectionDividerModalProps> = ({
       alert('هذه الشعبة موجودة مسبقاً.');
       return;
     }
-    setSelectedSections(prev => [...prev, trimmed]);
+    setSelectedSections(prev => sortSectionsAlphabetically([...prev, trimmed]));
     setNewSectionInput('');
   };
 

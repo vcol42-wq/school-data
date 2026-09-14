@@ -23,6 +23,7 @@ import { PrintPreviewModal } from './PrintPreviewModal';
 import { Portal } from './common/Portal';
 import { getSupabase } from '../utils/supabaseClient';
 import { generateSmartFairSchedule, sanitizeAndRepairSections, checkScheduleCollisions, DAYS_OF_WEEK, LESSON_KEYS, LESSON_LABELS } from '../utils/scheduleSolver';
+import { sortSectionsList } from '../utils/syncEngine';
 import { SmartScheduleSection, SectionSubjectAssignment, StaffMember, Student } from '../types';
 
 export const COMMON_SCHEDULE_SUBJECTS = [
@@ -156,7 +157,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           const parsed = JSON.parse(savedSecs);
           if (Array.isArray(parsed) && parsed.length > 0) {
             const { repaired } = sanitizeAndRepairSections(parsed);
-            candidateSections = repaired;
+            candidateSections = sortSectionsList(repaired);
           }
         }
       } catch {}
@@ -194,7 +195,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           });
         }
 
-        const discovered = Array.from(studentSectionMap.values());
+        const discovered = sortSectionsList(Array.from(studentSectionMap.values()));
         if (discovered.length === 0) {
           alert('لم يتم العثور على أي صفوف أو شعب في سجل الطلاب أو الجدول الحالي. يرجى إضافة صفوف وشعب أولاً.');
           setIsDirectGenerating(false);
@@ -210,7 +211,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           { name: 'الكيمياء', quota: 2 },
           { name: 'الفيزياء', quota: 2 },
           { name: 'الأحياء', quota: 2 },
-          { name: 'الاجتماعيات', quota: 3 },
+          { name: 'الاجتماعيات', quota: 4 },
           { name: 'التربية الأخلاقية', quota: 1 },
           { name: 'النشاط البدني', quota: 1 },
           { name: 'التربية الفنية', quota: 1 },
@@ -263,10 +264,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       const freshSeed = Date.now() + Math.random() * 100000;
       const result = generateSmartFairSchedule(candidateSections, 500, freshSeed);
 
-      if (!result.success && result.collisions.length > 0) {
-        if (!confirm(`⚠️ تم توليد الجدول مع (${result.collisions.length}) تضارب في أنصبة بعض المعلمين. هل ترغب في اعتماده وحفظه الآن؟`)) {
+      if (!result.success) {
+        if (result.errorMsg && result.collisions.length === 0) {
+          alert(`⚠️ ${result.errorMsg}`);
           setIsDirectGenerating(false);
           return;
+        }
+        if (result.collisions.length > 0) {
+          if (!confirm(`⚠️ تم توليد الجدول مع (${result.collisions.length}) تضارب في أنصبة بعض المعلمين. هل ترغب في اعتماده وحفظه الآن؟`)) {
+            setIsDirectGenerating(false);
+            return;
+          }
         }
       }
 
@@ -345,7 +353,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const daysList: DayOfWeek[] = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
   // Current day's rows
-  const currentDayRows = scheduleMap[selectedDay] || [];
+  const currentDayRows = sortSectionsList(scheduleMap[selectedDay] || []);
 
   // Calculate start and end times for all 6 lesson slots & 5 breaks in 12-Hour format (ص/م)
   const calculateSlotTimings = () => {
@@ -566,7 +574,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
     setScheduleMap(prev => ({
       ...prev,
-      [selectedDay]: [...(prev[selectedDay] || []), newRow]
+      [selectedDay]: sortSectionsList([...(prev[selectedDay] || []), newRow])
     }));
 
     setShowAddRowModal(false);

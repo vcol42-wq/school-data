@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Student, AppConfig, StudentMark } from '../types';
 import { parseStudentsFromRawInput, parseExcelFileForStudents } from '../utils/parser';
 import { quickSyncStudentsToSupabase } from '../utils/syncService';
+import { sortGradesList, sortSectionsAlphabetically, sortSectionsList } from '../utils/syncEngine';
 import {
   GraduationCap, 
   Search, 
@@ -320,8 +321,8 @@ function normalizeForSearch(str: string): string {
   const [showTranscript, setShowTranscript] = useState(false);
   const [sortOption, setSortOption] = useState<'name' | 'record' | 'marks'>('name');
 
-  const uniqueGrades = ['الكل', ...Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)))];
-  const uniqueSections = ['الكل', ...Array.from(new Set(students.map(s => s.section).filter(Boolean)))];
+  const uniqueGrades = sortGradesList(['الكل', ...Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)))]);
+  const uniqueSections = sortSectionsAlphabetically(['الكل', ...Array.from(new Set(students.map(s => s.section).filter(Boolean)))]);
 
   // Extract all distinct Grade + Section pairs for the top Section Cards
   const sectionCards = React.useMemo(() => {
@@ -337,10 +338,10 @@ function normalizeForSearch(str: string): string {
         }
       }
     });
-    return Array.from(map.entries()).map(([key, data]) => ({
+    return sortSectionsList(Array.from(map.entries()).map(([key, data]) => ({
       key,
       ...data
-    }));
+    })));
   }, [students]);
 
   // Filtered and Sorted Students with Smart Arabic Search

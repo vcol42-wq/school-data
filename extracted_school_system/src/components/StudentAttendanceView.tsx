@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { importGradesAndAttendance } from '../utils/syncService';
+import { sortGradesList, sortSectionsAlphabetically } from '../utils/syncEngine';
 import { Portal } from './common/Portal';
 
 interface StudentAttendanceViewProps {
@@ -44,8 +45,8 @@ export const StudentAttendanceView: React.FC<StudentAttendanceViewProps> = ({
   const [warningModalStudent, setWarningModalStudent] = useState<Student | null>(null);
 
   // Extract unique grades & sections
-  const uniqueGrades = ['الكل', ...Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)))];
-  const uniqueSections = ['الكل', ...Array.from(new Set(students.map(s => s.section).filter(Boolean)))];
+  const uniqueGrades = sortGradesList(['الكل', ...Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)))]);
+  const uniqueSections = sortSectionsAlphabetically(['الكل', ...Array.from(new Set(students.map(s => s.section).filter(Boolean)))]);
 
   // Helper to determine risk level
   const getAbsenceStatus = (count: number) => {
