@@ -228,8 +228,15 @@ fun ScheduleScreen(
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        Scaffold(
-            topBar = {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(currentTheme.backgroundColor)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // TopBar - Collapsible on Scroll
                 AnimatedVisibility(
                     visible = !isScrolled.value,
                     enter = fadeIn() + expandVertically(),
@@ -242,7 +249,7 @@ fun ScheduleScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(if (isLandscape) 36.dp else 46.dp)
+                                .height(if (isLandscape) 34.dp else 46.dp)
                                 .padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
@@ -303,16 +310,7 @@ fun ScheduleScreen(
                         }
                     }
                 }
-            }
-        ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(currentTheme.backgroundColor)
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+
                 // Day Selector Bar (الأحد -> الخميس) - Collapsible on Scroll
                 AnimatedVisibility(
                     visible = !isScrolled.value,
@@ -323,7 +321,8 @@ fun ScheduleScreen(
                         shape = RoundedCornerShape(10.dp),
                         color = currentTheme.surfaceColor,
                         border = BorderStroke(1.dp, currentTheme.tableBorderColor),
-                        shadowElevation = 1.dp
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -342,7 +341,7 @@ fun ScheduleScreen(
                                 ) {
                                     Text(
                                         text = day,
-                                        modifier = Modifier.padding(vertical = if (isLandscape) 4.dp else 6.dp),
+                                        modifier = Modifier.padding(vertical = if (isLandscape) 3.dp else 6.dp),
                                         textAlign = TextAlign.Center,
                                         fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
                                         fontSize = if (isLandscape) 11.sp else 12.sp,
@@ -743,7 +742,7 @@ fun GeneralDayScheduleGrid(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    contentPadding = PaddingValues(bottom = 32.dp)
+                    contentPadding = PaddingValues(bottom = if (isLandscape) 80.dp else 40.dp)
                 ) {
                     items(classes) { clsName ->
                         val classLessonsMap = remember(allLessons, clsName) {
