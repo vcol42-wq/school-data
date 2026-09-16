@@ -1,5 +1,7 @@
 package com.school.system.ui.screens
 
+import android.app.Activity
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -45,9 +47,19 @@ import androidx.compose.ui.text.style.TextAlign
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Build
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.print.PageRange
+import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
+import android.print.PrintDocumentInfo
+import android.print.PrintManager
 import android.provider.MediaStore
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -68,9 +80,13 @@ import com.school.system.data.model.AbsenceRecord
 import com.school.system.data.model.latestRecordedScore
 import com.school.system.data.model.latestRecordedScoreInt
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.core.content.FileProvider
+import com.school.system.data.model.SchoolConfig
 import com.school.system.data.repository.SecureUploadResult
 import com.school.system.utils.BiometricHelper
 import com.school.system.utils.ImageTextExtractor
+import com.school.system.utils.ProfessionalDocumentParser
+import java.io.File
 
 data class ProgressiveEvaluationResult(
     val stageName: String,
@@ -464,7 +480,7 @@ fun GradeRegisterScreen(
                                 Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
                                 IconButton(
                                     onClick = { 
-                                        exportAndSharePdfWithIText7(context, grade, section, subject, selectedTab, students, absences, config)
+                                        exportAndSharePdfWithNativePdf(context, grade, section, subject, selectedTab, students, absences, config)
                                     },
                                     modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
                                 ) {
@@ -857,77 +873,26 @@ fun GradeRegisterScreen(
             var selectedTab by remember { mutableIntStateOf(0) }
             var singleName by remember { mutableStateOf("") }
             var multiNamesText by remember { mutableStateOf("") }
-            var ocrNamesText by remember { mutableStateOf("") }
-            var isScanningImage by remember { mutableStateOf(false) }
-
-            val coroutineScope = rememberCoroutineScope()
-
-            // Function to process bitmap for OCR & Gemini AI
-            val processImageBitmap: (Bitmap?) -> Unit = { bitmap ->
-                if (bitmap != null) {
-                    isScanningImage = true
-                    viewModel.extractStudentNamesFromPhoto(bitmap) { names, rawText ->
-                        isScanningImage = false
-                        if (names.isNotEmpty()) {
-                            ocrNamesText = names.joinToString("\n")
-                            Toast.makeText(context, "تم استخراج ${names.size} اسم طالب بنجاح! 🎯", Toast.LENGTH_SHORT).show()
-                        } else if (rawText.isNotBlank()) {
-                            ocrNamesText = rawText
-                            Toast.makeText(context, "تم استخراج النص من الصورة", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(context, "لم يتم العثور على أسماء واضحة، تأكد من وضوح الصورة والتركيز على القائمة", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                }
-            }
-
-            // Gallery Launcher
-            val galleryLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.GetContent()
-            ) { uri: Uri? ->
-                if (uri != null) {
-                    try {
-                        val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri))
-                        } else {
-                            @Suppress("DEPRECATION")
-                            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-                        }
-                        processImageBitmap(bitmap)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        Toast.makeText(context, "تعذر قراءة الصورة المختارة", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-
-            // Camera Launcher
-            val cameraLauncher = rememberLauncherForActivityResult(
-                contract = ActivityResultContracts.TakePicturePreview()
-            ) { bitmap: Bitmap? ->
-                if (bitmap != null) {
-                    processImageBitmap(bitmap)
-                }
-            }
-
             // File Launcher for Excel / CSV / TXT / Word offline import
             val fileLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.GetContent()
             ) { uri: Uri? ->
                 if (uri != null) {
                     try {
-                        val inputStream = context.contentResolver.openInputStream(uri)
-                        val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
-                        if (content.isNotBlank()) {
-                            val names = ImageTextExtractor.parseStudentNamesFromRawText(content)
-                            if (names.isNotEmpty()) {
-                                multiNamesText = names.joinToString("\n")
-                                selectedTab = 1
-                                Toast.makeText(context, "تم استخراج ${names.size} اسم طالب من الملف أوفلاين! 📄", Toast.LENGTH_SHORT).show()
-                            } else {
+                        val names = ProfessionalDocumentParser.parseStudentNamesFromUri(context, uri)
+                        if (names.isNotEmpty()) {
+                            multiNamesText = names.joinToString("\n")
+                            selectedTab = 1
+                            Toast.makeText(context, "تم استخراج (${names.size}) اسم طالب احترافياً من الملف! 📄🚀", Toast.LENGTH_LONG).show()
+                        } else {
+                            val inputStream = context.contentResolver.openInputStream(uri)
+                            val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                            if (content.isNotBlank()) {
                                 multiNamesText = content
                                 selectedTab = 1
                                 Toast.makeText(context, "تم قراءة محتوى الملف أوفلاين", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "تعذر استخراج الأسماء، يرجى التأكد من محتوى الملف", Toast.LENGTH_SHORT).show()
                             }
                         }
                     } catch (e: Exception) {
@@ -950,13 +915,10 @@ fun GradeRegisterScreen(
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         TabRow(selectedTabIndex = selectedTab) {
                             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
-                                Text("طالب مفرد", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
+                                Text("طالب مفرد", modifier = Modifier.padding(vertical = 8.dp), fontSize = 12.sp)
                             }
                             Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
-                                Text("ملف / لصق 📄", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
-                            }
-                            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }) {
-                                Text("مسح صورة 📷", modifier = Modifier.padding(vertical = 8.dp), fontSize = 11.5.sp)
+                                Text("استيراد ملف / لصق 📄", modifier = Modifier.padding(vertical = 8.dp), fontSize = 12.sp)
                             }
                         }
 
@@ -968,7 +930,7 @@ fun GradeRegisterScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
-                        } else if (selectedTab == 1) {
+                        } else {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -977,19 +939,20 @@ fun GradeRegisterScreen(
                                 ) {
                                     Text(
                                         "الصق القائمة أو اختر ملفاً:",
-                                        fontSize = 11.sp,
-                                        color = Color.Gray
+                                        fontSize = 11.5.sp,
+                                        color = Color.Gray,
+                                        fontWeight = FontWeight.Bold
                                     )
 
                                     Button(
                                         onClick = { fileLauncher.launch("*/*") },
                                         shape = RoundedCornerShape(8.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0EA5E9)),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
-                                        Icon(Icons.Default.InsertDriveFile, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.InsertDriveFile, contentDescription = null, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(4.dp))
-                                        Text("فتح ملف (Excel/Word/TXT) 📂", fontSize = 10.5.sp)
+                                        Text("فتح ملف (Excel/Word/CSV/TXT) 📂", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
 
@@ -997,65 +960,7 @@ fun GradeRegisterScreen(
                                     value = multiNamesText,
                                     onValueChange = { multiNamesText = it },
                                     placeholder = { Text("أحمد علي حسن محمد\nزيد كريم جاسم\nعلي حسين صالح") },
-                                    modifier = Modifier.fillMaxWidth().height(140.dp),
-                                    maxLines = 10
-                                )
-                            }
-                        } else {
-                            // Tab 2: OCR Image Scan
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text(
-                                    "استخراج أسماء الطلاب أوفلاين مجاناً من صور القوائم الورقية 📷:",
-                                    fontSize = 11.5.sp,
-                                    color = Color(0xFF1E3A8A),
-                                    fontWeight = FontWeight.Bold
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Button(
-                                        onClick = { cameraLauncher.launch(null) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                                    ) {
-                                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("الكاميرا 📸", fontSize = 11.sp)
-                                    }
-
-                                    Button(
-                                        onClick = { galleryLauncher.launch("image/*") },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
-                                    ) {
-                                        Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text("المعرض 🖼️", fontSize = 11.sp)
-                                    }
-                                }
-
-                                if (isScanningImage) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.Center,
-                                        modifier = Modifier.fillMaxWidth().padding(8.dp)
-                                    ) {
-                                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("جاري استخراج الأسماء من الصورة أوفلاين...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-
-                                OutlinedTextField(
-                                    value = ocrNamesText,
-                                    onValueChange = { ocrNamesText = it },
-                                    label = { Text("الأسماء المستخرجة من الصورة (يمكنك مراجعتها وتعديلها)") },
-                                    placeholder = { Text("تظهر الأسماء هنا بعد تصوير القائمة...") },
-                                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                                    modifier = Modifier.fillMaxWidth().height(160.dp),
                                     maxLines = 12
                                 )
                             }
@@ -1070,23 +975,17 @@ fun GradeRegisterScreen(
                                     viewModel.addMockStudent(grade, section, subject, singleName.trim())
                                     Toast.makeText(context, "تمت إضافة الطالب بنجاح", Toast.LENGTH_SHORT).show()
                                 }
-                            } else if (selectedTab == 1) {
+                            } else {
                                 if (multiNamesText.isNotBlank()) {
                                     viewModel.importMultipleStudents(grade, section, subject, multiNamesText) { count ->
-                                        Toast.makeText(context, "تم استيراد $count طالب بنجاح!", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            } else {
-                                if (ocrNamesText.isNotBlank()) {
-                                    viewModel.importMultipleStudents(grade, section, subject, ocrNamesText) { count ->
-                                        Toast.makeText(context, "تم استيراد $count طالب من الصورة بنجاح! 🚀", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "تم استيراد $count طالب بنجاح! 🚀", Toast.LENGTH_LONG).show()
                                     }
                                 }
                             }
                             showAddStudentDialog = false
                         }
                     ) {
-                        Text(if (selectedTab == 0) "إضافة" else "استيراد القائمة")
+                        Text(if (selectedTab == 0) "إضافة" else "استيراد القائمة 🚀")
                     }
                 },
                 dismissButton = {
@@ -1746,232 +1645,34 @@ private fun isSpecialSubject(subject: String): Boolean {
            s.contains("لغة") || s.contains("لغات")
 }
 
-fun exportAndSharePdfWithIText7(
-    context: android.content.Context,
-    grade: String,
-    section: String,
-    subject: String,
-    tabIndex: Int,
-    students: List<com.school.system.data.model.Student>,
-    absences: List<com.school.system.data.model.AbsenceRecord>,
-    config: com.school.system.data.model.SchoolConfig?
-) {
-    try {
-        val schoolName = config?.schoolName ?: "مدرسة التميز"
-        val teacherName = config?.managerName ?: "مدرس المادة"
-        val directorate = config?.directorateName ?: "مديرية التربية"
-        val tabName = when (tabIndex) {
-            0 -> "السجل اليومي والنشاط"
-            1 -> "سجل المدرس التفصيلي"
-            2 -> "سجل الإدارة الختامي"
-            else -> "سجل حضور وغيابات الطلاب"
-        }
-
-        val fileName = "Grade_Register_${System.currentTimeMillis()}.pdf"
-        val pdfFile = java.io.File(context.cacheDir, fileName)
-        val writer = com.itextpdf.kernel.pdf.PdfWriter(pdfFile)
-        val pdfDoc = com.itextpdf.kernel.pdf.PdfDocument(writer)
-        pdfDoc.defaultPageSize = if (tabIndex == 0) com.itextpdf.kernel.geom.PageSize.A4.rotate() else com.itextpdf.kernel.geom.PageSize.A4
-        val document = com.itextpdf.layout.Document(pdfDoc)
-        document.setMargins(15f, 15f, 15f, 15f)
-
-        // Header Table
-        val headerTable = com.itextpdf.layout.element.Table(com.itextpdf.layout.properties.UnitValue.createPercentArray(floatArrayOf(30f, 40f, 30f))).useAllAvailableWidth()
-        headerTable.setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
-        
-        val p1 = com.itextpdf.layout.element.Paragraph("جمهورية العراق\nوزارة التربية\n$directorate\n$schoolName").setBold().setFontSize(9.5f)
-        val p2 = com.itextpdf.layout.element.Paragraph("سجل الدرجات الرسمي ($tabName)\nالمادة: $subject\nالصف: $grade ($section)").setBold().setFontSize(11f)
-        val p3 = com.itextpdf.layout.element.Paragraph("العام الدراسي: 2025-2026\nالمدرس: $teacherName\nالتاريخ: ${java.time.LocalDate.now()}").setFontSize(9.5f)
-
-        headerTable.addCell(com.itextpdf.layout.element.Cell().add(p1).setBorder(com.itextpdf.layout.borders.Border.NO_BORDER))
-        headerTable.addCell(com.itextpdf.layout.element.Cell().add(p2).setBorder(com.itextpdf.layout.borders.Border.NO_BORDER))
-        headerTable.addCell(com.itextpdf.layout.element.Cell().add(p3).setBorder(com.itextpdf.layout.borders.Border.NO_BORDER))
-        document.add(headerTable)
-        document.add(com.itextpdf.layout.element.Paragraph("\n"))
-
-        // Data Table
-        val dataTable = when (tabIndex) {
-            0 -> com.itextpdf.layout.element.Table(com.itextpdf.layout.properties.UnitValue.createPercentArray(floatArrayOf(4f, 22f, 6.5f, 7.5f, 6.5f, 7.5f, 6.5f, 7.5f, 6.5f, 7.5f, 8f, 10f))).useAllAvailableWidth()
-            1 -> com.itextpdf.layout.element.Table(com.itextpdf.layout.properties.UnitValue.createPercentArray(floatArrayOf(3.5f, 18.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 6.5f, 7.5f, 8.5f, 8.5f, 9.5f))).useAllAvailableWidth()
-            2 -> com.itextpdf.layout.element.Table(com.itextpdf.layout.properties.UnitValue.createPercentArray(floatArrayOf(4f, 20f, 9f, 9.5f, 9f, 9.5f, 12f, 12f, 15f))).useAllAvailableWidth()
-            else -> com.itextpdf.layout.element.Table(com.itextpdf.layout.properties.UnitValue.createPercentArray(floatArrayOf(7f, 53f, 20f, 20f))).useAllAvailableWidth()
-        }
-        dataTable.setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
-
-        // Headers
-        val headerTitles = when (tabIndex) {
-            0 -> listOf("ت", "اسم الطالب", "يومي ش1", "تحريري ش1", "يومي ش2", "تحريري ش2", "يومي ش3", "تحريري ش3", "يومي ش4", "تحريري ش4", "شفهي نص", "تحريري نص")
-            1 -> listOf("ت", "اسم الطالب", "معدل ش1", "معدل ش2", "درجة فص1", "درجة نصف", "معدل ش3", "معدل ش4", "درجة فص2", "السعي السنوي", "امتحان نهائي د1", "امتحان نهائي د2", "الدرجة النهائية")
-            2 -> listOf("ت", "اسم الطالب", "معدل الفصل 1", "درجة نصف السنة", "معدل الفصل 2", "السعي السنوي", "امتحان نهائي د1", "امتحان نهائي د2", "الدرجة النهائية")
-            else -> listOf("ت", "اسم الطالب", "مجموع الغيابات", "الحالة")
-        }
-
-        val headerFontSize = when (tabIndex) {
-            0 -> 7f
-            1 -> 6.5f
-            2 -> 7.5f
-            else -> 9f
-        }
-        val cellFontSize = when (tabIndex) {
-            0 -> 6.5f
-            1 -> 6.5f
-            2 -> 7f
-            else -> 8.5f
-        }
-
-        headerTitles.forEach { title ->
-            dataTable.addHeaderCell(
-                com.itextpdf.layout.element.Cell()
-                    .setPadding(3f)
-                    .add(com.itextpdf.layout.element.Paragraph(title).setBold().setFontSize(headerFontSize))
-                    .setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(241, 245, 249))
-            )
-        }
-
-        val isSpecial = isSpecialSubject(subject)
-
-        // Rows
-        students.forEachIndexed { index, student ->
-            val m = student.marks
-            val totalAbs = student.historicalAbsences + absences.count { it.studentId == student.id }
-            val d2Formatted = if (m.finalWrittenD2 == null || m.finalWrittenD2 == 0f) "-" else if (isSpecial) "${(m.finalOral.sum() + m.finalWrittenD2!!).toInt()}" else "${m.finalWrittenD2!!.toInt()}"
-            val cells = when (tabIndex) {
-                0 -> listOf(
-                    "${index + 1}",
-                    student.fullName,
-                    "${m.m1Daily.average().toInt()}",
-                    "${m.m1Written.toInt()}",
-                    "${m.m2Daily.average().toInt()}",
-                    "${m.m2Written.toInt()}",
-                    "${m.m3Daily.average().toInt()}",
-                    "${m.m3Written.toInt()}",
-                    "${m.m4Daily.average().toInt()}",
-                    "${m.m4Written.toInt()}",
-                    "${m.midtermOral.average().toInt()}",
-                    "${m.midtermScore.toInt()}"
-                )
-                1 -> listOf(
-                    "${index + 1}",
-                    student.fullName,
-                    "${m.m1MonthAvg.toInt()}",
-                    "${m.m2MonthAvg.toInt()}",
-                    "${m.term1Avg.toInt()}",
-                    "${m.midtermFinalGrade.toInt()}",
-                    "${m.m3MonthAvg.toInt()}",
-                    "${m.m4MonthAvg.toInt()}",
-                    "${m.term2Avg.toInt()}",
-                    "${m.annualAverage.toInt()}",
-                    "${m.finalExamTotal.toInt()}",
-                    d2Formatted,
-                    "${m.latestRecordedScoreInt()}"
-                )
-                2 -> listOf(
-                    "${index + 1}",
-                    student.fullName,
-                    "${m.term1Avg.toInt()}",
-                    "${m.midtermFinalGrade.toInt()}",
-                    "${m.term2Avg.toInt()}",
-                    "${m.annualAverage.toInt()}",
-                    "${m.finalExamTotal.toInt()}",
-                    d2Formatted,
-                    "${m.latestRecordedScoreInt()}"
-                )
-                else -> listOf(
-                    "${index + 1}",
-                    student.fullName,
-                    "$totalAbs",
-                    m.status
-                )
-            }
-
-            cells.forEachIndexed { cellIdx, cellText ->
-                val cell = com.itextpdf.layout.element.Cell()
-                    .setPadding(2.5f)
-                    .add(com.itextpdf.layout.element.Paragraph(cellText).setFontSize(cellFontSize))
-                if (cellIdx == 1) {
-                    cell.setTextAlignment(com.itextpdf.layout.properties.TextAlignment.RIGHT)
-                }
-                dataTable.addCell(cell)
-            }
-        }
-
-        document.add(dataTable)
-
-        // Statistics Summary Bar in PDF (At bottom of page)
-        val progPdfStats = calculateProgressiveStats(students)
-        val totalSt = progPdfStats.totalStudents
-        val passedSt = progPdfStats.passedStudents
-        val failedSt = progPdfStats.failedStudents
-        val passRateVal = progPdfStats.passRate
-        val stageLabel = progPdfStats.stageName
-
-        document.add(com.itextpdf.layout.element.Paragraph("\n"))
-        val statsTable = com.itextpdf.layout.element.Table(floatArrayOf(25f, 25f, 25f, 25f)).useAllAvailableWidth()
-        statsTable.setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
-        
-        val cell1 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("عدد الطلاب\n$totalSt").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(248, 250, 252)).setPadding(4f)
-        val cell2 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("الناجحين\n$passedSt").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(220, 252, 231)).setPadding(4f)
-        val cell3 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("الراسبين\n$failedSt").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(254, 226, 226)).setPadding(4f)
-        val cell4 = com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("نسبة النجاح ($stageLabel)\n$passRateVal%").setBold().setFontSize(9f)).setBackgroundColor(com.itextpdf.kernel.colors.DeviceRgb(241, 245, 249)).setPadding(4f)
-        
-        statsTable.addCell(cell1)
-        statsTable.addCell(cell2)
-        statsTable.addCell(cell3)
-        statsTable.addCell(cell4)
-        document.add(statsTable)
-
-        // Signatures
-        document.add(com.itextpdf.layout.element.Paragraph("\n"))
-        val signTable = com.itextpdf.layout.element.Table(2).useAllAvailableWidth()
-        signTable.setTextAlignment(com.itextpdf.layout.properties.TextAlignment.CENTER)
-        signTable.addCell(com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("توقيع مدرس المادة: .......................................").setBold().setFontSize(10f)).setBorder(com.itextpdf.layout.borders.Border.NO_BORDER))
-        signTable.addCell(com.itextpdf.layout.element.Cell().add(com.itextpdf.layout.element.Paragraph("توقيع وختم مدير المدرسة: .......................................").setBold().setFontSize(10f)).setBorder(com.itextpdf.layout.borders.Border.NO_BORDER))
-        document.add(signTable)
-
-        document.close()
-
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.provider",
-            pdfFile
-        )
-        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-            type = "application/pdf"
-            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-            putExtra(android.content.Intent.EXTRA_SUBJECT, "سجل الدرجات الرسمي - $subject - $grade ($section)")
-            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة سجل الدرجات (PDF) عبر:"))
-    } catch (e: Exception) {
-        e.printStackTrace()
-        android.widget.Toast.makeText(context, "فشل إنشاء ملف PDF: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
-    }
-}
-
 fun printRegister(
-    context: android.content.Context,
+    context: Context,
     grade: String,
     section: String,
     subject: String,
     tabIndex: Int,
-    students: List<com.school.system.data.model.Student>,
-    absences: List<com.school.system.data.model.AbsenceRecord>,
-    config: com.school.system.data.model.SchoolConfig?
+    students: List<Student>,
+    absences: List<AbsenceRecord>,
+    config: SchoolConfig?
 ) {
-    (context as? android.app.Activity)?.runOnUiThread {
-        val webView = android.webkit.WebView(context)
-        val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config)
-        webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
-        webView.webViewClient = object : android.webkit.WebViewClient() {
-            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                val printManager = context.getSystemService(android.content.Context.PRINT_SERVICE) as android.print.PrintManager
-                val jobName = "سجل درجات - $subject - $grade ($section)"
-                val printAdapter = webView.createPrintDocumentAdapter(jobName)
-                val printAttributes = android.print.PrintAttributes.Builder()
-                    .setMediaSize(if (tabIndex == 0) android.print.PrintAttributes.MediaSize.ISO_A4.asLandscape() else android.print.PrintAttributes.MediaSize.ISO_A4.asPortrait())
-                    .build()
-                printManager.print(jobName, printAdapter, printAttributes)
+    (context as? Activity)?.runOnUiThread {
+        try {
+            val webView = WebView(context)
+            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config)
+            webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+            webView.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                    val jobName = "سجل درجات - $subject - $grade ($section)"
+                    val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                    val printAttributes = PrintAttributes.Builder()
+                        .setMediaSize(if (tabIndex == 0) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
+                        .build()
+                    printManager.print(jobName, printAdapter, printAttributes)
+                }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }
@@ -1986,8 +1687,75 @@ fun shareRegister(
     absences: List<com.school.system.data.model.AbsenceRecord>,
     config: com.school.system.data.model.SchoolConfig?
 ) {
-    // Share exact official formatted PDF document identical to print
-    exportAndSharePdfWithIText7(context, grade, section, subject, tabIndex, students, absences, config)
+    // Share exact official formatted PDF document using 100% Android Native PDF engine
+    exportAndSharePdfWithNativePdf(context, grade, section, subject, tabIndex, students, absences, config)
+}
+
+fun exportAndSharePdfWithNativePdf(
+    context: Context,
+    grade: String,
+    section: String,
+    subject: String,
+    tabIndex: Int,
+    students: List<Student>,
+    absences: List<AbsenceRecord>,
+    config: SchoolConfig?
+) {
+    (context as? Activity)?.runOnUiThread {
+        try {
+            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config)
+            val webView = WebView(context)
+            webView.layout(0, 0, if (tabIndex == 0) 1200 else 800, if (tabIndex == 0) 800 else 1200)
+            webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+            webView.webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView?, url: String?) {
+                    try {
+                        val pdfFile = File(context.cacheDir, "Official_Grade_Register_${System.currentTimeMillis()}.pdf")
+                        val pdfDocument = PdfDocument()
+                        val pageInfo = PdfDocument.PageInfo.Builder(
+                            if (tabIndex == 0) 1200 else 800,
+                            if (tabIndex == 0) 800 else 1200,
+                            1
+                        ).create()
+                        val page = pdfDocument.startPage(pageInfo)
+                        webView.draw(page.canvas)
+                        pdfDocument.finishPage(page)
+
+                        pdfFile.outputStream().use { out ->
+                            pdfDocument.writeTo(out)
+                        }
+                        pdfDocument.close()
+
+                        shareFile(context, pdfFile, subject, grade, section)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            android.widget.Toast.makeText(context, "تعذر إنشاء ملف PDF: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+fun shareFile(context: Context, pdfFile: File, subject: String, grade: String, section: String) {
+    try {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            pdfFile
+        )
+        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "سجل الدرجات الرسمي - $subject - $grade ($section)")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة سجل الدرجات (PDF) عبر:"))
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
 }
 
 fun generateGradesHtml(

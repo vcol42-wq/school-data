@@ -426,7 +426,12 @@ class StudentRepository @Inject constructor(
             val response = api.getDailyAssignments(schoolFilter = "eq.$schoolId")
             if (response.isSuccessful) {
                 val remoteAssignments = response.body() ?: emptyList()
-                val existingIds = dao.getAllAssignments().firstOrNull()?.map { it.id }?.toSet() ?: emptySet()
+                val existingAssignments = dao.getAllAssignments().firstOrNull() ?: emptyList()
+                val completedIds = existingAssignments.filter { it.isCompleted }.map { it.id }.toSet()
+
+                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                val notifiedIds = prefs.getStringSet("notified_assignment_ids", emptySet()) ?: emptySet()
+                val newNotifiedIds = notifiedIds.toMutableSet()
 
                 // تصفية دقيقة جداً لحصر الواجبات فقط بصف وشعبة الطالب (مثلاً: الأول أ - 29 طالب)
                 val filteredAssignments = remoteAssignments.filter { dto ->
@@ -436,37 +441,43 @@ class StudentRepository @Inject constructor(
                 }
 
                 val assignmentEntities = filteredAssignments.map { dto ->
-                    val id = dto.id ?: "assign_${System.currentTimeMillis()}_${(100..999).random()}"
+                    val rawContent = "${dto.subjectName}_${dto.title}_${dto.className ?: ""}"
+                    val stableId = dto.id?.takeIf { it.isNotBlank() } ?: "assign_${rawContent.hashCode()}"
+                    val wasCompleted = stableId in completedIds
 
-                    if (id !in existingIds && !dto.title.isNullOrBlank()) {
+                    if (!wasCompleted && stableId !in notifiedIds && !dto.title.isNullOrBlank()) {
+                        val notifId = (dto.subjectName + dto.title).hashCode()
                         com.example.theboss.utils.NotificationHelper.showUrgentHomeworkNotification(
                             context = context,
                             title = dto.title,
                             subject = dto.subjectName,
-                            dueDate = dto.dueDate ?: "اليوم"
+                            dueDate = dto.dueDate ?: "اليوم",
+                            notificationId = notifId
                         )
+                        newNotifiedIds.add(stableId)
                     }
 
                     AssignmentEntity(
-                        id = id,
+                        id = stableId,
                         subjectId = dto.subjectName,
                         subjectName = dto.subjectName,
                         title = dto.title,
                         description = dto.description ?: "",
                         dueDateString = dto.dueDate ?: "اليوم",
-                        isCompleted = false,
-                        isHot = true,
+                        isCompleted = wasCompleted,
+                        isHot = !wasCompleted,
                         isPrivateTutoring = dto.isPrivateTutoring,
                         teacherName = dto.teacherId
                     )
                 }
+
+                prefs.edit().putStringSet("notified_assignment_ids", newNotifiedIds).apply()
 
                 dao.clearAssignments()
                 if (assignmentEntities.isNotEmpty()) {
                     dao.insertAssignments(assignmentEntities)
                 }
                 val activeSubjects = assignmentEntities.filter { !it.isCompleted }.map { it.subjectName }.toSet()
-                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
                 prefs.edit().putString("active_homework_subjects", Gson().toJson(activeSubjects)).apply()
             }
         } catch (e: Exception) {

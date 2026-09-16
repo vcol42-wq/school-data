@@ -100,17 +100,34 @@ object WidgetScheduleHelper {
         return text.trim().ifEmpty { raw }
     }
 
-    fun compareClassNames(a: String, b: String): Int {
-        val cleanA = cleanClassName(a)
-        val cleanB = cleanClassName(b)
+    fun getClassRank(className: String): Int {
+        val str = className.trim()
+        val digit = str.firstOrNull { it.isDigit() }?.digitToInt()
+        if (digit != null && digit in 1..12) return digit
 
-        val numA = cleanA.firstOrNull { it.isDigit() }?.digitToInt() ?: 99
-        val numB = cleanB.firstOrNull { it.isDigit() }?.digitToInt() ?: 99
-
-        if (numA != numB) {
-            return numA.compareTo(numB)
+        return when {
+            str.contains("أول") || str.contains("الاول") || str.contains("الأول") || str.contains("اول") -> 1
+            str.contains("ثاني") || str.contains("الثاني") -> 2
+            str.contains("ثالث") || str.contains("الثالث") -> 3
+            str.contains("رابع") || str.contains("الرابع") -> 4
+            str.contains("خامس") || str.contains("الخامس") -> 5
+            str.contains("سادس") || str.contains("السادس") -> 6
+            str.contains("سابع") || str.contains("السابع") -> 7
+            str.contains("ثامن") || str.contains("الثامن") -> 8
+            str.contains("تاسع") || str.contains("التاسع") -> 9
+            str.contains("عاشر") || str.contains("العاشر") -> 10
+            else -> 99
         }
-        return cleanA.compareTo(cleanB)
+    }
+
+    fun compareClassNames(a: String, b: String): Int {
+        val rankA = getClassRank(a)
+        val rankB = getClassRank(b)
+
+        if (rankA != rankB) {
+            return rankA.compareTo(rankB)
+        }
+        return a.compareTo(b)
     }
 
     fun cleanTeacherFirstName(raw: String): String {

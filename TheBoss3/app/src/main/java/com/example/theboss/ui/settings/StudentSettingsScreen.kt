@@ -207,6 +207,58 @@ fun StudentSettingsScreen(
                 }
             }
 
+            // Card: Notifications Settings
+            val prefs = remember { context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE) }
+            var notificationsEnabled by remember {
+                mutableStateOf(prefs.getBoolean("notifications_enabled", true))
+            }
+
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = if (notificationsEnabled) Color(0xFF059669) else Color.Gray,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text("إشعارات الواجبات والدروس 🔔", fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                Text(
+                                    if (notificationsEnabled) "الإشعارات الفورية مفعّلة" else "الإشعارات الفورية متوقفة",
+                                    fontSize = 11.5.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = notificationsEnabled,
+                            onCheckedChange = { isChecked ->
+                                notificationsEnabled = isChecked
+                                prefs.edit().putBoolean("notifications_enabled", isChecked).apply()
+                                Toast.makeText(
+                                    context,
+                                    if (isChecked) "تم تفعيل الإشعارات الفورية 🔔" else "تم إيقاف الإشعارات الفورية 🔕",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+                    }
+                }
+            }
+
             // Card 2: Secure Encrypted Cloud Connection
             Card(
                 shape = RoundedCornerShape(20.dp),

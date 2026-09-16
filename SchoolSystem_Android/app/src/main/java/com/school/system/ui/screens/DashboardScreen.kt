@@ -270,17 +270,17 @@ fun DashboardScreen(
                     )
                 }
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
 
-                // 2. مستطيل محدد ومضلل بشكل جميل لاسم الأستاذ
+                // 2. مستطيل محدد ومضلل ثلاثي الأبعاد لاسم الأستاذ
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(16.dp),
+                        .padding(horizontal = 14.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(12.dp),
                     color = Color.Transparent,
                     border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
-                    shadowElevation = 3.dp
+                    shadowElevation = 6.dp
                 ) {
                     Box(
                         modifier = Modifier
@@ -288,7 +288,7 @@ fun DashboardScreen(
                             .background(Brush.horizontalGradient(currentTheme.ribbonGradient))
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -299,13 +299,13 @@ fun DashboardScreen(
                                 Surface(
                                     color = Color.White.copy(alpha = 0.2f),
                                     shape = CircleShape,
-                                    modifier = Modifier.size(38.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Text("👨‍🏫", fontSize = 18.sp)
+                                        Text("👨‍🏫", fontSize = 14.sp)
                                     }
                                 }
-                                Spacer(Modifier.width(10.dp))
+                                Spacer(Modifier.width(8.dp))
                                 Column {
                                     val activeName = if (!config?.managerName.isNullOrBlank()) {
                                         config!!.managerName
@@ -317,7 +317,7 @@ fun DashboardScreen(
                                     Text(
                                         text = "الأستاذ: $activeName",
                                         color = Color.White,
-                                        fontSize = 14.sp,
+                                        fontSize = 12.5.sp,
                                         fontWeight = FontWeight.Black,
                                         maxLines = 1
                                     )
@@ -330,7 +330,7 @@ fun DashboardScreen(
                                     Text(
                                         text = displaySchoolName,
                                         color = Color.White.copy(alpha = 0.85f),
-                                        fontSize = 11.sp,
+                                        fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
@@ -338,13 +338,13 @@ fun DashboardScreen(
 
                             IconButton(
                                 onClick = { showEditTeacherNameDialog = true },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
                                     Icons.Default.Edit,
                                     contentDescription = "تعديل اسم الأستاذ",
                                     tint = Color.White,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }

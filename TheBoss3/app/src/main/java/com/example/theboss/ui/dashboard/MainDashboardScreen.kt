@@ -40,6 +40,7 @@ import com.example.theboss.data.repository.StudentRepository
 import android.content.Context
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.ui.workspace.WorkspaceToolsScreen
+import com.example.theboss.utils.NotificationHelper
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -125,6 +126,10 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             val newStatus = !assignment.isCompleted
             dao.updateAssignmentStatus(assignment.id, newStatus)
+            if (newStatus) {
+                val notifId = (assignment.subjectName + assignment.title).hashCode()
+                NotificationHelper.cancelNotification(context, notifId)
+            }
             try {
                 val allActive = dao.getAllAssignments().firstOrNull()?.filter { !it.isCompleted }?.map { it.subjectName }?.toSet() ?: emptySet()
                 val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)

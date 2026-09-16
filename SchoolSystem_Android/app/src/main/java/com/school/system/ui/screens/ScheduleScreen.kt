@@ -311,43 +311,37 @@ fun ScheduleScreen(
                     }
                 }
 
-                // Day Selector Bar (الأحد -> الخميس) - Collapsible on Scroll
-                AnimatedVisibility(
-                    visible = !isScrolled.value,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
+                // Day Selector Bar (الأحد -> الخميس) - Fixed/Pinned at Top Edge
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = currentTheme.surfaceColor,
+                    border = BorderStroke(1.dp, currentTheme.tableBorderColor),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = currentTheme.surfaceColor,
-                        border = BorderStroke(1.dp, currentTheme.tableBorderColor),
-                        shadowElevation = 1.dp,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            daysList.forEach { day ->
-                                val isSelected = selectedGeneralDay == day
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) currentTheme.primaryColor else Color.Transparent,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { selectedGeneralDay = day }
-                                ) {
-                                    Text(
-                                        text = day,
-                                        modifier = Modifier.padding(vertical = if (isLandscape) 3.dp else 6.dp),
-                                        textAlign = TextAlign.Center,
-                                        fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
-                                        fontSize = if (isLandscape) 11.sp else 12.sp,
-                                        color = if (isSelected) Color.White else currentTheme.textPrimaryColor
-                                    )
-                                }
+                        daysList.forEach { day ->
+                            val isSelected = selectedGeneralDay == day
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelected) currentTheme.primaryColor else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { selectedGeneralDay = day }
+                            ) {
+                                Text(
+                                    text = day,
+                                    modifier = Modifier.padding(vertical = if (isLandscape) 3.dp else 6.dp),
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                                    fontSize = if (isLandscape) 11.sp else 12.sp,
+                                    color = if (isSelected) Color.White else currentTheme.textPrimaryColor
+                                )
                             }
                         }
                     }
@@ -793,12 +787,24 @@ fun GeneralDayScheduleGrid(
                                         } else false
                                     }
 
+                                    val cellBoxColor = when {
+                                        isTeacherLesson -> currentTheme.primaryColor.copy(alpha = 0.22f)
+                                        item != null -> if (currentTheme.isDark) Color(0xFF1E293B) else Color(0xFFFFFFFF)
+                                        else -> if (currentTheme.isDark) Color(0xFF0F172A).copy(alpha = 0.5f) else Color(0xFFF1F5F9)
+                                    }
+
+                                    val cellBorderColor = when {
+                                        isTeacherLesson -> currentTheme.primaryColor
+                                        item != null -> currentTheme.tableBorderColor
+                                        else -> currentTheme.tableBorderColor.copy(alpha = 0.3f)
+                                    }
+
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = if (isTeacherLesson) currentTheme.primaryColor.copy(alpha = 0.2f) else Color.Transparent,
+                                        color = cellBoxColor,
                                         border = BorderStroke(
-                                            0.8.dp,
-                                            if (isTeacherLesson) currentTheme.primaryColor else currentTheme.tableBorderColor.copy(alpha = 0.4f)
+                                            if (isTeacherLesson) 1.2.dp else 0.8.dp,
+                                            cellBorderColor
                                         ),
                                         modifier = Modifier
                                             .width(lessonColW)

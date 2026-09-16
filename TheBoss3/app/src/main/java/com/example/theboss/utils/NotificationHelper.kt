@@ -17,6 +17,20 @@ object NotificationHelper {
     const val CHANNEL_ABSENCE = "channel_guardian_absence"
     const val CHANNEL_BROADCASTS = "channel_broadcasts"
 
+    fun isNotificationsEnabled(context: Context): Boolean {
+        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("notifications_enabled", true)
+    }
+
+    fun cancelNotification(context: Context, notificationId: Int) {
+        try {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(notificationId)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -58,8 +72,10 @@ object NotificationHelper {
         context: Context,
         title: String,
         subject: String,
-        dueDate: String
+        dueDate: String,
+        notificationId: Int = (1000..9999).random()
     ) {
+        if (!isNotificationsEnabled(context)) return
         createNotificationChannels(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -86,7 +102,7 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .build()
 
-        manager.notify((1000..9999).random(), notification)
+        manager.notify(notificationId, notification)
     }
 
     fun showAbsenceNotification(
@@ -95,6 +111,7 @@ object NotificationHelper {
         periodNumber: Int,
         subject: String
     ) {
+        if (!isNotificationsEnabled(context)) return
         createNotificationChannels(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -134,6 +151,7 @@ object NotificationHelper {
         message: String,
         priority: String
     ) {
+        if (!isNotificationsEnabled(context)) return
         createNotificationChannels(context)
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 

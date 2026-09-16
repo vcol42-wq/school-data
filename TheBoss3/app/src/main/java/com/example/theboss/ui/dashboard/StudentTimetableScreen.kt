@@ -66,9 +66,7 @@ data class StudentLessonSlot(
 
 data class PeriodHeaderData(
     val title: String,
-    val startTime: String,
-    val bgColor: Color,
-    val borderColor: Color
+    val startTime: String
 )
 
 data class AppThemePalette(
@@ -82,6 +80,12 @@ data class AppThemePalette(
     val dayCardBg: Color,
     val dayCardBorder: Color,
     val dayCardText: Color,
+    val periodCardBg: Color,
+    val periodCardBorder: Color,
+    val periodTitleText: Color,
+    val periodTimeText: Color,
+    val gridFloorBg: Color,
+    val gridFloorBorder: Color,
     val lessonCardBg: Brush,
     val lessonCardBorder: Color,
     val lessonSubjectText: Color,
@@ -238,17 +242,23 @@ fun StudentTimetableScreen(
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B))),
             headerBannerBg = Color(0xFF1E293B),
             headerBannerText = Color(0xFF38BDF8),
-            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF86EFAC), Color(0xFF4ADE80))),
-            dayCardBg = Color.White,
-            dayCardBorder = Color(0xFF0F172A),
-            dayCardText = Color(0xFF0F172A),
-            lessonCardBg = Brush.verticalGradient(listOf(Color.White, Color(0xFFF1F5F9))),
-            lessonCardBorder = Color(0xFF0F172A),
-            lessonSubjectText = Color(0xFF0F172A),
-            lessonTeacherText = Color(0xFF2563EB),
-            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
+            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7))),
+            dayCardBg = Color(0xFF1E293B),
+            dayCardBorder = Color(0xFF38BDF8),
+            dayCardText = Color(0xFFF8FAFC),
+            periodCardBg = Color(0xFF1E293B),
+            periodCardBorder = Color(0xFF334155),
+            periodTitleText = Color(0xFF38BDF8),
+            periodTimeText = Color(0xFF94A3B8),
+            gridFloorBg = Color(0xFF0F172A),
+            gridFloorBorder = Color(0xFF334155),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFF1E293B), Color(0xFF0F172A))),
+            lessonCardBorder = Color(0xFF334155),
+            lessonSubjectText = Color(0xFFF8FAFC),
+            lessonTeacherText = Color(0xFF38BDF8),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFF78350F), Color(0xFF451A03))),
             prepCardBorder = Color(0xFFF59E0B),
-            prepSubjectText = Color(0xFF78350F)
+            prepSubjectText = Color(0xFFFDE68A)
         ),
         AppThemePalette(
             id = 1,
@@ -258,16 +268,22 @@ fun StudentTimetableScreen(
             headerBannerBg = Color(0xFF3D2A18),
             headerBannerText = Color(0xFFFBBF24),
             cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))),
-            dayCardBg = Color(0xFFFFFBEB),
-            dayCardBorder = Color(0xFFD97706),
-            dayCardText = Color(0xFF78350F),
-            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFFFFBEB), Color(0xFFFEF3C7))),
-            lessonCardBorder = Color(0xFFD97706),
-            lessonSubjectText = Color(0xFF451A03),
-            lessonTeacherText = Color(0xFFB45309),
-            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))),
-            prepCardBorder = Color(0xFFB45309),
-            prepSubjectText = Color(0xFF451A03)
+            dayCardBg = Color(0xFF3D2A18),
+            dayCardBorder = Color(0xFFF59E0B),
+            dayCardText = Color(0xFFFEF3C7),
+            periodCardBg = Color(0xFF2A1C10),
+            periodCardBorder = Color(0xFFB45309),
+            periodTitleText = Color(0xFFFBBF24),
+            periodTimeText = Color(0xFFFDE68A),
+            gridFloorBg = Color(0xFF180F06),
+            gridFloorBorder = Color(0xFFB45309),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFF3D2A18), Color(0xFF271C10))),
+            lessonCardBorder = Color(0xFFB45309),
+            lessonSubjectText = Color(0xFFFFFBEB),
+            lessonTeacherText = Color(0xFFFBBF24),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFD97706), Color(0xFFB45309))),
+            prepCardBorder = Color(0xFFFDE68A),
+            prepSubjectText = Color(0xFFFFFBEB)
         ),
         AppThemePalette(
             id = 2,
@@ -275,32 +291,44 @@ fun StudentTimetableScreen(
             topBarBg = Color(0xFF0A2540),
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF0A192F), Color(0xFF1E3A8A))),
             headerBannerBg = Color(0xFF1E3A8A),
-            headerBannerText = Color(0xFF38BDF8),
+            headerBannerText = Color(0xFF93C5FD),
             cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF93C5FD), Color(0xFF3B82F6))),
-            dayCardBg = Color.White,
-            dayCardBorder = Color(0xFF0A2540),
-            dayCardText = Color(0xFF0A2540),
-            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFE0F2FE), Color(0xFFBAE6FD))),
-            lessonCardBorder = Color(0xFF0284C7),
-            lessonSubjectText = Color(0xFF0369A1),
-            lessonTeacherText = Color(0xFF1D4ED8),
-            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
-            prepCardBorder = Color(0xFFD97706),
-            prepSubjectText = Color(0xFF78350F)
+            dayCardBg = Color(0xFF1E3A8A),
+            dayCardBorder = Color(0xFF60A5FA),
+            dayCardText = Color(0xFFE0F2FE),
+            periodCardBg = Color(0xFF1E3A8A),
+            periodCardBorder = Color(0xFF3B82F6),
+            periodTitleText = Color(0xFF93C5FD),
+            periodTimeText = Color(0xFFBFDBFE),
+            gridFloorBg = Color(0xFF06152B),
+            gridFloorBorder = Color(0xFF1D4ED8),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFF1E3A8A), Color(0xFF0A2540))),
+            lessonCardBorder = Color(0xFF3B82F6),
+            lessonSubjectText = Color(0xFFFFFFFF),
+            lessonTeacherText = Color(0xFF93C5FD),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFD97706), Color(0xFFB45309))),
+            prepCardBorder = Color(0xFFFDE68A),
+            prepSubjectText = Color(0xFFFFFBEB)
         ),
         AppThemePalette(
             id = 3,
             name = "الفاتح الحديث (Light Minimal) ☀️",
-            topBarBg = Color(0xFF1E293B),
-            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFFE2E8F0), Color(0xFFCBD5E1))),
-            headerBannerBg = Color(0xFFF1F5F9),
+            topBarBg = Color(0xFF0F172A),
+            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFFF8FAFC), Color(0xFFE2E8F0))),
+            headerBannerBg = Color(0xFFFFFFFF),
             headerBannerText = Color(0xFF0F172A),
             cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF86EFAC), Color(0xFF4ADE80))),
-            dayCardBg = Color.White,
-            dayCardBorder = Color(0xFF334155),
+            dayCardBg = Color(0xFFFFFFFF),
+            dayCardBorder = Color(0xFFCBD5E1),
             dayCardText = Color(0xFF0F172A),
+            periodCardBg = Color(0xFFFFFFFF),
+            periodCardBorder = Color(0xFFCBD5E1),
+            periodTitleText = Color(0xFF0F172A),
+            periodTimeText = Color(0xFF475569),
+            gridFloorBg = Color(0xFFF1F5F9),
+            gridFloorBorder = Color(0xFFCBD5E1),
             lessonCardBg = Brush.verticalGradient(listOf(Color.White, Color(0xFFF8FAFC))),
-            lessonCardBorder = Color(0xFF334155),
+            lessonCardBorder = Color(0xFFCBD5E1),
             lessonSubjectText = Color(0xFF0F172A),
             lessonTeacherText = Color(0xFF2563EB),
             prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
@@ -578,7 +606,7 @@ fun StudentTimetableScreen(
             if (h == 0) h = 12
             val timeFormatted = String.format(java.util.Locale.US, "%02d:%02d %s", h, m, period)
 
-            PeriodHeaderData(name, timeFormatted, bgColors[idx % bgColors.size], textColors[idx % textColors.size])
+            PeriodHeaderData(name, timeFormatted)
         }
     }
 
@@ -869,26 +897,21 @@ fun StudentTimetableScreen(
                         .weight(1f)
                         .fillMaxHeight()
                 ) {
-                    // Micro Ribbon Banner
+                    // Table Grid Surface Container (أرضية الجدول ثلاثية الأبعاد)
                     Surface(
-                        color = activeTheme.headerBannerBg,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "$studentGrade • شعبة ($studentSection)",
-                            color = activeTheme.headerBannerText,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 3.dp)
-                        )
-                    }
-
-                    // Table Grid
-                    Box(
+                        shape = RoundedCornerShape(16.dp),
+                        color = activeTheme.gridFloorBg,
+                        border = BorderStroke(1.5.dp, activeTheme.gridFloorBorder),
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(4.dp)
+                            .shadow(6.dp, RoundedCornerShape(16.dp))
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(6.dp)
+                        ) {
                         val horizontalScrollState = rememberScrollState()
 
                         Column(
@@ -910,21 +933,21 @@ fun StudentTimetableScreen(
                                             .width(68.dp)
                                             .height(38.dp)
                                             .shadow(2.dp, RoundedCornerShape(8.dp))
-                                            .background(header.bgColor, RoundedCornerShape(8.dp))
-                                            .border(1.5.dp, header.borderColor, RoundedCornerShape(8.dp)),
+                                            .background(activeTheme.periodCardBg, RoundedCornerShape(8.dp))
+                                            .border(1.5.dp, activeTheme.periodCardBorder, RoundedCornerShape(8.dp)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
                                                 text = header.title,
-                                                color = Color(0xFF0F172A),
+                                                color = activeTheme.periodTitleText,
                                                 fontWeight = FontWeight.Black,
                                                 fontSize = 11.sp,
                                                 textAlign = TextAlign.Center
                                             )
                                             Text(
                                                 text = header.startTime,
-                                                color = Color(0xFF334155),
+                                                color = activeTheme.periodTimeText,
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 8.5.sp,
                                                 textAlign = TextAlign.Center
@@ -942,7 +965,6 @@ fun StudentTimetableScreen(
                             ) {
                                 items(daysList) { dayName ->
                                     val daySlots = getSlotsForDay(dayName)
-                                    val dayStyle = dayStylesMap[dayName] ?: DayStyle(dayName, activeTheme.dayCardBg, activeTheme.dayCardBorder, activeTheme.dayCardText)
 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Box(
@@ -950,13 +972,13 @@ fun StudentTimetableScreen(
                                                 .width(66.dp)
                                                 .height(46.dp)
                                                 .shadow(2.dp, RoundedCornerShape(8.dp))
-                                                .background(dayStyle.bg, RoundedCornerShape(8.dp))
-                                                .border(1.5.dp, dayStyle.border, RoundedCornerShape(8.dp)),
+                                                .background(activeTheme.dayCardBg, RoundedCornerShape(8.dp))
+                                                .border(1.5.dp, activeTheme.dayCardBorder, RoundedCornerShape(8.dp)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = dayName,
-                                                color = dayStyle.text,
+                                                color = activeTheme.dayCardText,
                                                 fontWeight = FontWeight.Black,
                                                 fontSize = 11.5.sp,
                                                 textAlign = TextAlign.Center
@@ -974,6 +996,7 @@ fun StudentTimetableScreen(
 
                                             val cardBrush = if (hasPrep) activeTheme.prepCardBg else activeTheme.lessonCardBg
                                             val cardBorderColor = if (hasPrep) activeTheme.prepCardBorder else activeTheme.lessonCardBorder
+                                            val subjectTextColor = if (hasPrep) activeTheme.prepSubjectText else activeTheme.lessonSubjectText
 
                                             Surface(
                                                 modifier = Modifier
@@ -1008,7 +1031,7 @@ fun StudentTimetableScreen(
                                                         if (hasPrep) {
                                                             Text(
                                                                 text = if (subj.isNotBlank()) "📝 تحضير $subj" else "📝 تحضير",
-                                                                color = Color(0xFFD97706),
+                                                                color = activeTheme.prepSubjectText,
                                                                 fontSize = 7.5.sp,
                                                                 fontWeight = FontWeight.Black,
                                                                 textAlign = TextAlign.Center,
@@ -1022,7 +1045,7 @@ fun StudentTimetableScreen(
                                                             text = if (!isVacant) subj else "",
                                                             fontWeight = FontWeight.Black,
                                                             fontSize = 11.sp,
-                                                            color = Color(0xFF0F172A),
+                                                            color = subjectTextColor,
                                                             textAlign = TextAlign.Center,
                                                             maxLines = 1,
                                                             overflow = TextOverflow.Ellipsis
@@ -1038,6 +1061,7 @@ fun StudentTimetableScreen(
                     }
                 }
             }
+        }
         } else {
             // ----------------------------------------------------
             // PORTRAIT MODE: TOP APP BAR + FULL SCREEN SCHEDULE
@@ -1108,57 +1132,21 @@ fun StudentTimetableScreen(
                         .background(activeTheme.screenBgBrush)
                         .verticalScroll(rememberScrollState())
                 ) {
+                    // Table Grid Surface Container (أرضية الجدول ثلاثية الأبعاد)
                     Surface(
-                        color = activeTheme.headerBannerBg,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "$studentGrade • شعبة ($studentSection)",
-                                color = activeTheme.headerBannerText,
-                                fontWeight = FontWeight.Black,
-                                fontSize = 14.5.sp
-                            )
-                            if (directives.isNotEmpty()) {
-                                Surface(
-                                    color = Color(0xFF10B981).copy(alpha = 0.2f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, Color(0xFF10B981))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Campaign,
-                                            contentDescription = null,
-                                            tint = Color(0xFF10B981),
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(
-                                            text = "${directives.size} توجيه إداري",
-                                            color = Color(0xFF10B981),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Box(
+                        shape = RoundedCornerShape(16.dp),
+                        color = activeTheme.gridFloorBg,
+                        border = BorderStroke(1.5.dp, activeTheme.gridFloorBorder),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                            .padding(horizontal = 6.dp, vertical = 6.dp)
+                            .shadow(6.dp, RoundedCornerShape(16.dp))
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(6.dp)
+                        ) {
                         val horizontalScrollState = rememberScrollState()
 
                         Column(
@@ -1180,21 +1168,21 @@ fun StudentTimetableScreen(
                                             .width(68.dp)
                                             .height(38.dp)
                                             .shadow(2.dp, RoundedCornerShape(8.dp))
-                                            .background(header.bgColor, RoundedCornerShape(8.dp))
-                                            .border(1.5.dp, header.borderColor, RoundedCornerShape(8.dp)),
+                                            .background(activeTheme.periodCardBg, RoundedCornerShape(8.dp))
+                                            .border(1.5.dp, activeTheme.periodCardBorder, RoundedCornerShape(8.dp)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                             Text(
                                                 text = header.title,
-                                                color = Color(0xFF0F172A),
+                                                color = activeTheme.periodTitleText,
                                                 fontWeight = FontWeight.Black,
                                                 fontSize = 11.sp,
                                                 textAlign = TextAlign.Center
                                             )
                                             Text(
                                                 text = header.startTime,
-                                                color = Color(0xFF334155),
+                                                color = activeTheme.periodTimeText,
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 8.5.sp,
                                                 textAlign = TextAlign.Center
@@ -1208,7 +1196,6 @@ fun StudentTimetableScreen(
 
                             daysList.forEach { dayName ->
                                 val daySlots = getSlotsForDay(dayName)
-                                val dayStyle = dayStylesMap[dayName] ?: DayStyle(dayName, activeTheme.dayCardBg, activeTheme.dayCardBorder, activeTheme.dayCardText)
 
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
@@ -1219,13 +1206,13 @@ fun StudentTimetableScreen(
                                             .width(66.dp)
                                             .height(46.dp)
                                             .shadow(2.dp, RoundedCornerShape(8.dp))
-                                            .background(dayStyle.bg, RoundedCornerShape(8.dp))
-                                            .border(1.5.dp, dayStyle.border, RoundedCornerShape(8.dp)),
+                                            .background(activeTheme.dayCardBg, RoundedCornerShape(8.dp))
+                                            .border(1.5.dp, activeTheme.dayCardBorder, RoundedCornerShape(8.dp)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
                                             text = dayName,
-                                            color = dayStyle.text,
+                                            color = activeTheme.dayCardText,
                                             fontWeight = FontWeight.Black,
                                             fontSize = 11.5.sp,
                                             textAlign = TextAlign.Center
@@ -1243,6 +1230,7 @@ fun StudentTimetableScreen(
 
                                         val cardBrush = if (hasPrep) activeTheme.prepCardBg else activeTheme.lessonCardBg
                                         val cardBorderColor = if (hasPrep) activeTheme.prepCardBorder else activeTheme.lessonCardBorder
+                                        val subjectTextColor = if (hasPrep) activeTheme.prepSubjectText else activeTheme.lessonSubjectText
 
                                         Surface(
                                             modifier = Modifier
@@ -1277,7 +1265,7 @@ fun StudentTimetableScreen(
                                                     if (hasPrep) {
                                                         Text(
                                                             text = if (subj.isNotBlank()) "📝 تحضير $subj" else "📝 تحضير",
-                                                            color = Color(0xFFD97706),
+                                                            color = activeTheme.prepSubjectText,
                                                             fontSize = 7.5.sp,
                                                             fontWeight = FontWeight.Black,
                                                             textAlign = TextAlign.Center,
@@ -1291,7 +1279,7 @@ fun StudentTimetableScreen(
                                                         text = if (!isVacant) subj else "",
                                                         fontWeight = FontWeight.Black,
                                                         fontSize = 11.sp,
-                                                        color = Color(0xFF0F172A),
+                                                        color = subjectTextColor,
                                                         textAlign = TextAlign.Center,
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis
@@ -1308,7 +1296,7 @@ fun StudentTimetableScreen(
                     Spacer(Modifier.height(10.dp))
 
                     // ----------------------------------------------------
-                    // DIRECTIVES & INSTRUCTIONS CARD UNDER TIMETABLE
+                    // DIRECTIVES & INSTRUCTIONS EXPANDABLE 3D BAR UNDER TIMETABLE
                     // ----------------------------------------------------
                     StudentDirectivesCardUnderTimetable(
                         directives = directives,
@@ -1321,6 +1309,9 @@ fun StudentTimetableScreen(
                                 Toast.makeText(context, "تم تحديث التوجيهات والجدول ⚡", Toast.LENGTH_SHORT).show()
                             }
                         },
+                        activeTheme = activeTheme,
+                        studentGrade = studentGrade,
+                        studentSection = studentSection,
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp)
@@ -1766,9 +1757,10 @@ fun StudentTimetableScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(24.dp),
+                            .verticalScroll(rememberScrollState())
+                            .padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.SpaceBetween
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1776,21 +1768,21 @@ fun StudentTimetableScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Timer, contentDescription = null, tint = Color(0xFFF43F5E), modifier = Modifier.size(30.dp))
+                                Icon(Icons.Default.Timer, contentDescription = null, tint = Color(0xFFF43F5E), modifier = Modifier.size(28.dp))
                                 Spacer(Modifier.width(8.dp))
-                                Text("منبه بومودورو للتركيز ⏱️", fontWeight = FontWeight.Black, fontSize = 18.sp, color = Color.White)
+                                Text("منبه بومودورو للتركيز ⏱️", fontWeight = FontWeight.Black, fontSize = 17.5.sp, color = Color.White)
                             }
                             IconButton(onClick = { showPomodoroDialog = false }) {
                                 Icon(Icons.Default.Close, contentDescription = "إغلاق", tint = Color.White)
                             }
                         }
 
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(200.dp)) {
                             CircularProgressIndicator(
                                 progress = { (pomodoroSeconds.toFloat() / if (isBreakMode) 300f else 1500f) },
                                 modifier = Modifier.fillMaxSize(),
                                 color = if (isBreakMode) Color(0xFF10B981) else Color(0xFFF43F5E),
-                                strokeWidth = 12.dp,
+                                strokeWidth = 10.dp,
                                 trackColor = Color.White.copy(alpha = 0.1f)
                             )
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1802,13 +1794,13 @@ fun StudentTimetableScreen(
                                     text = timeFormatted,
                                     color = Color.White,
                                     fontWeight = FontWeight.Black,
-                                    fontSize = 42.sp
+                                    fontSize = 40.sp
                                 )
                                 Text(
                                     text = if (isBreakMode) "فترة استراحة ☕" else "فترة تركيز ومذاكرة 📚",
                                     color = if (isBreakMode) Color(0xFF34D399) else Color(0xFFFB7185),
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
+                                    fontSize = 13.5.sp
                                 )
                             }
                         }
@@ -1823,14 +1815,27 @@ fun StudentTimetableScreen(
                                     containerColor = if (isPomodoroRunning) Color(0xFFE11D48) else Color(0xFF10B981)
                                 ),
                                 shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.fillMaxWidth().height(50.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().height(52.dp)
                             ) {
-                                Icon(
-                                    imageVector = if (isPomodoroRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = null
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(if (isPomodoroRunning) "إيقاف مؤقت" else "بدء التركيز الان ⏱️", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (isPomodoroRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isPomodoroRunning) "إيقاف مؤقت" else "بدء التركيز الآن ⏱️",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1
+                                    )
+                                }
                             }
 
                             Row(
@@ -1843,9 +1848,10 @@ fun StudentTimetableScreen(
                                         pomodoroSeconds = if (isBreakMode) 300 else 1500
                                     },
                                     shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("إعادة ضبط", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("إعادة ضبط 🔄", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.5.sp, textAlign = TextAlign.Center, maxLines = 1)
                                 }
 
                                 OutlinedButton(
@@ -1855,9 +1861,10 @@ fun StudentTimetableScreen(
                                         pomodoroSeconds = if (isBreakMode) 300 else 1500
                                     },
                                     shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text(if (isBreakMode) "نمط المذاكرة (25 د)" else "نمط الاستراحة (5 د)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                                    Text(if (isBreakMode) "نمط المذاكرة (25 د)" else "نمط الاستراحة (5 د)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, textAlign = TextAlign.Center, maxLines = 1)
                                 }
                             }
                         }
@@ -2219,35 +2226,42 @@ fun StudentTimetableScreen(
         }
     }
 }
+}
 
 @Composable
 fun StudentDirectivesCardUnderTimetable(
     directives: List<DirectiveDto>,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
+    activeTheme: AppThemePalette,
+    studentGrade: String = "",
+    studentSection: String = "",
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var isExpanded by remember { mutableStateOf(false) }
 
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF0F172A).copy(alpha = 0.95f)
-        ),
-        border = BorderStroke(1.2.dp, Color(0xFF38BDF8).copy(alpha = 0.5f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = activeTheme.headerBannerBg,
+        border = BorderStroke(1.5.dp, activeTheme.dayCardBorder),
         modifier = modifier
+            .fillMaxWidth()
+            .shadow(6.dp, RoundedCornerShape(14.dp))
+            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            // Header Row
+            // Sleek 3D Expandable Ribbon/Bar Header
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { isExpanded = !isExpanded },
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -2257,44 +2271,41 @@ fun StudentDirectivesCardUnderTimetable(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
-                            .shadow(4.dp, CircleShape)
+                            .size(32.dp)
+                            .shadow(3.dp, CircleShape)
                             .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF0284C7), Color(0xFF0369A1))
-                                )
-                            ),
+                            .background(activeTheme.cornerCellBgBrush),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Campaign,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
 
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "توجيهات إدارة المدرسة",
+                                text = "توجيهات الإدارة المدرسية 📢",
                                 fontWeight = FontWeight.Black,
-                                fontSize = 15.sp,
-                                color = Color.White
+                                fontSize = 13.5.sp,
+                                color = activeTheme.headerBannerText
                             )
-                            Spacer(Modifier.width(6.dp))
+
                             if (directives.isNotEmpty()) {
+                                Spacer(Modifier.width(6.dp))
                                 Surface(
-                                    color = Color(0xFF10B981).copy(alpha = 0.25f),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, Color(0xFF34D399))
+                                    color = activeTheme.dayCardBorder.copy(alpha = 0.2f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, activeTheme.dayCardBorder)
                                 ) {
                                     Text(
                                         text = "${directives.size}",
-                                        color = Color(0xFF34D399),
+                                        color = activeTheme.headerBannerText,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Black,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
@@ -2302,135 +2313,178 @@ fun StudentDirectivesCardUnderTimetable(
                                 }
                             }
                         }
-                        Text(
-                            text = if (directives.isNotEmpty()) "التعاميم والتنبيهات المدرسية المعتمدة" else "الربط السحابي المباشر فعّال",
-                            fontSize = 11.sp,
-                            color = Color(0xFF94A3B8)
-                        )
-                    }
-                }
 
-                // Refresh Button
-                IconButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    if (isRefreshing) {
-                        CircularProgressIndicator(
-                            color = Color(0xFF38BDF8),
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "تحديث التوجيهات",
-                            tint = Color(0xFF38BDF8),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            if (directives.isEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color(0xFF1E293B).copy(alpha = 0.7f),
-                    border = BorderStroke(1.dp, Color(0xFF334155)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = Color(0xFF34D399),
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column {
+                        if (studentGrade.isNotBlank()) {
                             Text(
-                                text = "لا توجد توجيهات جديدة حالياً",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp,
-                                color = Color(0xFFF1F5F9)
-                            )
-                            Text(
-                                text = "ستصلك هنا إشعارات الإدارة المدرسية والتعليمات الهامة فور نشرها 🌟",
-                                fontSize = 11.5.sp,
-                                color = Color(0xFF94A3B8),
-                                lineHeight = 16.sp
+                                text = "$studentGrade • شعبة ($studentSection)",
+                                fontSize = 11.sp,
+                                color = activeTheme.periodTimeText
                             )
                         }
                     }
                 }
-            } else {
-                val sortedDirectives = remember(directives) {
-                    directives.sortedByDescending { it.createdAt ?: it.id.toString() }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                color = activeTheme.headerBannerText,
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "تحديث التوجيهات",
+                                tint = activeTheme.headerBannerText,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (isExpanded) "طي" else "توسيع",
+                        tint = activeTheme.headerBannerText,
+                        modifier = Modifier.size(22.dp)
+                    )
                 }
-                val latest = sortedDirectives.first()
+            }
 
-                DirectiveItemView(
-                    directive = latest,
-                    isPrimary = true,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString("${latest.title}\n${latest.content}"))
-                        Toast.makeText(context, "تم نسخ التوجيه إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
-                    }
-                )
+            // Expanded Directives List
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 10.dp)
+                ) {
+                    HorizontalDivider(color = activeTheme.dayCardBorder.copy(alpha = 0.3f))
 
-                if (sortedDirectives.size > 1) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { isExpanded = !isExpanded }
-                            .padding(vertical = 6.dp, horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = if (isExpanded) "إخفاء باقي التوجيهات" else "عرض باقي التوجيهات (${sortedDirectives.size - 1} إضافية)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF38BDF8)
-                        )
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            tint = Color(0xFF38BDF8),
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    AnimatedVisibility(
-                        visible = isExpanded,
-                        enter = fadeIn() + expandVertically(),
-                        exit = fadeOut() + shrinkVertically()
-                    ) {
-                        Column(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.padding(top = 6.dp)
+                    if (directives.isEmpty()) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = activeTheme.periodCardBg,
+                            border = BorderStroke(1.dp, activeTheme.periodCardBorder),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            sortedDirectives.drop(1).forEach { otherDirective ->
-                                DirectiveItemView(
-                                    directive = otherDirective,
-                                    isPrimary = false,
-                                    onCopy = {
-                                        clipboardManager.setText(AnnotatedString("${otherDirective.title}\n${otherDirective.content}"))
-                                        Toast.makeText(context, "تم نسخ التوجيه إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
-                                    }
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(22.dp)
                                 )
+                                Spacer(Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "لا توجد توجيهات جديدة حالياً",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp,
+                                        color = activeTheme.periodTitleText
+                                    )
+                                    Text(
+                                        text = "ستصلك هنا تعليمات وتعاميم الإدارة المدرسية المعتمدة فور نشرها 🌟",
+                                        fontSize = 11.sp,
+                                        color = activeTheme.periodTimeText
+                                    )
+                                }
                             }
                         }
+                    } else {
+                        val sortedDirectives = remember(directives) {
+                            directives.sortedByDescending { it.createdAt ?: it.id.toString() }
+                        }
+
+                        sortedDirectives.forEachIndexed { idx: Int, directive: DirectiveDto ->
+                            DirectiveItemView(
+                                directive = directive,
+                                isPrimary = (idx == 0),
+                                activeTheme = activeTheme,
+                                onCopy = {
+                                    clipboardManager.setText(AnnotatedString("${directive.title}\n${directive.content}"))
+                                    Toast.makeText(context, "تم نسخ التوجيه إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DirectiveItemView(
+    directive: DirectiveDto,
+    isPrimary: Boolean,
+    activeTheme: AppThemePalette,
+    onCopy: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = activeTheme.periodCardBg,
+        border = BorderStroke(1.dp, if (isPrimary) activeTheme.dayCardBorder else activeTheme.periodCardBorder),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = activeTheme.dayCardBorder.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(0.8.dp, activeTheme.dayCardBorder)
+                    ) {
+                        Text(
+                            text = if (isPrimary) "⭐ أحدث تعميم" else "تعميم مدرسي",
+                            color = activeTheme.headerBannerText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(6.dp))
+
+                    Text(
+                        text = directive.title,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 13.sp,
+                        color = activeTheme.periodTitleText
+                    )
+                }
+
+                IconButton(
+                    onClick = onCopy,
+                    modifier = Modifier.size(26.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = "نسخ",
+                        tint = activeTheme.periodTimeText,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = directive.content,
+                fontSize = 12.sp,
+                color = activeTheme.periodTimeText,
+                lineHeight = 18.sp
+            )
         }
     }
 }

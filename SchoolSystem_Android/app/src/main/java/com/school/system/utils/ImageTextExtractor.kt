@@ -44,20 +44,39 @@ object ImageTextExtractor {
             var cleanLine = line.trim()
             if (cleanLine.isBlank()) continue
 
+            // Handle Excel / CSV / Word Tab or Comma separated rows
+            val cells = cleanLine.split("\t", ",", ";", "|")
+            if (cells.size > 1) {
+                val nameCell = cells.map { it.trim() }.firstOrNull { cell ->
+                    val cleanCell = cell.replace(Regex("^[0-9١-٩]+\\s*[-.)]\\s*"), "").trim()
+                    cleanCell.isNotBlank() && 
+                    !cleanCell.all { ch -> ch.isDigit() || ch == '.' || ch == '-' || ch == '/' } &&
+                    !cleanCell.contains("الاسم") && !cleanCell.contains("التسلسل") && 
+                    !cleanCell.contains("الملاحظات") && !cleanCell.contains("الصف") &&
+                    cleanCell.split("\\s+".toRegex()).size >= 2
+                }
+                if (nameCell != null) {
+                    cleanLine = nameCell
+                }
+            }
+
             // Remove leading row numbers like "1-", "1.", "1)", "١-", "١.", "١)"
-            cleanLine = cleanLine.replace(Regex("^[0-9١-٩]+\\s*[-.)]\\s*"), "")
-            
+            cleanLine = cleanLine.replace(Regex("^[0-9١-٩]+\\s*[-.)]\\s*"), "").trim()
+
             // Filter out table headers or non-name metadata
-            if (cleanLine.contains("الاسم") || cleanLine.contains("اسم الطالب") || cleanLine.contains("الملاحظات") || cleanLine.contains("التسلسل") || cleanLine.contains("المدرسة")) {
+            if (cleanLine.contains("الاسم") || cleanLine.contains("اسم الطالب") || 
+                cleanLine.contains("الملاحظات") || cleanLine.contains("التسلسل") || 
+                cleanLine.contains("المدرسة") || cleanLine.contains("الصف") || cleanLine.contains("الشعبة")) {
                 continue
             }
 
-            cleanLine = cleanLine.trim()
-            if (cleanLine.length >= 3) {
+            cleanLine = cleanLine.replace("\\s+".toRegex(), " ")
+
+            if (cleanLine.length >= 3 && cleanLine.any { it.isLetter() }) {
                 namesList.add(cleanLine)
             }
         }
 
-        return namesList
+        return namesList.distinct()
     }
 }

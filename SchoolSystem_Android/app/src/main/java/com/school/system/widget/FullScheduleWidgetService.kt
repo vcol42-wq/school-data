@@ -96,7 +96,7 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                 }
                 else -> {
-                    views.setTextColor(cellViewId, Color.parseColor("#94A3B8"))
+                    views.setTextColor(cellViewId, Color.parseColor("#F8FAFC"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_item_bg)
                 }
             }

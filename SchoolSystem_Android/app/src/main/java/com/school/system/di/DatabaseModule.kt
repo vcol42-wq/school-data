@@ -22,7 +22,7 @@ object DatabaseModule {
             context,
             SchoolDatabase::class.java,
             "school_db"
-        ).fallbackToDestructiveMigration()
+        ).fallbackToDestructiveMigrationOnDowngrade(true)
             .build()
     }
 
