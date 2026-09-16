@@ -38,6 +38,7 @@ import com.example.theboss.data.local.AttendanceEntity
 import com.example.theboss.data.local.SubjectEntity
 import com.example.theboss.data.repository.StudentRepository
 import android.content.Context
+import androidx.compose.foundation.BorderStroke
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.ui.workspace.WorkspaceToolsScreen
 import com.example.theboss.utils.NotificationHelper
@@ -75,6 +76,23 @@ class DashboardViewModel @Inject constructor(
 
     init {
         refreshData()
+        startPeriodicDirectivesSync()
+    }
+
+    private fun startPeriodicDirectivesSync() {
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(12000L)
+                val schoolId = repository.getSchoolId()
+                if (!schoolId.isNullOrBlank()) {
+                    try {
+                        repository.syncDirectives(schoolId)
+                    } catch (e: Exception) {
+                        // ignore background network issues
+                    }
+                }
+            }
+        }
     }
 
     fun refreshData() {
@@ -234,7 +252,23 @@ fun MainDashboardScreen(
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // 1. Urgent Homework Banner with Interactive Emerald Glow Border
+                        // 1. Class Timetable & Schedule Hub (جدول دروس الشعبة الأسبوعي في الأعلى تماماً)
+                        item(span = { GridItemSpan(2) }) {
+                            StudentScheduleViewerCard(
+                                onClick = onScheduleClick,
+                                compact = compactScheduleWidget,
+                                onToggleCompact = { compactScheduleWidget = !compactScheduleWidget }
+                            )
+                        }
+
+                        // 2. Directives & Instructions (بطاقة توجيهات الإدارة المدرسية تحت الجدول مباشرة)
+                        if (directives.isNotEmpty()) {
+                            item(span = { GridItemSpan(2) }) {
+                                StudentDirectivesCard(directives = directives)
+                            }
+                        }
+
+                        // 3. Urgent Homework Banner (الواجبات والمهام العاجلة)
                         if (pendingAssignments.isNotEmpty()) {
                             item(span = { GridItemSpan(2) }) {
                                 UrgentHomeworkCenter(
@@ -242,31 +276,15 @@ fun MainDashboardScreen(
                                     onToggleComplete = { viewModel.toggleAssignment(it) }
                                 )
                             }
-
                         }
 
-                        if (directives.isNotEmpty()) {
-                            item(span = { GridItemSpan(2) }) {
-                                StudentDirectivesCard(directives = directives)
-                            }
-                        }
-
-                        // 2. Parent Guardian Attendance Hub (متابعة ولي أمر الطالب)
+                        // 4. Parent Guardian Attendance Hub (متابعة ولي أمر الطالب)
                         item(span = { GridItemSpan(2) }) {
                             ParentGuardianAttendanceHubCard(
                                 attendanceList = attendance,
                                 onClick = onParentAttendanceClick,
                                 compact = compactAttendanceWidget,
                                 onToggleCompact = { compactAttendanceWidget = !compactAttendanceWidget }
-                            )
-                        }
-
-                        // 3. Class Timetable & Schedule Hub (جدول دروس الشعبة الأسبوعي)
-                        item(span = { GridItemSpan(2) }) {
-                            StudentScheduleViewerCard(
-                                onClick = onScheduleClick,
-                                compact = compactScheduleWidget,
-                                onToggleCompact = { compactScheduleWidget = !compactScheduleWidget }
                             )
                         }
 
@@ -386,48 +404,160 @@ fun MainDashboardScreen(
     }
 }
 
+/**
+ * Directives & Instructions Card (توجيهات الإدارة المدرسية المعتمدة المبنية حديثاً تحت الجدول)
+ */
 @Composable
 private fun StudentDirectivesCard(directives: List<DirectiveDto>) {
-    val latest = directives.first()
-    Card(
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5)),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF6EE7B7)),
-        modifier = Modifier.fillMaxWidth()
+    if (directives.isEmpty()) return
+    var isExpanded by remember { mutableStateOf(false) }
+
+    // Auto-expand automatically when directives arrive or update
+    val directivesFingerprint = remember(directives) {
+        directives.map { it.id }.sorted().joinToString(",")
+    }
+    LaunchedEffect(directivesFingerprint) {
+        if (directives.isNotEmpty()) {
+            isExpanded = true
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFF0F172A),
+        border = BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.6f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(6.dp, RoundedCornerShape(18.dp))
+            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessLow))
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = Color(0xFF10B981),
-                    shape = CircleShape,
-                    modifier = Modifier.size(38.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            // Header Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { isExpanded = !isExpanded },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Campaign, contentDescription = null, tint = Color.White)
+                    Surface(
+                        color = Color(0xFF0284C7),
+                        shape = CircleShape,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Campaign, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "توجيهات الإدارة المدرسية 📢",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = Color.White
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Surface(
+                                color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF34D399))
+                            ) {
+                                Text(
+                                    text = "${directives.size}",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = if (directives.size == 1) "تعميم جديد اعتماد رسمي" else "${directives.size} تعاميم إدارية رسمية",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
+                        )
                     }
                 }
-                Spacer(Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("توجيهات الإدارة", fontWeight = FontWeight.Black, color = Color(0xFF065F46))
-                    Text(
-                        text = if (directives.size == 1) "تعميم جديد من المدرسة" else "${directives.size} تعاميم فعّالة",
-                        fontSize = 11.sp,
-                        color = Color(0xFF047857)
-                    )
-                }
-                Icon(Icons.Default.ChevronLeft, contentDescription = null, tint = Color(0xFF059669))
+
+                Icon(
+                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (isExpanded) "طي" else "توسيع",
+                    tint = Color(0xFF38BDF8),
+                    modifier = Modifier.size(24.dp)
+                )
             }
-            Spacer(Modifier.height(12.dp))
-            Text(latest.title, fontWeight = FontWeight.Bold, color = Color(0xFF064E3B))
-            Spacer(Modifier.height(4.dp))
-            Text(
-                latest.content,
-                color = Color(0xFF14532D),
-                fontSize = 13.sp,
-                lineHeight = 20.sp,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
+
+            // Expandable Content
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 12.dp)
+                ) {
+                    HorizontalDivider(color = Color(0xFF334155))
+
+                    directives.forEachIndexed { idx, directive ->
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF1E293B),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, if (idx == 0) Color(0xFF38BDF8) else Color(0xFF334155)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        color = if (idx == 0) Color(0xFF0284C7).copy(alpha = 0.25f) else Color(0xFF475569).copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(6.dp),
+                                        border = androidx.compose.foundation.BorderStroke(0.8.dp, if (idx == 0) Color(0xFF38BDF8) else Color(0xFF64748B))
+                                    ) {
+                                        Text(
+                                            text = if (idx == 0) "⭐ أحدث تعميم" else "تعميم مدرسي",
+                                            color = if (idx == 0) Color(0xFF38BDF8) else Color(0xFF94A3B8),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+
+                                    Text(
+                                        text = directive.title,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.5.sp,
+                                        color = Color.White
+                                    )
+                                }
+
+                                Text(
+                                    text = directive.content,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFCBD5E1),
+                                    lineHeight = 18.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

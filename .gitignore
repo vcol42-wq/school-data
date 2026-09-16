@@ -56,3 +56,6 @@ extracted_school_system/.max/
 extracted_school_system/.windsurf/
 jdk-*/
 extracted_school_system/scratch_sync.js
+**/release/
+*.aab
+mapping.txt

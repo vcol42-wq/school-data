@@ -8,14 +8,14 @@ plugins {
 
 android {
     namespace 'com.school.system'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
-        applicationId "com.theprincipal.teacher"
+        applicationId "com.theprincipal.student"
         minSdk 26
-        targetSdk 34
-        versionCode 3
-        versionName "3.0"
+        targetSdk 36
+        versionCode 5
+        versionName "4.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -23,11 +23,28 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            if (project.rootProject.file('keystore.properties').exists()) {
+                def props = new Properties()
+                props.load(new FileInputStream(project.rootProject.file('keystore.properties')))
+                storeFile file(props['storeFile'])
+                storePassword props['storePassword']
+                keyAlias props['keyAlias']
+                keyPassword props['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
+            signingConfig (project.rootProject.file('keystore.properties').exists() ? signingConfigs.release : signingConfigs.debug)
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            ndk {
+                debugSymbolLevel 'SYMBOL_TABLE'
+            }
         }
     }
     compileOptions {
@@ -120,8 +137,10 @@ java {
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.internal.KaptWithoutKotlincTask).configureEach {
-    kaptProcessJvmArgs.add("-Dorg.sqlite.tmpdir=C:\\boss\\SchoolSystem_Android\\app\\build\\tmp")
-    kaptProcessJvmArgs.add("-Djava.io.tmpdir=C:\\boss\\SchoolSystem_Android\\app\\build\\tmp")
+    File tmpDir = new File(buildDir, "tmp")
+    tmpDir.mkdirs()
+    kaptProcessJvmArgs.add("-Dorg.sqlite.tmpdir=" + tmpDir.absolutePath)
+    kaptProcessJvmArgs.add("-Djava.io.tmpdir=" + tmpDir.absolutePath)
 }
 
 kapt {

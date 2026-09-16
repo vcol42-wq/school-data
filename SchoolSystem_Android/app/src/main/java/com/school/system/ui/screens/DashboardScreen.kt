@@ -20,12 +20,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -709,109 +711,157 @@ fun RegisterCardItem(
 
     Surface(
         color = currentTheme.surfaceColor,
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
-        shadowElevation = 2.dp,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.5.dp, currentTheme.primaryColor.copy(alpha = 0.35f)),
+        shadowElevation = 12.dp,
+        tonalElevation = 6.dp,
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(16.dp),
+                clip = false,
+                spotColor = Color.Black.copy(alpha = 0.35f),
+                ambientColor = Color.Black.copy(alpha = 0.25f)
+            )
             .clickable(onClick = onClick)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(12.dp)
         ) {
-            // Left: Section Avatar + Subject & Class Details
+            // Top Row: Edit Icon (Right) | Grade & Section Badge (Center) | Delete Icon (Left)
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Section badge
-                Surface(
-                    color = currentTheme.primaryColor.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.size(38.dp)
+                // Right Corner: Edit Button ✏️
+                IconButton(
+                    onClick = onEdit,
+                    modifier = Modifier.size(28.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    Surface(
+                        color = currentTheme.primaryColor.copy(alpha = 0.12f),
+                        border = BorderStroke(0.8.dp, currentTheme.primaryColor.copy(alpha = 0.3f)),
+                        shape = CircleShape,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "تعديل المادة والشعبة",
+                                tint = currentTheme.primaryColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Center/Front: Grade & Section Badge (الصف الثالث شعبة ب)
+                Surface(
+                    color = currentTheme.primaryColor.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.primaryColor.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = pkg.section,
-                            color = currentTheme.primaryColor,
+                            text = "الصف ${pkg.grade} (شعبة ${pkg.section})",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Black,
-                            fontSize = 17.sp
+                            color = currentTheme.primaryColor
                         )
                     }
                 }
 
-                Spacer(Modifier.width(10.dp))
+                // Left Corner: Delete / Close Button 🗑️ / ✖️
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    val deleteBg = if (currentTheme.isDark) Color(0xFF451A1A) else Color(0xFFFEE2E2)
+                    val deleteBorder = if (currentTheme.isDark) Color(0xFF7F1D1D) else Color(0xFFFCA5A5)
+                    val deleteTint = if (currentTheme.isDark) Color(0xFFF87171) else Color(0xFFDC2626)
 
-                Column {
-                    // اسم المادة
-                    Text(
-                        text = if (pkg.subject.isBlank() || pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر") "انقر لتحديد المادة ✎" else pkg.subject,
-                        color = if (pkg.subject.isBlank() || pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر") Color(0xFFD97706) else currentTheme.primaryColor,
-                        fontWeight = FontWeight.Black,
-                        fontSize = 15.sp,
-                        maxLines = 1
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    // الصف والشعبة والسعة
-                    Text(
-                        text = "الصف: ${pkg.grade} - شعبة (${pkg.section}) | سقف الطلاب: 60",
-                        color = currentTheme.textSecondaryColor,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Surface(
+                        color = deleteBg,
+                        border = BorderStroke(0.8.dp, deleteBorder),
+                        shape = CircleShape,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "حذف السجل",
+                                tint = deleteTint,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
                 }
             }
 
-            // Right: Actions (Edit ✎ & Delete 🗑️)
+            Spacer(Modifier.height(8.dp))
+
+            // Main Prominent Subject / Lesson Name Row
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // زر التعديل ✎
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.size(36.dp)
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Section Avatar Circle - Letter shifted UP (-2.5dp) for exact visual vertical centering
                     Surface(
-                        color = Color(0xFFEFF6FF),
+                        color = currentTheme.primaryColor,
                         shape = CircleShape,
-                        modifier = Modifier.size(30.dp)
+                        modifier = Modifier.size(38.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "تعديل المادة والشعبة",
-                                tint = Color(0xFF2563EB),
-                                modifier = Modifier.size(16.dp)
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = pkg.section,
+                                color = Color.White,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 17.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.offset(y = (-2.5).dp)
                             )
                         }
+                    }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    Column {
+                        // Prominent Lesson / Subject Name
+                        val isUnnamed = pkg.subject.isBlank() || pkg.subject == "المادة" || pkg.subject == "عام" || pkg.subject == "درس مقرر"
+                        Text(
+                            text = if (isUnnamed) "انقر لتحديد اسم الدرس ✎" else "درس ${pkg.subject} 📖",
+                            color = if (isUnnamed) Color(0xFFD97706) else currentTheme.textPrimaryColor,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 16.sp,
+                            maxLines = 1
+                        )
                     }
                 }
 
-                // زر الحذف 🗑️
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Surface(
-                        color = Color(0xFFFEE2E2),
-                        shape = CircleShape,
-                        modifier = Modifier.size(30.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "حذف السجل",
-                                tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
+                Icon(
+                    Icons.Default.ArrowBack,
+                    contentDescription = "فتح السجل",
+                    tint = currentTheme.primaryColor.copy(alpha = 0.7f),
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
@@ -1908,8 +1958,15 @@ fun TeacherDirectivesCard(
     onDismiss: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     var expanded by remember { mutableStateOf(false) }
     val latest = directives.firstOrNull() ?: return
+
+    val cardBg = if (currentTheme.isDark) Color(0xFF2D2305) else Color(0xFFFFFBEB)
+    val cardBorder = if (currentTheme.isDark) Color(0xFF78350F) else Color(0xFFFDE68A)
+    val textTitle = if (currentTheme.isDark) Color(0xFFFDE047) else Color(0xFF92400E)
+    val textContent = if (currentTheme.isDark) Color(0xFFFEF08A) else Color(0xFF451A03)
+    val badgeBg = if (currentTheme.isDark) Color(0xFF423207) else Color(0xFFFEF3C7)
 
     Surface(
         modifier = modifier
@@ -1917,9 +1974,9 @@ fun TeacherDirectivesCard(
             .padding(horizontal = 14.dp, vertical = 2.dp)
             .clickable { expanded = !expanded },
         shape = RoundedCornerShape(14.dp),
-        color = Color(0xFFFFFBEB),
-        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFFDE68A)),
-        shadowElevation = 2.dp
+        color = cardBg,
+        border = BorderStroke(1.2.dp, cardBorder),
+        shadowElevation = 4.dp
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -1934,18 +1991,18 @@ fun TeacherDirectivesCard(
                         text = if (directives.size == 1) "توجيه إداري من مدير المدرسة" else "توجيهات الإدارة (${directives.size})",
                         fontWeight = FontWeight.Bold,
                         fontSize = 13.sp,
-                        color = Color(0xFF92400E)
+                        color = textTitle
                     )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        color = Color(0xFFFEF3C7),
+                        color = badgeBg,
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
                             text = if (expanded) "طي ▲" else "عرض ▼",
                             fontSize = 11.sp,
-                            color = Color(0xFFB45309),
+                            color = textTitle,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
@@ -1958,7 +2015,7 @@ fun TeacherDirectivesCard(
                         Icon(
                             Icons.Default.Close,
                             contentDescription = "إخفاء التوجيه",
-                            tint = Color(0xFF92400E),
+                            tint = textTitle,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -1970,26 +2027,26 @@ fun TeacherDirectivesCard(
                 text = latest.title,
                 fontWeight = FontWeight.Bold,
                 fontSize = 12.5.sp,
-                color = Color(0xFF78350F)
+                color = textTitle
             )
             Text(
                 text = latest.content,
                 fontSize = 11.5.sp,
-                color = Color(0xFF451A03),
+                color = textContent,
                 maxLines = if (expanded) Int.MAX_VALUE else 2,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
 
             if (directives.size > 1 && expanded) {
                 Spacer(Modifier.height(8.dp))
-                HorizontalDivider(color = Color(0xFFFDE68A), thickness = 1.dp)
+                HorizontalDivider(color = cardBorder, thickness = 1.dp)
                 Spacer(Modifier.height(6.dp))
                 directives.drop(1).forEach { dir ->
                     Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                        Text(dir.title, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color(0xFF92400E))
-                        Text(dir.content, fontSize = 11.sp, color = Color(0xFF451A03))
+                        Text(dir.title, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = textTitle)
+                        Text(dir.content, fontSize = 11.sp, color = textContent)
                     }
-                    HorizontalDivider(color = Color(0xFFFEF3C7), thickness = 0.5.dp)
+                    HorizontalDivider(color = badgeBg, thickness = 0.5.dp)
                 }
             }
         }
@@ -2003,16 +2060,22 @@ fun SupervisorHubCard(
     onSyncAllClasses: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     var isMinimized by remember { mutableStateOf(true) }
+
+    val cardBg = if (currentTheme.isDark) Color(0xFF2D2305) else Color(0xFFFFFBEB)
+    val cardBorder = if (currentTheme.isDark) Color(0xFF92400E) else Color(0xFFF59E0B)
+    val textTitle = if (currentTheme.isDark) Color(0xFFFDE047) else Color(0xFF92400E)
+    val badgeBg = if (currentTheme.isDark) Color(0xFF423207) else Color(0xFFFEF3C7)
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 2.dp),
         shape = RoundedCornerShape(12.dp),
-        color = Color(0xFFFFFBEB),
-        border = BorderStroke(1.2.dp, Color(0xFFF59E0B)),
-        shadowElevation = 2.dp
+        color = cardBg,
+        border = BorderStroke(1.2.dp, cardBorder),
+        shadowElevation = 4.dp
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(
@@ -2024,7 +2087,7 @@ fun SupervisorHubCard(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Surface(
-                        color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                        color = cardBorder.copy(alpha = 0.2f),
                         shape = CircleShape,
                         modifier = Modifier.size(28.dp)
                     ) {
@@ -2038,13 +2101,13 @@ fun SupervisorHubCard(
                             text = "لوحة المشرف التربوي 🛡️ (قراءة فقط)",
                             fontWeight = FontWeight.Black,
                             fontSize = 12.5.sp,
-                            color = Color(0xFF92400E)
+                            color = textTitle
                         )
                         if (!isMinimized && schoolName.isNotBlank()) {
                             Text(
                                 text = "مدرسة: $schoolName",
                                 fontSize = 10.5.sp,
-                                color = Color(0xFFB45309),
+                                color = textTitle.copy(alpha = 0.85f),
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -2053,12 +2116,12 @@ fun SupervisorHubCard(
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        color = Color(0xFFFEF3C7),
+                        color = badgeBg,
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
                             text = if (isMinimized) "توسيع 🔽" else "تصغير 🔼",
-                            color = Color(0xFFB45309),
+                            color = textTitle,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)

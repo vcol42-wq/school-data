@@ -41,7 +41,8 @@ class BellManager @Inject constructor(
                         dayOfWeek = day,
                         lessonIndex = i,
                         startTime = String.format(Locale.US, "%02d:%02d", startH, startM),
-                        endTime = String.format(Locale.US, "%02d:%02d", endH, endM)
+                        endTime = String.format(Locale.US, "%02d:%02d", endH, endM),
+                        isEnabled = settings.isGlobalEnabled
                     )
                 )
                 
@@ -51,7 +52,11 @@ class BellManager @Inject constructor(
         
         lessonAlarmDao.deleteAll()
         lessonAlarmDao.insertAlarms(alarms)
-        scheduleAllAlarms()
+        if (settings.isGlobalEnabled) {
+            scheduleAllAlarms()
+        } else {
+            cancelAllAlarms()
+        }
     }
 
     suspend fun scheduleAllAlarms() {
@@ -63,37 +68,61 @@ class BellManager @Inject constructor(
     }
 
     private fun scheduleAlarm(alarm: LessonAlarm) {
-        val (hour, minute) = alarm.startTime.split(":").map { it.toInt() }
-        val calendar = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_WEEK, alarm.dayOfWeek)
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            
-            // If the time has already passed today, schedule for next week
-            if (timeInMillis <= System.currentTimeMillis()) {
-                add(Calendar.WEEK_OF_YEAR, 1)
+        if (!alarm.isEnabled) return
+        try {
+            val parts = alarm.startTime.split(":").mapNotNull { it.toIntOrNull() }
+            if (parts.size < 2) return
+            val hour = parts[0]
+            val minute = parts[1]
+            val calendar = Calendar.getInstance().apply {
+                set(Calendar.DAY_OF_WEEK, alarm.dayOfWeek)
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                
+                // If the time has already passed today, schedule for next week
+                if (timeInMillis <= System.currentTimeMillis()) {
+                    add(Calendar.WEEK_OF_YEAR, 1)
+                }
             }
-        }
 
-        val intent = Intent(context, BellReceiver::class.java).apply {
-            putExtra("lesson_index", alarm.lessonIndex)
-            putExtra("lesson_name", alarm.lessonName)
-        }
-        
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            alarm.id.toInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+            val intent = Intent(context, BellReceiver::class.java).apply {
+                putExtra("lesson_index", alarm.lessonIndex)
+                putExtra("lesson_name", alarm.lessonName)
+            }
+            
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                alarm.id.toInt(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            calendar.timeInMillis,
-            pendingIntent
-        )
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                if (alarmManager.canScheduleExactAlarms()) {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        pendingIntent
+                    )
+                }
+            } else {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    pendingIntent
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private suspend fun cancelAllAlarms() {

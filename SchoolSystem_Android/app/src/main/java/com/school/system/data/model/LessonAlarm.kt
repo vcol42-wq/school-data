@@ -11,7 +11,7 @@ data class LessonAlarm(
     val lessonName: String = "",
     val startTime: String, // HH:mm
     val endTime: String,   // HH:mm
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = false
 )
 
 data class BellSettings(
@@ -20,5 +20,5 @@ data class BellSettings(
     val lessonDuration: Int = 40,
     val breakDuration: Int = 10,
     val ringtoneUri: String? = null,
-    val isGlobalEnabled: Boolean = true
+    val isGlobalEnabled: Boolean = false
 )

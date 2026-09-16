@@ -251,13 +251,13 @@
                 <ul>
                     <li>
                         <strong>صلاحية الكاميرا (android.permission.CAMERA):</strong>
-                        تُستخدم الكاميرا <strong>فقط وحصرياً لمسح رمز الاستجابة السريعة (QR Code / الباركود)</strong> لإقران التطبيق بنظام الإدارة المدرسية المكتبي أو السحابي بسرعة وسلاسة. 
-                        <em>لا يقوم التطبيق بالتقاط أو تسجيل أو حفظ أو مشاركة أي صور أو فيديوهات شخصية للمستخدم أو الطلبة على الإطلاق.</em>
+                        تُستخدم الكاميرا <strong>فقط لمسح رمز الاستجابة السريعة (QR Code)</strong> لإقران التطبيق بنظام المدرسة، وللتعرف الضوئي الموضعي المؤقت على أسماء الطلاب في القوائم الورقية المعتمدة (On-Device OCR via ML Kit). 
+                        <em>تتم المعالجة محلياً وفورياً داخل معالج الجهاز، ولا يقوم التطبيق بالتقاط أو تخزين أو حفظ أو مشاركة أو رفع أي صور شخصية أو فيديوهات للمستخدم أو الطلبة إلى أي خوادم خارجية إطلاقاً.</em>
                     </li>
                     <li>
-                        <strong>تنبيهات وجرس الحصص (Alarms & Notifications):</strong>
-                        يستخدم التطبيق المنبهات الداخلية والإشعارات لإطلاق صوت جرس الحصة والتنبيه بمواعيد بدء وانتهاء الدروس وفق جدول المدرسة. 
-                        <em>التطبيق <strong>لا يسجل الصوت (No Audio Recording)</strong> ولا يطلب إذن المايكروفون.</em>
+                        <strong>تنبيهات وجرس الحصص (Opt-in Alarms & Notifications):</strong>
+                        المنبهات والجرس المدرسي الذكي <strong>معطلة افتراضياً ولا تُفعل إلا برغبة واختيار المعلم الصريح (Opt-in)</strong> من خلال شاشة إعدادات الجرس. تُستخدم حصراً لتنبيه المعلم بمواعيد بدء وانتهاء الحصص وفق الجدول الدراسي المعتمد. 
+                        <em>التطبيق <strong>لا يسجل الصوت (No Audio Recording)</strong> ولا يطلب إذن المايكروفون نهائياً.</em>
                     </li>
                     <li>
                         <strong>صلاحية الاتصال بالإنترنت (INTERNET):</strong>
@@ -317,11 +317,11 @@
                 <ul>
                     <li>
                         <strong>Camera Permission (CAMERA):</strong>
-                        Used solely for scanning <strong>QR Codes</strong> to seamlessly pair the teacher's device with the desktop school database or cloud sync system. The camera is never used to capture, record, store, or transmit photos or videos.
+                        Used strictly for scanning <strong>QR Codes</strong> to pair the device and for optional on-device optical character recognition (On-Device OCR via Google ML Kit) to transcribe printed student roster names. All camera frames are processed strictly in device memory in real-time; the app never captures, stores, or transmits photos or videos to any remote servers.
                     </li>
                     <li>
-                        <strong>Exact Alarm & Notifications:</strong>
-                        Used solely for the automated school period bell reminders (alerting teachers when a class starts or concludes). 
+                        <strong>Exact Alarm & Notifications (Opt-in Only):</strong>
+                        School period bell reminders are <strong>100% opt-in and disabled by default</strong> until explicitly enabled by the educator in Bell Settings. When enabled, they are used solely for automated school period bell notifications. 
                         <em>The app does NOT record audio and does NOT request microphone permissions.</em>
                     </li>
                     <li>

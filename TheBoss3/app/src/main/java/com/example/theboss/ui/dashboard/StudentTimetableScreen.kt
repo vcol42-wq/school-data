@@ -237,100 +237,150 @@ fun StudentTimetableScreen(
     val themesList = listOf(
         AppThemePalette(
             id = 0,
-            name = "الداكن الفخم (Dark Slate) 🌙",
-            topBarBg = Color(0xFF0F172A),
-            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B))),
-            headerBannerBg = Color(0xFF1E293B),
+            name = "الداكن الفخم (Dark Slate & Luminous Cards) 🌙",
+            topBarBg = Color(0xFF070B14),
+            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF030712), Color(0xFF0B1120))),
+            headerBannerBg = Color(0xFF0B1726),
             headerBannerText = Color(0xFF38BDF8),
-            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF38BDF8), Color(0xFF0284C7))),
-            dayCardBg = Color(0xFF1E293B),
-            dayCardBorder = Color(0xFF38BDF8),
-            dayCardText = Color(0xFFF8FAFC),
-            periodCardBg = Color(0xFF1E293B),
-            periodCardBorder = Color(0xFF334155),
-            periodTitleText = Color(0xFF38BDF8),
-            periodTimeText = Color(0xFF94A3B8),
-            gridFloorBg = Color(0xFF0F172A),
-            gridFloorBorder = Color(0xFF334155),
-            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFF1E293B), Color(0xFF0F172A))),
-            lessonCardBorder = Color(0xFF334155),
-            lessonSubjectText = Color(0xFFF8FAFC),
-            lessonTeacherText = Color(0xFF38BDF8),
-            prepCardBg = Brush.verticalGradient(listOf(Color(0xFF78350F), Color(0xFF451A03))),
+            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF0284C7), Color(0xFF0369A1))),
+            dayCardBg = Color(0xFFE0F2FE),
+            dayCardBorder = Color(0xFF0284C7),
+            dayCardText = Color(0xFF0369A1),
+            periodCardBg = Color(0xFFF0F9FF),
+            periodCardBorder = Color(0xFF38BDF8),
+            periodTitleText = Color(0xFF0284C7),
+            periodTimeText = Color(0xFF0369A1),
+            gridFloorBg = Color(0xFF070E1A),
+            gridFloorBorder = Color(0xFF1E293B),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFE0F2FE))),
+            lessonCardBorder = Color(0xFF0284C7).copy(alpha = 0.65f),
+            lessonSubjectText = Color(0xFF0F172A),
+            lessonTeacherText = Color(0xFF0284C7),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
             prepCardBorder = Color(0xFFF59E0B),
-            prepSubjectText = Color(0xFFFDE68A)
+            prepSubjectText = Color(0xFF78350F)
         ),
         AppThemePalette(
             id = 1,
-            name = "الذهبي الفاخر (Warm Amber Gold) 🌟",
-            topBarBg = Color(0xFF271C10),
-            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF1C130B), Color(0xFF332212))),
-            headerBannerBg = Color(0xFF3D2A18),
-            headerBannerText = Color(0xFFFBBF24),
-            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFFFDE68A), Color(0xFFF59E0B))),
-            dayCardBg = Color(0xFF3D2A18),
-            dayCardBorder = Color(0xFFF59E0B),
-            dayCardText = Color(0xFFFEF3C7),
-            periodCardBg = Color(0xFF2A1C10),
-            periodCardBorder = Color(0xFFB45309),
-            periodTitleText = Color(0xFFFBBF24),
-            periodTimeText = Color(0xFFFDE68A),
-            gridFloorBg = Color(0xFF180F06),
-            gridFloorBorder = Color(0xFFB45309),
-            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFF3D2A18), Color(0xFF271C10))),
-            lessonCardBorder = Color(0xFFB45309),
-            lessonSubjectText = Color(0xFFFFFBEB),
-            lessonTeacherText = Color(0xFFFBBF24),
-            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFD97706), Color(0xFFB45309))),
-            prepCardBorder = Color(0xFFFDE68A),
-            prepSubjectText = Color(0xFFFFFBEB)
+            name = "العنابي الملكي (Royal Burgundy & Rose Cards) 🍷",
+            topBarBg = Color(0xFF1B040A),
+            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF1B040A), Color(0xFF3B0B18))),
+            headerBannerBg = Color(0xFF310613),
+            headerBannerText = Color(0xFFFDA4AF),
+            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFFE11D48), Color(0xFF9F1239))),
+            dayCardBg = Color(0xFFFFE4E6),
+            dayCardBorder = Color(0xFFE11D48),
+            dayCardText = Color(0xFF881337),
+            periodCardBg = Color(0xFFFFF1F2),
+            periodCardBorder = Color(0xFFFB7185),
+            periodTitleText = Color(0xFF9F1239),
+            periodTimeText = Color(0xFFBE123C),
+            gridFloorBg = Color(0xFF22040C),
+            gridFloorBorder = Color(0xFF5B0D23),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFFFE4E6))),
+            lessonCardBorder = Color(0xFFE11D48).copy(alpha = 0.65f),
+            lessonSubjectText = Color(0xFF4C0E1E),
+            lessonTeacherText = Color(0xFF9F1239),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
+            prepCardBorder = Color(0xFFF59E0B),
+            prepSubjectText = Color(0xFF78350F)
         ),
         AppThemePalette(
             id = 2,
-            name = "الأزرق الملكي (Royal Blue) 💙",
-            topBarBg = Color(0xFF0A2540),
-            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF0A192F), Color(0xFF1E3A8A))),
-            headerBannerBg = Color(0xFF1E3A8A),
+            name = "الأزرق الملكي (Royal Sapphire & Ice Cards) 💙",
+            topBarBg = Color(0xFF020B17),
+            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF020B17), Color(0xFF091C36))),
+            headerBannerBg = Color(0xFF0B203E),
             headerBannerText = Color(0xFF93C5FD),
-            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF93C5FD), Color(0xFF3B82F6))),
-            dayCardBg = Color(0xFF1E3A8A),
-            dayCardBorder = Color(0xFF60A5FA),
-            dayCardText = Color(0xFFE0F2FE),
-            periodCardBg = Color(0xFF1E3A8A),
-            periodCardBorder = Color(0xFF3B82F6),
-            periodTitleText = Color(0xFF93C5FD),
-            periodTimeText = Color(0xFFBFDBFE),
-            gridFloorBg = Color(0xFF06152B),
-            gridFloorBorder = Color(0xFF1D4ED8),
-            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFF1E3A8A), Color(0xFF0A2540))),
-            lessonCardBorder = Color(0xFF3B82F6),
-            lessonSubjectText = Color(0xFFFFFFFF),
-            lessonTeacherText = Color(0xFF93C5FD),
-            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFD97706), Color(0xFFB45309))),
-            prepCardBorder = Color(0xFFFDE68A),
-            prepSubjectText = Color(0xFFFFFBEB)
+            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF3B82F6), Color(0xFF1D4ED8))),
+            dayCardBg = Color(0xFFDBEAFE),
+            dayCardBorder = Color(0xFF2563EB),
+            dayCardText = Color(0xFF1E3A8A),
+            periodCardBg = Color(0xFFEFF6FF),
+            periodCardBorder = Color(0xFF60A5FA),
+            periodTitleText = Color(0xFF1D4ED8),
+            periodTimeText = Color(0xFF1E40AF),
+            gridFloorBg = Color(0xFF030D1E),
+            gridFloorBorder = Color(0xFF0A2540),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFDBEAFE))),
+            lessonCardBorder = Color(0xFF2563EB).copy(alpha = 0.65f),
+            lessonSubjectText = Color(0xFF0A2540),
+            lessonTeacherText = Color(0xFF1D4ED8),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
+            prepCardBorder = Color(0xFFF59E0B),
+            prepSubjectText = Color(0xFF78350F)
         ),
         AppThemePalette(
             id = 3,
-            name = "الفاتح الحديث (Light Minimal) ☀️",
+            name = "الفاتح العصري عالي التباين (Modern High-Contrast Light) ☀️",
             topBarBg = Color(0xFF0F172A),
-            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFFF8FAFC), Color(0xFFE2E8F0))),
+            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFFE2E8F0), Color(0xFFCBD5E1))),
             headerBannerBg = Color(0xFFFFFFFF),
             headerBannerText = Color(0xFF0F172A),
-            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF86EFAC), Color(0xFF4ADE80))),
-            dayCardBg = Color(0xFFFFFFFF),
-            dayCardBorder = Color(0xFFCBD5E1),
-            dayCardText = Color(0xFF0F172A),
-            periodCardBg = Color(0xFFFFFFFF),
-            periodCardBorder = Color(0xFFCBD5E1),
+            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF0284C7), Color(0xFF0369A1))),
+            dayCardBg = Color(0xFF0F172A),
+            dayCardBorder = Color(0xFF0284C7),
+            dayCardText = Color(0xFFFFFFFF),
+            periodCardBg = Color(0xFFE2E8F0),
+            periodCardBorder = Color(0xFF0284C7),
             periodTitleText = Color(0xFF0F172A),
-            periodTimeText = Color(0xFF475569),
-            gridFloorBg = Color(0xFFF1F5F9),
-            gridFloorBorder = Color(0xFFCBD5E1),
-            lessonCardBg = Brush.verticalGradient(listOf(Color.White, Color(0xFFF8FAFC))),
-            lessonCardBorder = Color(0xFFCBD5E1),
+            periodTimeText = Color(0xFF0284C7),
+            gridFloorBg = Color(0xFFCBD5E1),
+            gridFloorBorder = Color(0xFF64748B),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF8FAFC))),
+            lessonCardBorder = Color(0xFF0284C7).copy(alpha = 0.6f),
             lessonSubjectText = Color(0xFF0F172A),
-            lessonTeacherText = Color(0xFF2563EB),
+            lessonTeacherText = Color(0xFF0284C7),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
+            prepCardBorder = Color(0xFFD97706),
+            prepSubjectText = Color(0xFF78350F)
+        ),
+        AppThemePalette(
+            id = 4,
+            name = "الزمردي النقي (Emerald Mint & Jade Cards) 🌿",
+            topBarBg = Color(0xFF02100B),
+            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF02100B), Color(0xFF07261A))),
+            headerBannerBg = Color(0xFF0A2B1D),
+            headerBannerText = Color(0xFF6EE7B7),
+            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF10B981), Color(0xFF059669))),
+            dayCardBg = Color(0xFFD1FAE5),
+            dayCardBorder = Color(0xFF059669),
+            dayCardText = Color(0xFF065F46),
+            periodCardBg = Color(0xFFECFDF5),
+            periodCardBorder = Color(0xFF34D399),
+            periodTitleText = Color(0xFF047857),
+            periodTimeText = Color(0xFF065F46),
+            gridFloorBg = Color(0xFF02140D),
+            gridFloorBorder = Color(0xFF0E3827),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFD1FAE5))),
+            lessonCardBorder = Color(0xFF059669).copy(alpha = 0.65f),
+            lessonSubjectText = Color(0xFF052E16),
+            lessonTeacherText = Color(0xFF047857),
+            prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
+            prepCardBorder = Color(0xFFF59E0B),
+            prepSubjectText = Color(0xFF78350F)
+        ),
+        AppThemePalette(
+            id = 5,
+            name = "البنفسجي الإمبراطوري (Amethyst & Lavender Cards) 🔮",
+            topBarBg = Color(0xFF0D0317),
+            screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF0D0317), Color(0xFF1E0B33))),
+            headerBannerBg = Color(0xFF240C3D),
+            headerBannerText = Color(0xFFC4B5FD),
+            cornerCellBgBrush = Brush.linearGradient(listOf(Color(0xFF8B5CF6), Color(0xFF6D28D9))),
+            dayCardBg = Color(0xFFEDE9FE),
+            dayCardBorder = Color(0xFF7C3AED),
+            dayCardText = Color(0xFF581C87),
+            periodCardBg = Color(0xFFF5F3FF),
+            periodCardBorder = Color(0xFFA78BFA),
+            periodTitleText = Color(0xFF6D28D9),
+            periodTimeText = Color(0xFF581C87),
+            gridFloorBg = Color(0xFF10031C),
+            gridFloorBorder = Color(0xFF301152),
+            lessonCardBg = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFEDE9FE))),
+            lessonCardBorder = Color(0xFF7C3AED).copy(alpha = 0.65f),
+            lessonSubjectText = Color(0xFF2E1065),
+            lessonTeacherText = Color(0xFF6D28D9),
             prepCardBg = Brush.verticalGradient(listOf(Color(0xFFFEF3C7), Color(0xFFFDE68A))),
             prepCardBorder = Color(0xFFF59E0B),
             prepSubjectText = Color(0xFF78350F)
@@ -989,13 +1039,20 @@ fun StudentTimetableScreen(
                                             val slot = daySlots[i]
                                             val subj = slot?.subject ?: ""
                                             val prep = findPrepForSubject(subj)
-                                            val directive = findDirectiveForSubject(subj)
                                             val isNextUpcoming = prep != null && prep.isCompleted == false && isNextUpcomingSlotForSubject(dayName, i, subj)
-                                            val hasPrep = isNextUpcoming || directive != null
+                                            val hasPrep = isNextUpcoming
                                             val isVacant = subj.isBlank() || subj == "شاغر"
 
-                                            val cardBrush = if (hasPrep) activeTheme.prepCardBg else activeTheme.lessonCardBg
-                                            val cardBorderColor = if (hasPrep) activeTheme.prepCardBorder else activeTheme.lessonCardBorder
+                                            val cardBrush = when {
+                                                hasPrep -> activeTheme.prepCardBg
+                                                isVacant -> Brush.verticalGradient(listOf(activeTheme.gridFloorBg.copy(alpha = 0.5f), activeTheme.gridFloorBg.copy(alpha = 0.8f)))
+                                                else -> activeTheme.lessonCardBg
+                                            }
+                                            val cardBorderColor = when {
+                                                hasPrep -> activeTheme.prepCardBorder
+                                                isVacant -> activeTheme.gridFloorBorder.copy(alpha = 0.35f)
+                                                else -> activeTheme.lessonCardBorder
+                                            }
                                             val subjectTextColor = if (hasPrep) activeTheme.prepSubjectText else activeTheme.lessonSubjectText
 
                                             Surface(
@@ -1223,13 +1280,20 @@ fun StudentTimetableScreen(
                                         val slot = daySlots[i]
                                         val subj = slot?.subject ?: ""
                                         val prep = findPrepForSubject(subj)
-                                        val directive = findDirectiveForSubject(subj)
                                         val isNextUpcoming = prep != null && prep.isCompleted == false && isNextUpcomingSlotForSubject(dayName, i, subj)
-                                        val hasPrep = isNextUpcoming || directive != null
+                                        val hasPrep = isNextUpcoming
                                         val isVacant = subj.isBlank() || subj == "شاغر"
 
-                                        val cardBrush = if (hasPrep) activeTheme.prepCardBg else activeTheme.lessonCardBg
-                                        val cardBorderColor = if (hasPrep) activeTheme.prepCardBorder else activeTheme.lessonCardBorder
+                                        val cardBrush = when {
+                                            hasPrep -> activeTheme.prepCardBg
+                                            isVacant -> Brush.verticalGradient(listOf(activeTheme.gridFloorBg.copy(alpha = 0.5f), activeTheme.gridFloorBg.copy(alpha = 0.8f)))
+                                            else -> activeTheme.lessonCardBg
+                                        }
+                                        val cardBorderColor = when {
+                                            hasPrep -> activeTheme.prepCardBorder
+                                            isVacant -> activeTheme.gridFloorBorder.copy(alpha = 0.35f)
+                                            else -> activeTheme.lessonCardBorder
+                                        }
                                         val subjectTextColor = if (hasPrep) activeTheme.prepSubjectText else activeTheme.lessonSubjectText
 
                                         Surface(
@@ -1292,33 +1356,33 @@ fun StudentTimetableScreen(
                             }
                         }
                     }
-
-                    Spacer(Modifier.height(10.dp))
-
-                    // ----------------------------------------------------
-                    // DIRECTIVES & INSTRUCTIONS EXPANDABLE 3D BAR UNDER TIMETABLE
-                    // ----------------------------------------------------
-                    StudentDirectivesCardUnderTimetable(
-                        directives = directives,
-                        isRefreshing = isRefreshingSchedule || isRefreshing,
-                        onRefresh = {
-                            isRefreshingSchedule = true
-                            viewModel.refreshData()
-                            viewModel.syncScheduleManual {
-                                isRefreshingSchedule = false
-                                Toast.makeText(context, "تم تحديث التوجيهات والجدول ⚡", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        activeTheme = activeTheme,
-                        studentGrade = studentGrade,
-                        studentSection = studentSection,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp)
-                    )
-
-                    Spacer(Modifier.height(24.dp))
                 }
+
+                Spacer(Modifier.height(10.dp))
+
+                // ----------------------------------------------------
+                // DIRECTIVES & INSTRUCTIONS EXPANDABLE 3D BAR UNDER TIMETABLE
+                // ----------------------------------------------------
+                StudentDirectivesCardUnderTimetable(
+                    directives = directives,
+                    isRefreshing = isRefreshingSchedule || isRefreshing,
+                    onRefresh = {
+                        isRefreshingSchedule = true
+                        viewModel.refreshData()
+                        viewModel.syncScheduleManual {
+                            isRefreshingSchedule = false
+                            Toast.makeText(context, "تم تحديث التوجيهات والجدول ⚡", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    activeTheme = activeTheme,
+                    studentGrade = studentGrade,
+                    studentSection = studentSection,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                )
+
+                Spacer(Modifier.height(24.dp))
             }
         }
 
@@ -1658,26 +1722,6 @@ fun StudentTimetableScreen(
                                                 Text("سجل ممتاز! لا توجد غيابات مسجلة لهذه المادة ✓", color = Color(0xFF166534), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
-                                    }
-                                }
-                            }
-
-                            if (directive != null) {
-                                Card(
-                                    shape = RoundedCornerShape(20.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
-                                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Campaign, contentDescription = null, tint = Color(0xFF1E40AF), modifier = Modifier.size(22.dp))
-                                            Spacer(Modifier.width(8.dp))
-                                            Text("توجيهات وتعليمات المدرسة 📢", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color(0xFF1E40AF))
-                                        }
-                                        Text(directive.title, fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1E3A8A))
-                                        Text(directive.content, fontSize = 12.5.sp, color = Color(0xFF172554), lineHeight = 18.sp)
                                     }
                                 }
                             }
@@ -2241,6 +2285,16 @@ fun StudentDirectivesCardUnderTimetable(
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     var isExpanded by remember { mutableStateOf(false) }
+
+    // Auto-expand automatically when directives arrive or update
+    val directivesFingerprint = remember(directives) {
+        directives.map { it.id }.sorted().joinToString(",")
+    }
+    LaunchedEffect(directivesFingerprint) {
+        if (directives.isNotEmpty()) {
+            isExpanded = true
+        }
+    }
 
     Surface(
         shape = RoundedCornerShape(14.dp),
