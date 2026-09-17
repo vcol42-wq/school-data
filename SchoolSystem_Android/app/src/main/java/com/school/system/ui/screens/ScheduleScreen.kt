@@ -246,14 +246,19 @@ fun ScheduleScreen(
                         color = currentTheme.primaryColor,
                         shadowElevation = 2.dp
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(if (isLandscape) 34.dp else 46.dp)
-                                .padding(horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .statusBarsPadding()
                         ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(if (isLandscape) 34.dp else 46.dp)
+                                    .padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 IconButton(
                                     onClick = onBack,
@@ -310,6 +315,7 @@ fun ScheduleScreen(
                         }
                     }
                 }
+            }
 
                 // Day Selector Bar (الأحد -> الخميس) - Fixed/Pinned at Top Edge
                 Surface(

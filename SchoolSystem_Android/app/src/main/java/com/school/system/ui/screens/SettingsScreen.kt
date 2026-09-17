@@ -615,8 +615,8 @@ fun SettingsScreen(
                             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(22.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "تفعيل الربط السحابي ومسح الباركود 📷", 
-                                fontWeight = FontWeight.Black, 
+                                text = "تفعيل الربط السحابي ومسح الباركود 📷",
+                                fontWeight = FontWeight.Black,
                                 fontSize = 13.5.sp
                             )
                         }

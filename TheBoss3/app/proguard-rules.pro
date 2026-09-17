@@ -6,8 +6,8 @@
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
--keep class com.example.theboss.data.remote.** { *; }
--keep class com.example.theboss.data.local.** { *; }
+-keep class com.example.theboss.data.** { *; }
+-keepclassmembers class com.example.theboss.data.** { *; }
 
 # Retrofit & OkHttp
 -keepattributes Signature, InnerClasses, EnclosingMethod

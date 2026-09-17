@@ -346,13 +346,17 @@ fun GradeRegisterScreen(
     Scaffold(
         containerColor = currentTheme.backgroundColor,
         topBar = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Tier 1: Geometric Action Controls Bar
-                Surface(
-                    color = currentTheme.surfaceColor,
-                    shadowElevation = 1.dp,
-                    border = androidx.compose.foundation.BorderStroke(0.5.dp, currentTheme.tableBorderColor)
+            Surface(
+                color = currentTheme.surfaceColor,
+                shadowElevation = 1.dp,
+                border = androidx.compose.foundation.BorderStroke(0.5.dp, currentTheme.tableBorderColor)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
                 ) {
+                    // Tier 1: Geometric Action Controls Bar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -523,9 +527,8 @@ fun GradeRegisterScreen(
                             }
                         }
                     }
-                }
 
-                // Tier 2: Dedicated Slim Title Ribbon
+                    // Tier 2: Dedicated Slim Title Ribbon
                 Surface(
                     modifier = Modifier.fillMaxWidth().height(if (isLandscape) 26.dp else 32.dp),
                     color = Color.Transparent
@@ -584,7 +587,8 @@ fun GradeRegisterScreen(
                 }
             }
         }
-    ) { padding ->
+    }
+) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)

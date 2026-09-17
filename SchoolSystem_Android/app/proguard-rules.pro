@@ -1,11 +1,18 @@
 # Proguard & R8 Production Rules for Release Build
 
-# 1. Project Models & Entities
+# 1. Project Models, DTOs & Data Layer
+-keep class com.school.system.data.** { *; }
+-keepclassmembers class com.school.system.data.** { *; }
 -keep class com.school.system.data.model.** { *; }
+-keepclassmembers class com.school.system.data.model.** { *; }
+-keep class com.school.system.data.models.** { *; }
+-keepclassmembers class com.school.system.data.models.** { *; }
 -keep class com.school.system.data.network.** { *; }
+-keepclassmembers class com.school.system.data.network.** { *; }
 -keep class com.school.system.data.dao.** { *; }
+-keepclassmembers class com.school.system.data.dao.** { *; }
 -keep class com.school.system.data.repository.** { *; }
--keep class com.school.system.data.SchoolClassSubjectItem { *; }
+-keepclassmembers class com.school.system.data.repository.** { *; }
 
 # 2. Gson Serialization
 -keepattributes Signature
