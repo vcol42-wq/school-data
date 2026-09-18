@@ -10,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,12 +22,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -58,6 +64,11 @@ fun DashboardScreen(
     var packageToDelete by remember { mutableStateOf<ClassPackage?>(null) }
     var packageToSetup by remember { mutableStateOf<ClassPackage?>(null) }
     var packageToEdit by remember { mutableStateOf<ClassPackage?>(null) }
+
+    var showExcelImportDialog by remember { mutableStateOf(false) }
+    var showSchoolPairingQrDialog by remember { mutableStateOf(false) }
+    var schoolPairingData by remember { mutableStateOf<com.school.system.data.SchoolPairingQrData?>(null) }
+    var isGeneratingPairingQr by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
@@ -365,6 +376,19 @@ fun DashboardScreen(
                         viewModel.syncAllSchoolClasses { success, msg ->
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
+                    },
+                    onOpenExcelImport = { showExcelImportDialog = true },
+                    onOpenPairingQr = {
+                        showSchoolPairingQrDialog = true
+                        isGeneratingPairingQr = true
+                        viewModel.fetchSchoolPairingQr(forceNew = false) { success, msg, data ->
+                            isGeneratingPairingQr = false
+                            if (success && data != null) {
+                                schoolPairingData = data
+                            } else {
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 )
                 Spacer(Modifier.height(6.dp))
@@ -639,6 +663,37 @@ fun DashboardScreen(
                 onDeleteDirective = { directiveId ->
                     viewModel.deleteSupervisorDirective(directiveId) { success, msg ->
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
+
+        // Dialog 8: استيراد قوائم الطلاب الذكي من ملف إكسل
+        if (showExcelImportDialog) {
+            ExcelImportDialog(
+                onDismiss = { showExcelImportDialog = false },
+                onUploadClasses = { classes, onProgress, onResult ->
+                    viewModel.uploadImportedExcelClasses(classes, onProgress, onResult)
+                }
+            )
+        }
+
+        // Dialog 9: رمز اقتران المدرسة والمدرسين السحابي (QR Code)
+        if (showSchoolPairingQrDialog) {
+            SchoolPairingQrDialog(
+                data = schoolPairingData,
+                isLoading = isGeneratingPairingQr,
+                onDismiss = { showSchoolPairingQrDialog = false },
+                onGenerateNewCode = {
+                    isGeneratingPairingQr = true
+                    viewModel.fetchSchoolPairingQr(forceNew = true) { success, msg, data ->
+                        isGeneratingPairingQr = false
+                        if (success && data != null) {
+                            schoolPairingData = data
+                            Toast.makeText(context, "تم توليد رمز اقتران جديد للمدرسة 🔄", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             )
@@ -2058,6 +2113,8 @@ fun SupervisorHubCard(
     schoolName: String,
     onOpenDirectives: () -> Unit,
     onSyncAllClasses: () -> Unit,
+    onOpenExcelImport: () -> Unit,
+    onOpenPairingQr: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
@@ -2098,7 +2155,7 @@ fun SupervisorHubCard(
                     Spacer(Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "لوحة المشرف التربوي 🛡️ (قراءة فقط)",
+                            text = "لوحة إدارة ومتابعة المدرسة 🛡️ (صلاحيات المدير)",
                             fontWeight = FontWeight.Black,
                             fontSize = 12.5.sp,
                             color = textTitle
@@ -2133,14 +2190,47 @@ fun SupervisorHubCard(
             AnimatedVisibility(visible = !isMinimized) {
                 Column {
                     Spacer(Modifier.height(8.dp))
+                    // Row 1: استيراد الإكسل + رمز اقتران المدرسة
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Button 1: بث التوجيهات
                         Button(
+                            onClick = onOpenExcelImport,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("استيراد إكسل 📊", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = onOpenPairingQr,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                        ) {
+                            Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("اقتران الكادر 📱🔗", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+
+                    // Row 2: بث التوجيهات + سحب كافة الشعب
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
                             onClick = onOpenDirectives,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                            border = BorderStroke(1.2.dp, Color(0xFFD97706)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF92400E)),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
@@ -2150,11 +2240,10 @@ fun SupervisorHubCard(
                             Text("بث توجيهات 📢", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                         }
 
-                        // Button 2: مزامنة وسحب كافة الشعب
                         OutlinedButton(
                             onClick = onSyncAllClasses,
-                            border = BorderStroke(1.2.dp, Color(0xFFD97706)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF92400E)),
+                            border = BorderStroke(1.2.dp, Color(0xFF64748B)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF334155)),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
@@ -2168,6 +2257,181 @@ fun SupervisorHubCard(
             }
         }
     }
+}
+
+@Composable
+fun SchoolPairingQrDialog(
+    data: com.school.system.data.SchoolPairingQrData?,
+    isLoading: Boolean,
+    onDismiss: () -> Unit,
+    onGenerateNewCode: () -> Unit
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("إغلاق", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onGenerateNewCode,
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("توليد كود جديد 🔄", fontSize = 11.5.sp)
+            }
+        },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Color(0xFF4F46E5).copy(alpha = 0.15f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.QrCode,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "اقتران المدرسة والكادر 📱🔗",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "ربط هواتف الأساتذة والطلاب بالسحابة فورياً",
+                        fontSize = 10.5.sp,
+                        color = Color.Gray
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (isLoading) {
+                    Spacer(Modifier.height(20.dp))
+                    CircularProgressIndicator(color = Color(0xFF4F46E5), modifier = Modifier.size(36.dp))
+                    Spacer(Modifier.height(14.dp))
+                    Text("جاري تحضير رمز الاقتران السحابي...", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(Modifier.height(20.dp))
+                } else if (data != null) {
+                    // School Tag
+                    Surface(
+                        color = Color(0xFFEEF2FF),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "مدرسة: ${data.schoolName}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF3730A3)
+                            )
+                            Text(
+                                text = "ID: ${data.schoolId}",
+                                fontSize = 10.sp,
+                                color = Color(0xFF6366F1)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // QR Code Image
+                    if (data.qrBitmap != null) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(2.dp, Color(0xFFE2E8F0)),
+                            shadowElevation = 6.dp,
+                            color = Color.White
+                        ) {
+                            Image(
+                                bitmap = data.qrBitmap.asImageBitmap(),
+                                contentDescription = "باركود اقتران المدرسة",
+                                modifier = Modifier
+                                    .size(190.dp)
+                                    .padding(8.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(14.dp))
+
+                    // 6-digit Code Box
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("رمز الاقتران المباشر (6 أرقام):", fontSize = 10.5.sp, color = Color.Gray)
+                                Text(
+                                    text = data.pairingCode,
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 4.sp,
+                                    color = Color(0xFF1E1B4B)
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    clipboardManager.setText(AnnotatedString(data.pairingCode))
+                                    Toast.makeText(context, "تم نسخ رمز الاقتران 📋", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = "نسخ الرمز",
+                                    tint = Color(0xFF4F46E5)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(
+                        text = "امسح هذا الرمز من كاميرا هاتف الأستاذ أو أدخل الرمز السداسي في شاشة الربط للاتصال المباشر بالمدرسة.",
+                        fontSize = 10.5.sp,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
+                    )
+                } else {
+                    Text("تعذر جلب رمز الاقتران. يرجى التأكد من اتصال الإنترنت.", color = Color.Red, fontSize = 12.sp)
+                }
+            }
+        }
+    )
 }
 
 @Composable

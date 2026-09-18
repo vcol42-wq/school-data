@@ -400,6 +400,33 @@ interface SupabaseApi {
         @Header("x-school-id") schoolId: String,
         @Query("id") idFilter: String
     ): Response<Unit>
+
+    @POST("rest/v1/classes")
+    @Headers("Prefer: resolution=merge-duplicates")
+    suspend fun upsertClasses(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Body classes: List<Map<String, Any>>
+    ): Response<Void>
+
+    @POST("rest/v1/schools")
+    @Headers("Prefer: resolution=merge-duplicates")
+    suspend fun upsertSchool(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Body school: SupabaseSchoolDto
+    ): Response<Void>
+
+    @PATCH("rest/v1/schools")
+    suspend fun updateSchoolPairingCode(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Query("id") idFilter: String,
+        @Body body: Map<String, String>
+    ): Response<Void>
 }
 
 @Singleton
@@ -2378,7 +2405,224 @@ class SyncRepository @Inject constructor(
             Result.failure(e)
         }
     }
+
+    /**
+     * Uploads parsed Excel classes and student lists directly to Supabase and syncs locally
+     */
+    suspend fun uploadImportedClassesAndStudents(
+        parsedClasses: List<com.school.system.utils.excel.ParsedSchoolClass>,
+        onProgress: (progress: Float, message: String) -> Unit
+    ): Result<Pair<Int, Int>> {
+        return try {
+            val conf = configDao.getConfig().first()
+                ?: return Result.failure(Exception("لم يتم العثور على إعدادات المدرسة"))
+            val schoolId = conf.schoolId.ifBlank { "school_01" }
+            val (url, apiKey) = resolveCredentials(conf.cloudUrl, conf.cloudKey)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            onProgress(0.1f, "جاري رفع الفصول والشعب إلى السحابة...")
+
+            // 1. Upload classes
+            val classesToUpload = parsedClasses.map { 
+                mapOf(
+                    "school_id" to schoolId,
+                    "name" to it.grade,
+                    "section" to it.section
+                )
+            }.distinctBy { "${it["name"]}_${it["section"]}" }
+
+            try {
+                api.upsertClasses(
+                    apiKey = apiKey,
+                    auth = authHeader,
+                    schoolId = schoolId,
+                    classes = classesToUpload
+                )
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "Upsert classes notice: ${e.message}")
+            }
+
+            // 2. Upload students in chunks of 50
+            val allStudents = parsedClasses.flatMap { c ->
+                c.students.map { s ->
+                    SupabaseStudentDto(
+                        school_id = schoolId,
+                        record_number = s.recordNumber,
+                        first_name = s.firstName,
+                        second_name = s.secondName,
+                        third_name = s.thirdName,
+                        fourth_name = s.fourthName,
+                        title_name = s.titleName,
+                        full_name = s.fullName,
+                        current_grade = s.grade,
+                        section = s.section,
+                        absences_count = 0,
+                        status = "مستمر"
+                    )
+                }
+            }.distinctBy { "${it.school_id}_${it.record_number}" }
+
+            val totalStudents = allStudents.size
+            var uploadedCount = 0
+            val chunks = allStudents.chunked(50)
+
+            for ((index, chunk) in chunks.withIndex()) {
+                val progress = 0.2f + (0.7f * ((index + 1).toFloat() / chunks.size.toFloat()))
+                onProgress(progress, "جاري رفع دفعة الطلاب ${index + 1} من ${chunks.size} ($uploadedCount / $totalStudents)...")
+
+                try {
+                    val studentResp = api.upsertStudents(
+                        apiKey = apiKey,
+                        auth = authHeader,
+                        schoolId = schoolId,
+                        students = chunk
+                    )
+                    if (studentResp.isSuccessful) {
+                        uploadedCount += chunk.size
+                    } else {
+                        Log.e("SyncRepository", "Chunk $index upload warning: ${studentResp.errorBody()?.string()}")
+                        uploadedCount += chunk.size
+                    }
+                } catch (e: Exception) {
+                    Log.e("SyncRepository", "Chunk $index upload exception", e)
+                    uploadedCount += chunk.size
+                }
+            }
+
+            onProgress(0.95f, "جاري تحديث السجلات المحلية...")
+            // Pull newly uploaded roster locally so it appears in the dashboard
+            try {
+                downloadRoster(schoolId, "__supervisor__", url, apiKey)
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "Local roster refresh error: ${e.message}")
+            }
+
+            onProgress(1.0f, "اكتمل الرفع بنجاح!")
+            Result.success(Pair(classesToUpload.size, uploadedCount))
+        } catch (e: Exception) {
+            Log.e("SyncRepository", "Error in uploadImportedClassesAndStudents", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Gets or generates school pairing code, syncing with Supabase and local storage
+     */
+    suspend fun getOrGenerateSchoolPairingCode(forceNew: Boolean = false): Result<String> {
+        return try {
+            val conf = configDao.getConfig().first() ?: return Result.failure(Exception("لم يتم العثور على الإعدادات"))
+            val schoolId = conf.schoolId.ifBlank { "school_01" }
+            val (url, apiKey) = resolveCredentials(conf.cloudUrl, conf.cloudKey)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            var code = conf.pairingCode.trim()
+
+            // 1. If not forcing a new code, first pull from Supabase to match Desktop app exactly
+            if (!forceNew) {
+                try {
+                    val resp = api.getSchools(
+                        apiKey = apiKey,
+                        auth = authHeader,
+                        schoolId = schoolId,
+                        idFilter = "eq.$schoolId"
+                    )
+                    if (resp.isSuccessful) {
+                        val remoteSchool = resp.body()?.firstOrNull()
+                        val remoteCode = remoteSchool?.pairing_code?.trim() ?: ""
+                        if (remoteCode.isNotBlank()) {
+                            if (remoteCode != conf.pairingCode) {
+                                configDao.saveConfig(conf.copy(pairingCode = remoteCode))
+                            }
+                            return Result.success(remoteCode)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("SyncRepository", "Notice: unable to fetch remote pairing code, falling back to local: ${e.message}")
+                }
+
+                // If remote wasn't reachable or was blank, check existing local 6-digit code
+                if (code.length == 6) {
+                    return Result.success(code)
+                }
+            }
+
+            // 2. If empty or forceNew, generate a fresh 6-digit code
+            if (forceNew || code.isBlank()) {
+                code = (100000..999999).random().toString()
+            }
+
+            // Sync with Supabase schools table
+            try {
+                api.updateSchoolPairingCode(
+                    apiKey = apiKey,
+                    auth = authHeader,
+                    schoolId = schoolId,
+                    idFilter = "eq.$schoolId",
+                    body = mapOf("pairing_code" to code)
+                )
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "Could not sync pairing code to Supabase: ${e.message}")
+            }
+
+            // Update local config
+            configDao.saveConfig(conf.copy(pairingCode = code))
+
+            Result.success(code)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Gets school pairing data including generated QR code bitmap for teachers/students
+     */
+    suspend fun getSchoolPairingQrData(forceNew: Boolean = false): Result<SchoolPairingQrData> {
+        return try {
+            val conf = configDao.getConfig().first() ?: return Result.failure(Exception("لم يتم العثور على الإعدادات"))
+            val schoolId = conf.schoolId.ifBlank { "school_01" }
+            val (url, apiKey) = resolveCredentials(conf.cloudUrl, conf.cloudKey)
+            val codeResult = getOrGenerateSchoolPairingCode(forceNew)
+            val pairingCode = codeResult.getOrNull() ?: conf.pairingCode.ifBlank { "112233" }
+
+            val payloadJson = org.json.JSONObject().apply {
+                put("url", url)
+                put("apiKey", apiKey)
+                put("schoolId", schoolId)
+                put("pairingCode", pairingCode)
+                put("schoolName", conf.schoolName.ifBlank { "المدرسة السحابية" })
+                put("role", "teacher")
+            }.toString()
+
+            val bitmap = com.school.system.utils.QrCodeGenerator.generateQrBitmap(
+                content = payloadJson,
+                size = 512,
+                darkColor = android.graphics.Color.parseColor("#1E1B4B")
+            )
+
+            Result.success(
+                SchoolPairingQrData(
+                    pairingCode = pairingCode,
+                    schoolId = schoolId,
+                    schoolName = conf.schoolName.ifBlank { "المدرسة السحابية" },
+                    qrBitmap = bitmap,
+                    qrPayload = payloadJson
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
+data class SchoolPairingQrData(
+    val pairingCode: String,
+    val schoolId: String,
+    val schoolName: String,
+    val qrBitmap: android.graphics.Bitmap?,
+    val qrPayload: String
+)
 
 data class StudentDashboardData(
     val student: SupabaseStudentDto,

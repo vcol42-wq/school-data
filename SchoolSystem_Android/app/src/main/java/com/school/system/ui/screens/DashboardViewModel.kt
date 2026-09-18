@@ -196,4 +196,37 @@ class DashboardViewModel @Inject constructor(
             }
         }
     }
+
+    fun uploadImportedExcelClasses(
+        parsedClasses: List<com.school.system.utils.excel.ParsedSchoolClass>,
+        onProgress: (progress: Float, message: String) -> Unit,
+        onResult: (Boolean, String, Pair<Int, Int>?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = syncRepository.uploadImportedClassesAndStudents(parsedClasses, onProgress)
+            if (result.isSuccess) {
+                val counts = result.getOrNull()
+                val classCount = counts?.first ?: 0
+                val studentCount = counts?.second ?: 0
+                onResult(true, "تم رفع $classCount صف/شعبة و $studentCount طالب بنجاح! 🚀", counts)
+            } else {
+                onResult(false, result.exceptionOrNull()?.message ?: "فشل الرفع إلى السحابة", null)
+            }
+        }
+    }
+
+    fun fetchSchoolPairingQr(
+        forceNew: Boolean = false,
+        onResult: (Boolean, String, com.school.system.data.SchoolPairingQrData?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = syncRepository.getSchoolPairingQrData(forceNew)
+            if (result.isSuccess) {
+                onResult(true, "تم تجهيز رمز الاقتران السحابي", result.getOrNull())
+            } else {
+                onResult(false, result.exceptionOrNull()?.message ?: "تعذر جلب رمز الاقتران", null)
+            }
+        }
+    }
 }
+
