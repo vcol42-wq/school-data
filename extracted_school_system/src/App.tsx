@@ -179,22 +179,25 @@ export default function App() {
   useEffect(() => {
     const targetSchoolId = config.schoolId || `SCH-${Math.floor(1000 + Math.random() * 9000)}`;
     const targetPairingCode = config.pairingCode || Math.floor(100000 + Math.random() * 900000).toString();
+    const targetStudentPairingCode = config.studentPairingCode || Math.floor(100000 + Math.random() * 900000).toString();
     const targetSchoolName = config.schoolName || 'مدرستي النموذجية';
     const targetAdminEmail = config.adminEmail || '';
 
     localStorage.setItem('diyala_school_id', targetSchoolId);
     localStorage.setItem('diyala_pairing_code', targetPairingCode);
+    localStorage.setItem('diyala_student_pairing_code', targetStudentPairingCode);
 
-    if (!config.schoolId || !config.pairingCode || !config.schoolName) {
+    if (!config.schoolId || !config.pairingCode || !config.studentPairingCode || !config.schoolName) {
       setConfig(prev => ({
         ...prev,
         schoolId: targetSchoolId,
         pairingCode: targetPairingCode,
+        studentPairingCode: targetStudentPairingCode,
         schoolName: targetSchoolName,
         adminEmail: targetAdminEmail
       }));
     }
-  }, [config.schoolName, config.schoolId, config.pairingCode]);
+  }, [config.schoolName, config.schoolId, config.pairingCode, config.studentPairingCode]);
 
   // Automatic Background Cloud Sync for School, Students, Staff, and Classes
   useEffect(() => {

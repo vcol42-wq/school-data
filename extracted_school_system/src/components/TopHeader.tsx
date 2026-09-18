@@ -64,6 +64,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [pairingTab, setPairingTab] = useState<'teacher' | 'student' | 'principal'>('teacher');
   const [now, setNow] = useState<Date>(new Date());
   const [activeLessonInfo, setActiveLessonInfo] = useState<{
     lessonName: string;
@@ -315,19 +316,65 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </div>
 
             <h3 className="text-xl font-black text-slate-900 mb-1">الربط السريع للتطبيقات</h3>
-            <p className="text-xs text-slate-500 mb-6 text-center font-bold">
-              افتح تطبيق المعلم، الطالب، أو المدير وامسح هذا الباركود أو ادخل الرمز البسيط:
+            <p className="text-xs text-slate-500 mb-4 text-center font-bold">
+              اختر نوع الحساب لعرض الباركود والكود المخصص له:
             </p>
 
+            {/* Triple Tabs for Teacher, Student, and Principal */}
+            <div className="flex w-full bg-slate-100 p-1.5 rounded-2xl mb-4 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPairingTab('teacher')}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  pairingTab === 'teacher'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>👨‍🏫 الأساتذة</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPairingTab('student')}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  pairingTab === 'student'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>🎓 الطلاب</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPairingTab('principal')}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  pairingTab === 'principal'
+                    ? 'bg-amber-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>👑 المدير</span>
+              </button>
+            </div>
+
             {/* Giant QR Code */}
-            <div className="bg-white p-4 rounded-3xl shadow-xl border-4 border-amber-400 mb-6">
+            <div className={`bg-white p-4 rounded-3xl shadow-xl border-4 mb-5 ${
+              pairingTab === 'teacher' ? 'border-indigo-400' : pairingTab === 'student' ? 'border-emerald-400' : 'border-amber-400'
+            }`}>
               <QrCodeSvg
                 value={JSON.stringify({
                   url: getSupabaseUrl(),
                   apiKey: getSupabaseKey(),
                   schoolId: config.schoolId || 'SCH-MAIN-001',
-                  pairingCode: config.pairingCode || '112233',
-                  schoolName: config.schoolName || 'المدرسة النموذجية'
+                  pairingCode: pairingTab === 'teacher' 
+                    ? (config.pairingCode || '112233') 
+                    : pairingTab === 'student' 
+                      ? (config.studentPairingCode || '223344') 
+                      : (config.principalPairingCode || '334455'),
+                  studentPairingCode: config.studentPairingCode || '223344',
+                  principalPairingCode: config.principalPairingCode || '334455',
+                  schoolName: config.schoolName || 'المدرسة النموذجية',
+                  role: pairingTab
                 })}
                 size={180}
               />
@@ -336,24 +383,63 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             {/* 6-Digit Simple Pairing Code */}
             <div className="w-full bg-slate-50 border-2 border-dashed border-indigo-300 rounded-2xl p-4 flex items-center justify-between mb-4">
               <div>
-                <span className="text-[10px] font-black text-slate-400 block uppercase">الرمز السري الموحد للمدرسة:</span>
-                <span className="text-3xl font-black text-indigo-700 tracking-widest">{config.pairingCode || '112233'}</span>
+                <span className="text-[10px] font-black text-slate-400 block uppercase">
+                  {pairingTab === 'teacher' 
+                    ? 'كود ربط الأساتذة والمشرفين:' 
+                    : pairingTab === 'student' 
+                      ? 'كود ربط الطلاب وأولياء الأمور:' 
+                      : 'كود ربط وبوابة المدير / الإدارة:'}
+                </span>
+                <span className={`text-3xl font-black tracking-widest ${
+                  pairingTab === 'teacher' 
+                    ? 'text-indigo-700' 
+                    : pairingTab === 'student' 
+                      ? 'text-emerald-700' 
+                      : 'text-amber-700'
+                }`}>
+                  {pairingTab === 'teacher' 
+                    ? (config.pairingCode || '112233') 
+                    : pairingTab === 'student' 
+                      ? (config.studentPairingCode || '223344') 
+                      : (config.principalPairingCode || '334455')}
+                </span>
               </div>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(config.pairingCode || '112233');
+                  const targetCode = pairingTab === 'teacher' 
+                    ? (config.pairingCode || '112233') 
+                    : pairingTab === 'student' 
+                      ? (config.studentPairingCode || '223344') 
+                      : (config.principalPairingCode || '334455');
+                  navigator.clipboard.writeText(targetCode);
                   setCopiedCode(true);
                   setTimeout(() => setCopiedCode(false), 2000);
                 }}
-                className="p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md"
+                className={`p-2.5 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md ${
+                  pairingTab === 'teacher' 
+                    ? 'bg-indigo-600 hover:bg-indigo-700' 
+                    : pairingTab === 'student' 
+                      ? 'bg-emerald-600 hover:bg-emerald-700' 
+                      : 'bg-amber-600 hover:bg-amber-700'
+                }`}
               >
                 {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 <span>{copiedCode ? 'تم النسخ' : 'نسخ الرمز'}</span>
               </button>
             </div>
 
-            <p className="text-[11px] text-emerald-700 font-bold bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 text-center w-full mb-4">
-              ⚡ تم تفعيل الاتصال الفوري المباشر مع سحابة المدرسة لجميع الهواتف!
+            <p className={`text-[11px] font-bold px-4 py-2 rounded-xl border text-center w-full mb-4 ${
+              pairingTab === 'teacher' 
+                ? 'text-indigo-700 bg-indigo-50 border-indigo-200' 
+                : pairingTab === 'student' 
+                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200' 
+                  : 'text-amber-800 bg-amber-50 border-amber-200'
+            }`}>
+              {pairingTab === 'teacher'
+                ? '⚡ كود وبوابة الأساتذة: يربط سجل الدرجات التفاعلي وجداول الحصص والغيابات!'
+                : pairingTab === 'student'
+                  ? '🎓 كود وبوابة الطلاب: يربط جدول الدروس والواجبات اليومية ونتائج الامتحانات!'
+                  : '👑 كود وبوابة المدير: يمنح الإدارة التحكم الكامل والمصادقة الإدارية الحية!'}
             </p>
 
             {/* Clear Close / Back Button */}

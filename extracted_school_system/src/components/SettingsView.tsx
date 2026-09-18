@@ -20,7 +20,7 @@ import {
   CalendarPlus,
   CloudLightning
 } from 'lucide-react';
-import { refreshSupabaseClient } from '../utils/supabaseClient';
+import { refreshSupabaseClient, getSupabase } from '../utils/supabaseClient';
 import { purgeSchoolDataFromCloud } from '../utils/syncService';
 
 interface SettingsViewProps {
@@ -248,11 +248,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const email = formConfig.adminEmail || localStorage.getItem('diyala_admin_email') || 'principal@edu.iq';
       const generatedId = "SCH-" + email.split('@')[0].toUpperCase().slice(0, 4) + "-" + Math.floor(1000 + Math.random() * 9000);
       const generatedPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const generatedStudentPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const generatedPrincipalPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
 
       const newConfig = {
         ...formConfig,
         schoolId: generatedId,
-        pairingCode: generatedPairingCode
+        pairingCode: generatedPairingCode,
+        studentPairingCode: generatedStudentPairingCode,
+        principalPairingCode: generatedPrincipalPairingCode
       };
 
       setConfig(newConfig);
@@ -260,14 +264,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       // Update localStorage for immediate use by other components that might read it directly
       localStorage.setItem('diyala_school_id', generatedId);
       localStorage.setItem('diyala_school_pairing_code', generatedPairingCode);
+      localStorage.setItem('diyala_pairing_code', generatedPairingCode);
+      localStorage.setItem('diyala_student_pairing_code', generatedStudentPairingCode);
+      localStorage.setItem('diyala_principal_pairing_code', generatedPrincipalPairingCode);
       localStorage.setItem('diyala_school_name', formConfig.schoolName);
 
       // Refresh sync client with new school ID
       refreshSupabaseClient();
 
-      alert('✅ تم تغيير المدرسة بنجاح! تم تصفير كافة البيانات وتوليد رمز اقتران جديد للربط بين التطبيقات.');
+      alert('✅ تم تغيير المدرسة بنجاح! تم تصفير كافة البيانات وتوليد رموز اقتران ثلاثية جديدة (للمدرس، الطالب، والمدير).');
     } else {
       setConfig({ ...formConfig });
+      localStorage.setItem('diyala_pairing_code', formConfig.pairingCode || '112233');
+      localStorage.setItem('diyala_student_pairing_code', formConfig.studentPairingCode || '223344');
+      localStorage.setItem('diyala_principal_pairing_code', formConfig.principalPairingCode || '334455');
       try {
         const schoolId = formConfig.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
         const client = getSupabase(schoolId);
@@ -279,11 +289,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           config: {
             schoolStartHour: formConfig.schoolStartHour || '08:00',
             lessonDurationMinutes: Number(formConfig.lessonDurationMinutes) || 45,
-            breakDurationMinutes: Number(formConfig.breakDurationMinutes) || 10
+            breakDurationMinutes: Number(formConfig.breakDurationMinutes) || 10,
+            studentPairingCode: formConfig.studentPairingCode || '223344',
+            principalPairingCode: formConfig.principalPairingCode || '334455'
           }
         }, { onConflict: 'id' }).then(() => {});
       } catch (_) {}
-      alert('تم حفظ كافة إعدادات النظام وتحديث التوقيتات وبيانات المدير والمدرسة بنجاح!');
+      alert('تم حفظ كافة إعدادات النظام وتحديث التوقيتات وأكواد الاقتران الثلاثية بنجاح!');
     }
   };
 
@@ -414,6 +426,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={e => setFormConfig(p => ({ ...p, sectionName: e.target.value }))}
                 className="w-full p-2.5 rounded-xl border bg-white text-slate-900 font-bold"
               />
+            </div>
+
+            {/* 3-Role Pairing Codes Section */}
+            <div className="col-span-full pt-4 mt-2 border-t border-slate-200 dark:border-slate-800">
+              <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-1.5">
+                <span>🔐 أكواد الاقتران والربط السحابي الثلاثية (للتطبيق الموحد)</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Teacher Code */}
+                <div className="p-3 bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200 rounded-xl space-y-1.5">
+                  <span className="block text-[11px] font-black text-indigo-700 dark:text-indigo-300">
+                    👨‍🏫 كود المدرس والمشرف:
+                  </span>
+                  <input
+                    type="text"
+                    value={formConfig.pairingCode || '112233'}
+                    onChange={e => setFormConfig(p => ({ ...p, pairingCode: e.target.value }))}
+                    className="w-full p-2 rounded-lg border bg-white text-center font-mono font-black text-sm text-indigo-700 tracking-widest"
+                  />
+                </div>
+
+                {/* Student Code */}
+                <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 rounded-xl space-y-1.5">
+                  <span className="block text-[11px] font-black text-emerald-700 dark:text-emerald-300">
+                    🎓 كود الطالب وولي الأمر:
+                  </span>
+                  <input
+                    type="text"
+                    value={formConfig.studentPairingCode || '223344'}
+                    onChange={e => setFormConfig(p => ({ ...p, studentPairingCode: e.target.value }))}
+                    className="w-full p-2 rounded-lg border bg-white text-center font-mono font-black text-sm text-emerald-700 tracking-widest"
+                  />
+                </div>
+
+                {/* Principal Code */}
+                <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 rounded-xl space-y-1.5">
+                  <span className="block text-[11px] font-black text-amber-800 dark:text-amber-300">
+                    👑 كود وبوابة المدير:
+                  </span>
+                  <input
+                    type="text"
+                    value={formConfig.principalPairingCode || '334455'}
+                    onChange={e => setFormConfig(p => ({ ...p, principalPairingCode: e.target.value }))}
+                    className="w-full p-2 rounded-lg border bg-white text-center font-mono font-black text-sm text-amber-700 tracking-widest"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

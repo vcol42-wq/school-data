@@ -59,8 +59,13 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
 }) => {
   const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
   const schoolName = config.schoolName || 'المدرسة النموذجية';
-  const pairingCode = config.pairingCode || '112233';
+  const pairingCode = config.pairingCode || localStorage.getItem('diyala_pairing_code') || '112233';
+  const studentPairingCode = config.studentPairingCode || localStorage.getItem('diyala_student_pairing_code') || '223344';
+  const principalPairingCode = config.principalPairingCode || localStorage.getItem('diyala_principal_pairing_code') || '334455';
   const adminEmail = config.adminEmail || '';
+
+  // 3-Role QR selector state
+  const [activeQrRole, setActiveQrRole] = useState<'teacher' | 'student' | 'principal'>('teacher');
 
   // Sync Progress States
   const [isSyncing, setIsSyncing] = useState(false);
@@ -87,11 +92,15 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
 
-  // Initial Load & QR Generation
+  // Initial Load
   useEffect(() => {
     loadCloudStats();
-    generateSmartQr();
   }, [schoolId]);
+
+  // Regenerate QR whenever active role changes
+  useEffect(() => {
+    generateSmartQr(activeQrRole);
+  }, [activeQrRole, schoolId, pairingCode, studentPairingCode, principalPairingCode]);
 
   const loadCloudStats = async () => {
     setIsLoadingStats(true);
@@ -105,28 +114,41 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
     }
   };
 
-  const generateSmartQr = async () => {
+  const generateSmartQr = async (role: 'teacher' | 'student' | 'principal' = activeQrRole) => {
     const supabaseUrl = localStorage.getItem('diyala_supabase_url') || 'https://pexehlvkpdhmpukjydwd.supabase.co';
     const supabaseKey = localStorage.getItem('diyala_supabase_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleGVobHZrcGRobXB1a2p5ZHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Njk4NDUsImV4cCI6MjEwMjQ0NTg0NX0.YFDRTLJnB56uD-rGtknex_NhycexP57WHhhTRVas5EY';
+
+    const targetCode = role === 'teacher' ? pairingCode : role === 'student' ? studentPairingCode : principalPairingCode;
 
     const payload = JSON.stringify({
       url: supabaseUrl,
       apiKey: supabaseKey,
       schoolId: schoolId,
-      pairingCode: pairingCode,
-      schoolName: schoolName
+      pairingCode: targetCode,
+      studentPairingCode: studentPairingCode,
+      principalPairingCode: principalPairingCode,
+      schoolName: schoolName,
+      role: role
     });
 
     try {
+      const colorDark = role === 'teacher' ? '#312e81' : role === 'student' ? '#064e3b' : '#78350f';
       const url = await QRCode.toDataURL(payload, {
         width: 320,
         margin: 2,
-        color: { dark: '#1e1b4b', light: '#ffffff' }
+        color: { dark: colorDark, light: '#ffffff' }
       });
       setQrDataUrl(url);
     } catch (err) {
       console.error('QR error:', err);
     }
+  };
+
+  const copyCurrentCode = () => {
+    const codeToCopy = activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode;
+    navigator.clipboard.writeText(codeToCopy);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleStartExport = async () => {
@@ -531,44 +553,119 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
           )}
         </div>
 
-        {/* Right 1 Col: Smart QR Hub */}
-        <div className="bg-white p-6 rounded-3xl border-3 border-indigo-600 shadow-xl flex flex-col items-center text-center space-y-4">
+        {/* Right 1 Col: Smart QR Hub (Teacher / Student / Principal) */}
+        <div className="bg-white p-5 rounded-3xl border-3 border-indigo-600 shadow-xl flex flex-col items-center text-center space-y-3">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-black border border-indigo-100">
-            <QrCode className="w-4 h-4" />
-            <span>الباركود الذكي لربط التطبيقات</span>
+            <QrCode className="w-4 h-4 text-indigo-600" />
+            <span>باركود وأكواد الربط الثلاثي ⚡</span>
           </div>
 
-          <p className="text-xs text-slate-500 font-bold">
-            امسح الباركود من كاميرا هاتف المعلم أو الطالب للربط الفوري في ثانية واحدة
+          {/* 3-Role Switching Tabs */}
+          <div className="flex w-full bg-slate-100 p-1.5 rounded-2xl gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveQrRole('teacher')}
+              className={`flex-1 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                activeQrRole === 'teacher'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>👨‍🏫 الأستاذ</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveQrRole('student')}
+              className={`flex-1 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                activeQrRole === 'student'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🎓 الطالب</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveQrRole('principal')}
+              className={`flex-1 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                activeQrRole === 'principal'
+                  ? 'bg-amber-600 text-white shadow-md'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>👑 المدير</span>
+            </button>
+          </div>
+
+          <p className="text-[11px] text-slate-500 font-bold">
+            {activeQrRole === 'teacher' && 'امسح الباركود من تطبيق الأستاذ للربط اللحظي بسجل الدرجات والجدول'}
+            {activeQrRole === 'student' && 'امسح الباركود من تطبيق الطالب لعرض الجدول ونتائج الدرجات'}
+            {activeQrRole === 'principal' && 'امسح الباركود من تطبيق المدير للإدارة الشاملة والمصادقة الحية'}
           </p>
 
-          {/* QR Image Box */}
-          <div className="p-3 bg-white rounded-2xl border-2 border-indigo-200 shadow-lg relative group">
+          {/* QR Image Box with dynamic border color */}
+          <div className={`p-3 bg-white rounded-2xl border-3 shadow-lg relative group transition-all ${
+            activeQrRole === 'teacher' ? 'border-indigo-400' : activeQrRole === 'student' ? 'border-emerald-400' : 'border-amber-400'
+          }`}>
             {qrDataUrl ? (
-              <img src={qrDataUrl} alt="Smart QR" className="w-48 h-48 object-contain rounded-xl" />
+              <img src={qrDataUrl} alt={`QR Code ${activeQrRole}`} className="w-44 h-44 object-contain rounded-xl" />
             ) : (
-              <div className="w-48 h-48 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-xs font-bold">
+              <div className="w-44 h-44 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-xs font-bold">
                 جاري توليد الباركود...
               </div>
             )}
           </div>
 
           {/* Pairing Code Card */}
-          <div className="w-full bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
-            <div className="text-[11px] font-bold text-slate-500">رمز الاقتران السريع (6 أرقام):</div>
+          <div className="w-full bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1.5">
+            <div className="text-[11px] font-bold text-slate-500">
+              {activeQrRole === 'teacher' && 'كود اقتران الأستاذ (6 أرقام):'}
+              {activeQrRole === 'student' && 'كود اقتران الطالب (6 أرقام):'}
+              {activeQrRole === 'principal' && 'كود اقتران المدير (6 أرقام):'}
+            </div>
             <div className="flex items-center justify-center gap-2">
-              <span className="font-mono text-2xl font-black text-indigo-700 tracking-widest bg-white px-4 py-1 rounded-xl border shadow-xs">
-                {pairingCode}
+              <span className={`font-mono text-2xl font-black tracking-widest bg-white px-3 py-1 rounded-xl border shadow-xs ${
+                activeQrRole === 'teacher' ? 'text-indigo-700' : activeQrRole === 'student' ? 'text-emerald-700' : 'text-amber-700'
+              }`}>
+                {activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode}
               </span>
               <button
-                onClick={copyPairingCode}
-                className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition-all cursor-pointer"
+                type="button"
+                onClick={copyCurrentCode}
+                className={`p-2 rounded-xl text-white font-bold transition-all cursor-pointer shadow-md ${
+                  activeQrRole === 'teacher' ? 'bg-indigo-600 hover:bg-indigo-700' : activeQrRole === 'student' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
+                }`}
                 title="نسخ الرمز"
               >
-                <Copy className="w-4 h-4" />
+                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
             {copied && <span className="text-[10px] font-black text-emerald-600 block">تم نسخ الرمز! ✓</span>}
+          </div>
+
+          {/* Quick 3-Codes Summary Pill */}
+          <div className="w-full grid grid-cols-3 gap-1 pt-1 text-[10px] font-black">
+            <div 
+              onClick={() => setActiveQrRole('teacher')}
+              className={`p-1.5 rounded-lg border cursor-pointer transition-all ${activeQrRole === 'teacher' ? 'bg-indigo-50 border-indigo-300 text-indigo-800' : 'bg-slate-50 text-slate-600'}`}
+            >
+              <div>مدرس</div>
+              <div className="font-mono text-xs">{pairingCode}</div>
+            </div>
+            <div 
+              onClick={() => setActiveQrRole('student')}
+              className={`p-1.5 rounded-lg border cursor-pointer transition-all ${activeQrRole === 'student' ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-slate-50 text-slate-600'}`}
+            >
+              <div>طالب</div>
+              <div className="font-mono text-xs">{studentPairingCode}</div>
+            </div>
+            <div 
+              onClick={() => setActiveQrRole('principal')}
+              className={`p-1.5 rounded-lg border cursor-pointer transition-all ${activeQrRole === 'principal' ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-slate-50 text-slate-600'}`}
+            >
+              <div>مدير</div>
+              <div className="font-mono text-xs">{principalPairingCode}</div>
+            </div>
           </div>
 
           <div className="text-[11px] text-slate-400 font-medium">

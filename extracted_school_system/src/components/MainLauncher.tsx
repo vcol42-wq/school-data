@@ -26,7 +26,8 @@ import {
   CheckCircle2,
   Megaphone,
   Send,
-  Clock
+  Clock,
+  QrCode
 } from 'lucide-react';
 import { DirectivesModal } from './DirectivesModal';
 import { sendDirective } from '../utils/syncService';
@@ -242,11 +243,11 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
     // 12. مركز المزامنة والربط السحابي
     {
       id: 'sync_center' as ActiveView,
-      title: 'مركز المزامنة والربط السحابي',
-      subtitle: 'الباركود QR، حالة المدرسين، والتحديث اللحظي',
+      title: 'مركز المزامنة والربط السحابي (QR)',
+      subtitle: 'باركود وأكواد الربط الثلاثية: الأستاذ • الطالب • المدير',
       icon: Cloud,
       gradient: 'from-indigo-600 via-blue-700 to-indigo-950',
-      badge: 'QR سحابي ⚡',
+      badge: '3 باركود ⚡',
       badgeBg: 'bg-amber-400 text-slate-950 font-black ring-2 ring-amber-300'
     },
     // 13. توجيهات وتعليمات الإدارة
@@ -300,24 +301,19 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
             </button>
           )}
 
-          {/* Generated School Pairing Code Badge with 1-click Copy */}
-          <div 
-            onClick={() => {
-              const code = config?.pairingCode || '112233';
-              navigator.clipboard.writeText(code);
-              setCopiedCode(true);
-              setTimeout(() => setCopiedCode(false), 2000);
-            }}
-            title="نسخ رمز الاقتران دون عرضه على الشاشة"
-            className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 px-2.5 py-1 rounded-lg border border-amber-500 shadow-xs cursor-pointer hover:scale-102 transition-all"
+          {/* Generated School Pairing Codes Badge -> Direct Link to 3-Role Sync Center */}
+          <button 
+            type="button"
+            onClick={() => setActiveView('sync_center')}
+            title="عرض باركود وأكواد الربط الثلاثية (المدرس • الطالب • المدير)"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-amber-400 to-amber-300 text-slate-950 px-3 py-1.5 rounded-lg border border-amber-500 shadow-xs cursor-pointer hover:scale-102 transition-all font-black text-xs"
           >
-            <Cloud className="w-3.5 h-3.5 text-indigo-950" />
-            <span className="text-[10px] font-black text-slate-800">كود الاقتران:</span>
-            <span className="font-mono font-black text-xs tracking-wider text-indigo-950" aria-label="رمز الاقتران مخفي">••••••</span>
-            <span className="text-[9px] bg-slate-950 text-amber-300 px-1 py-0.2 rounded font-black">
-              {copiedCode ? '✓' : 'نسخ'}
+            <QrCode className="w-4 h-4 text-indigo-950" />
+            <span className="text-[11px] font-black text-slate-900">باركود الربط (3 أدوار):</span>
+            <span className="font-mono bg-indigo-950 text-amber-300 px-1.5 py-0.5 rounded text-[11px]">
+              {config?.pairingCode || '112233'}
             </span>
-          </div>
+          </button>
 
           {/* Quick Counts Pill */}
           <div className="flex items-center gap-2 text-xs font-black bg-white px-2.5 py-1 rounded-lg text-slate-700 border border-slate-200">

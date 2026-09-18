@@ -46,7 +46,9 @@ export interface AppConfig {
   adminEmail?: string;
   geminiApiKey?: string;
   schoolId?: string; // Permanent School Code
-  pairingCode?: string; // Teacher/Student Link Code
+  pairingCode?: string; // Teacher Link Code
+  studentPairingCode?: string; // Dedicated Student Link Code
+  principalPairingCode?: string; // Dedicated Principal/Manager Link Code
   lastBackupDate?: string;
   backupCloudProvider?: 'google_drive' | 'local' | 'none';
 }

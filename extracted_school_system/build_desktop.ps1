@@ -26,7 +26,7 @@ Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_e
 Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.0 Super Edition.exe" -Force
 cmd.exe /c "set ELECTRON_RUN_AS_NODE=1 && .\node_modules\electron\dist\electron.exe .\node_modules\@electron\asar\bin\asar.js pack .\app_staging .\dist_electron\win-unpacked\resources\app.asar"
 
-Write-Host "[5/5] Exporting Final Package to LATEST_BUILDS..."
+Write-Host "[5/6] Exporting Final Package to LATEST_BUILDS..."
 Stop-Process -Name "electron", "The Principal v6.0", "The Principal v6.0 Super Edition" -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 500
 Remove-Item -Path "..\LATEST_BUILDS\The_Principal_v6_Desktop_App" -Recurse -Force -ErrorAction SilentlyContinue
@@ -38,5 +38,11 @@ if (Test-Path "..\The_Principal_Portable") {
     Copy-Item -Path "dist_electron\win-unpacked\The Principal v6.0 Super Edition.exe" -Destination "..\The_Principal_Portable\The Principal v6.0 Super Edition.exe" -Force
 }
 
-Write-Host "SUCCESS: Desktop App v6.0 completely built and packaged with 100% updated assets!"
+Write-Host "[6/6] Packaging Professional NSIS Setup Installer & Portable Executables..."
+cmd.exe /c "set ELECTRON_RUN_AS_NODE=1 && .\node_modules\electron\dist\electron.exe .\scripts\run_builder.cjs"
+if (Test-Path "dist_electron\The_Principal_Setup_v6.0.exe") {
+    Copy-Item -Path "dist_electron\The_Principal_Setup_v6.0.exe", "dist_electron\The_Principal_Portable_v6.0.exe" -Destination "..\LATEST_BUILDS\" -Force
+}
+
+Write-Host "SUCCESS: Desktop App v6.0 completely built and packaged (Setup Installer + Portable) with 100% updated assets!"
 

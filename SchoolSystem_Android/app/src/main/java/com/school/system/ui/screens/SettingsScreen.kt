@@ -12,9 +12,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
@@ -254,7 +257,7 @@ class SettingsViewModel @Inject constructor(
             if (enabled) {
                 val cleanCode = code.trim()
                 if (cleanCode.isBlank()) {
-                    onResult(false, "يرجى إدخال رمز أو كود المشرف التربوي المعتمد")
+                    onResult(false, "يرجى إدخال رمز مدير المدرسة أو مسؤول الإشراف")
                     return@launch
                 }
                 secureKeyStorage.saveSupervisorCode(cleanCode)
@@ -273,7 +276,7 @@ class SettingsViewModel @Inject constructor(
                         )
                     } catch (_: Exception) {}
                 }
-                onResult(true, "تم تفعيل وضع المشرف التربوي وسحب كافة شعب المدرسة بنجاح 🛡️")
+                onResult(true, "تم تفعيل وضع الإدارة والإشراف وسحب كافة شعب المدرسة بنجاح 🛡️")
             } else {
                 configDao.saveConfig(current.copy(role = "teacher"))
                 onResult(true, "تم العودة إلى وضع الأستاذ التدريسي 👨‍🏫")
@@ -463,6 +466,7 @@ fun SettingsScreen(
     var isAiEnabled by remember { mutableStateOf(true) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showUnpairConfirmDialog by remember { mutableStateOf(false) }
+    var showResetRoleDialog by remember { mutableStateOf(false) }
     var showConnectWarningDialog by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
@@ -489,6 +493,9 @@ fun SettingsScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showResetRoleDialog = true }) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = "تبديل الصفة (أستاذ / طالب)", tint = Color(0xFF2563EB))
+                    }
                     IconButton(onClick = { showHelpGuideDialog = true }) {
                         Icon(Icons.Default.Info, contentDescription = "دليل الاستخدام والتعليمات", tint = Color(0xFF2563EB))
                     }
@@ -860,9 +867,9 @@ fun SettingsScreen(
                             }
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text("وضع المشرف التربوي 🛡️", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                Text("وضع الإدارة والإشراف 🛡️", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
                                 Text(
-                                    text = if (isSupervisorMode) "الوضع: إشرافي شامل (صلاحيات كاملة)" else "الوضع: أستاذ مادة (صلاحيات اعتيادية)",
+                                    text = if (isSupervisorMode) "الوضع: إشرافي وإداري شامل (صلاحيات كاملة)" else "الوضع: أستاذ مادة (صلاحيات اعتيادية)",
                                     fontSize = 11.sp,
                                     color = if (isSupervisorMode) Color(0xFFD97706) else Color(0xFF64748B),
                                     fontWeight = FontWeight.Bold
@@ -891,9 +898,9 @@ fun SettingsScreen(
                     ) {
                         Text(
                             text = if (isSupervisorMode) 
-                                "🛡️ وضع المشرف التربوي مفعّل: تملك صلاحية إشرافية كاملة لتفقد وتدقيق وتعديل كافة السجلات والصفوف وتجاوز القفل السحابي." 
+                                "🛡️ وضع الإدارة والإشراف مفعّل: تملك صلاحية إدارية وإشرافية كاملة لتفقد وتدقيق وتعديل كافة السجلات والصفوف وتجاوز القفل السحابي." 
                             else 
-                                "💡 عند إدخال كود المشرف وتفعيل هذا الوضع، ستتاح لك صلاحيات المشرف التربوي للاطلاع على كافة الشعب والمواد الخاصة بالمدرسة.",
+                                "💡 عند إدخال رمز مدير المدرسة أو مسؤول الإشراف وتفعيل هذا الوضع، ستتاح لك صلاحيات الإدارة والإشراف للاطلاع على كافة الشعب والمواد الخاصة بالمدرسة.",
                             color = if (isSupervisorMode) Color(0xFF92400E) else Color(0xFF475569),
                             fontSize = 10.5.sp,
                             lineHeight = 15.sp,
@@ -904,8 +911,8 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = supervisorCodeInput,
                         onValueChange = { supervisorCodeInput = it },
-                        label = { Text("رمز أو كود المشرف التربوي المعتمد") },
-                        placeholder = { Text("أدخل كود المشرف المعتمد...") },
+                        label = { Text("رمز مدير المدرسة أو مسؤول الإشراف") },
+                        placeholder = { Text("أدخل رمز مدير المدرسة أو مسؤول الإشراف...") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp)
@@ -934,7 +941,7 @@ fun SettingsScreen(
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (isSupervisorMode) "إلغاء وضع المشرف والعودة لوضع الأستاذ ✕" else "تفعيل وضع المشرف التربوي 🛡️",
+                                text = if (isSupervisorMode) "إلغاء وضع الإدارة والإشراف والعودة لوضع الأستاذ ✕" else "تفعيل وضع الإدارة والإشراف 🛡️",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 13.sp,
                                 textAlign = TextAlign.Center,
@@ -1058,6 +1065,55 @@ fun SettingsScreen(
                 }
             }
 
+            // Switch / Re-select Portal Role Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showResetRoleDialog = true },
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFEEF2FF)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = null,
+                            tint = Color(0xFF4F46E5)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "تبديل أو إعادة اختيار البوابة",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp,
+                            color = Color(0xFF1E293B)
+                        )
+                        Text(
+                            text = "العودة لشاشة البوابة للاختيار بين (أستاذ / طالب)",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
             // Footer Version Info
             Box(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -1065,7 +1121,7 @@ fun SettingsScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "سجل المدرس الذكي - الإصدار 2.5",
+                        text = "المنظومة المدرسية الموحدة - الإصدار 4.4",
                         color = Color(0xFF94A3B8),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
@@ -1156,6 +1212,47 @@ fun SettingsScreen(
         // Help Guide Dialog
         if (showHelpGuideDialog) {
             HelpGuideDialog(onDismiss = { showHelpGuideDialog = false })
+        }
+
+        // Switch / Reset Role Confirmation Dialog
+        if (showResetRoleDialog) {
+            AlertDialog(
+                onDismissRequest = { showResetRoleDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color(0xFF4F46E5))
+                        Spacer(Modifier.width(8.dp))
+                        Text("إعادة اختيار البوابة", fontWeight = FontWeight.Black, fontSize = 15.sp)
+                    }
+                },
+                text = {
+                    Text(
+                        "هل ترغب في العودة إلى شاشة البوابة الرئيسية لاختيار دور آخر (أستاذ • طالب • مدير)؟ يتم الاحتفاظ بكافة بياناتك وسجلاتك الحالية بأمان.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF334155)
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showResetRoleDialog = false
+                            com.school.system.utils.RoleManager.clearSelectedRole(context)
+                            navController?.navigate("role_selection") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("نعم، العودة للبوابة", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showResetRoleDialog = false }) {
+                        Text("تراجع", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
         }
     }
 }

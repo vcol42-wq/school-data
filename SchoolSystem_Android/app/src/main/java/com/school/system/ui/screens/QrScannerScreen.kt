@@ -61,9 +61,18 @@ fun parseScannedDetails(raw: String): ScannedQrDetails {
             val sId = data["schoolId"]?.toString() ?: data["school_id"]?.toString() ?: ""
             val pCode = data["pairingCode"]?.toString() ?: data["pairing_code"]?.toString() ?: ""
             val sName = data["schoolName"]?.toString() ?: data["school_name"]?.toString() ?: ""
+            val role = data["role"]?.toString() ?: ""
+            val isPrincipal = role.equals("principal", ignoreCase = true) || role.equals("supervisor", ignoreCase = true)
+            val isStudent = role.equals("student", ignoreCase = true)
+            val badgeTitle = when {
+                isPrincipal -> "👑 بطاقة المدير السحابية (الإشراف العام)"
+                isStudent -> "🎓 بطاقة الطالب السحابية (الجدول والنتائج)"
+                tName.isNotBlank() -> "👨‍🏫 بطاقة المعلم السحابية"
+                else -> "🏫 باركود ربط المدرسة السحابي"
+            }
             ScannedQrDetails(
-                badgeTitle = if (tName.isNotBlank()) "👨‍🏫 بطاقة المعلم السحابية" else "🏫 باركود ربط المدرسة السحابي",
-                teacherName = tName,
+                badgeTitle = badgeTitle,
+                teacherName = if (isPrincipal) "المدير / الإشراف العام" else if (isStudent) "طالب / ولي أمر" else tName,
                 code = pCode,
                 schoolId = sId,
                 schoolName = sName
@@ -96,13 +105,13 @@ fun parseScannedDetails(raw: String): ScannedQrDetails {
             code = pin,
             schoolId = sId
         )
-    } else if (trimmed.startsWith("SUPERVISOR:", ignoreCase = true)) {
+    } else if (trimmed.startsWith("SUPERVISOR:", ignoreCase = true) || trimmed.startsWith("PRINCIPAL:", ignoreCase = true)) {
         val parts = trimmed.split(":")
         val code = parts.getOrNull(1)?.trim() ?: ""
         val sId = parts.getOrNull(2)?.trim() ?: ""
         return ScannedQrDetails(
-            badgeTitle = "👁️ بطاقة المشرف العام الرقابي",
-            teacherName = "المشرف العام / المدير",
+            badgeTitle = "👑 بطاقة المدير / الإشراف العام",
+            teacherName = "مدير المدرسة / المشرف العام",
             code = code,
             schoolId = sId
         )

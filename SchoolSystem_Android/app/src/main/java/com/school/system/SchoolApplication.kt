@@ -7,6 +7,15 @@ import dagger.hilt.android.HiltAndroidApp
 class SchoolApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        com.school.system.data.worker.TeacherSyncWorker.schedule(this)
+        try {
+            com.school.system.data.worker.TeacherSyncWorker.schedule(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        try {
+            com.example.theboss.data.worker.StudentSyncWorker.schedule(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

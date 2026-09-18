@@ -68,15 +68,15 @@
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": false,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "The Principal v6.0",
-      "artifactName": "The Principal - الإصدار المحدث 6.0.exe"
+      "artifactName": "The_Principal_Setup_v6.0.exe"
     },
     "portable": {
-      "artifactName": "The Principal - نسخة محمولة 6.0.exe"
+      "artifactName": "The_Principal_Portable_v6.0.exe"
     }
   }
 }

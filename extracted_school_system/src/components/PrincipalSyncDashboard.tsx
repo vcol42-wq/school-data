@@ -70,6 +70,9 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
     return localStorage.getItem('diyala_school_id') || 'school_01';
   });
   const [pairingCode, setPairingCode] = useState<string>(() => localStorage.getItem('diyala_pairing_code') || '112233');
+  const [studentPairingCode, setStudentPairingCode] = useState<string>(() => localStorage.getItem('diyala_student_pairing_code') || '223344');
+  const [principalPairingCode, setPrincipalPairingCode] = useState<string>(() => localStorage.getItem('diyala_principal_pairing_code') || '334455');
+  const [activeQrRole, setActiveQrRole] = useState<'teacher' | 'student' | 'principal'>('teacher');
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'error'>('checking');
   const [teachers, setTeachers] = useState<any[]>([]);
 
@@ -145,13 +148,19 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   }, []);
 
   const generateNewIdentity = () => {
-    if (!confirm('هل أنت متأكد من توليد هوية ورمز جديد؟ سيؤدي هذا لقطع الاتصال عن المدرسين المرتبطين حالياً ويجب عليهم إعادة المسح.')) return;
+    if (!confirm('هل أنت متأكد من توليد هوية ورموز جديدة؟ سيؤدي هذا لقطع الاتصال عن التطبيقات المرتبطة حالياً ويجب عليهم إعادة المسح.')) return;
     const newId = `SCH-${Math.random().toString(36).toUpperCase().substr(2, 6)}`;
     const newPairing = Math.floor(100000 + Math.random() * 900000).toString();
+    const newStudentPairing = Math.floor(100000 + Math.random() * 900000).toString();
+    const newPrincipalPairing = Math.floor(100000 + Math.random() * 900000).toString();
     setSchoolId(newId);
     setPairingCode(newPairing);
+    setStudentPairingCode(newStudentPairing);
+    setPrincipalPairingCode(newPrincipalPairing);
     localStorage.setItem('diyala_school_id', newId);
     localStorage.setItem('diyala_pairing_code', newPairing);
+    localStorage.setItem('diyala_student_pairing_code', newStudentPairing);
+    localStorage.setItem('diyala_principal_pairing_code', newPrincipalPairing);
     window.location.reload();
   };
 
@@ -340,10 +349,10 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
         {/* RIGHT COLUMN: Identity & QR */}
         <div className="lg:col-span-5 space-y-8">
           <div className="bg-white rounded-[3rem] p-8 shadow-xl border border-slate-200 relative">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
                 <QrCode className="w-6 h-6 text-indigo-600" />
-                هوية الربط للمدرسين
+                هوية وباركود الربط السحابي
               </h3>
               <button
                 onClick={generateNewIdentity}
@@ -354,24 +363,97 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
               </button>
             </div>
 
+            {/* Role Tabs: Teacher vs Student vs Principal */}
+            <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-6 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveQrRole('teacher')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  activeQrRole === 'teacher'
+                    ? 'bg-indigo-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>👨‍🏫 الأساتذة</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveQrRole('student')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  activeQrRole === 'student'
+                    ? 'bg-emerald-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>🎓 الطلاب</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveQrRole('principal')}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                  activeQrRole === 'principal'
+                    ? 'bg-amber-600 text-white shadow-md'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>👑 المدير</span>
+              </button>
+            </div>
+
             <div className="space-y-6">
               <div className="p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-indigo-200 flex flex-col items-center text-center group">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">الرمز السري الموحد</span>
-                <span className="text-5xl font-black text-indigo-700 tracking-widest group-hover:scale-110 transition-transform duration-300 select-all">{pairingCode}</span>
-                <p className="text-[10px] text-slate-500 mt-3 font-bold">أعطِ هذا الرمز للمدرسين لربط تطبيقاتهم يدوياً</p>
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                  {activeQrRole === 'teacher' 
+                    ? 'كود ربط الأساتذة الموحد' 
+                    : activeQrRole === 'student' 
+                      ? 'كود ربط الطلاب وأولياء الأمور' 
+                      : 'كود ربط وبوابة المدير / الإدارة'}
+                </span>
+                <span className={`text-5xl font-black tracking-widest group-hover:scale-110 transition-transform duration-300 select-all ${
+                  activeQrRole === 'teacher' 
+                    ? 'text-indigo-700' 
+                    : activeQrRole === 'student' 
+                      ? 'text-emerald-700' 
+                      : 'text-amber-700'
+                }`}>
+                  {activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode}
+                </span>
+                <p className="text-[10px] text-slate-500 mt-3 font-bold">
+                  {activeQrRole === 'teacher'
+                    ? 'أعطِ هذا الرمز للمدرسين لربط سجل درجاتهم يدوياً'
+                    : activeQrRole === 'student'
+                      ? 'أعطِ هذا الرمز للطلبة وأولياء الأمور لربط جدولهم ونتائجهم'
+                      : 'الرمز السداسي الحصري للمدير للمصادقة السريعة على الجوال'}
+                </p>
               </div>
 
               <div className="flex flex-col items-center">
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-2xl border-4 border-amber-400 ring-8 ring-indigo-50 transform hover:rotate-1 transition-transform">
+                <div className={`bg-white p-6 rounded-[2.5rem] shadow-2xl border-4 ring-8 transform hover:rotate-1 transition-transform ${
+                  activeQrRole === 'teacher' 
+                    ? 'border-indigo-400 ring-indigo-50' 
+                    : activeQrRole === 'student' 
+                      ? 'border-emerald-400 ring-emerald-50' 
+                      : 'border-amber-400 ring-amber-50'
+                }`}>
                   <QrCodeSvg value={JSON.stringify({
                     url: getSupabaseUrl(),
                     apiKey: getSupabaseKey(),
                     schoolId: schoolId,
-                    pairingCode: pairingCode
+                    pairingCode: activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode,
+                    studentPairingCode: studentPairingCode,
+                    principalPairingCode: principalPairingCode,
+                    schoolName: config.schoolName || 'المدرسة النموذجية',
+                    role: activeQrRole
                   })} size={180} />
                 </div>
-                <span className="mt-4 px-4 py-1.5 bg-amber-100 text-amber-900 text-xs font-black rounded-full border border-amber-200">
-                  امسح الباركود للربط التلقائي
+                <span className={`mt-4 px-4 py-1.5 text-xs font-black rounded-full border ${
+                  activeQrRole === 'teacher' 
+                    ? 'bg-indigo-100 text-indigo-900 border-indigo-200' 
+                    : activeQrRole === 'student' 
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-200' 
+                      : 'bg-amber-100 text-amber-900 border-amber-200'
+                }`}>
+                  امسح باركود {activeQrRole === 'teacher' ? 'الأستاذ 👨‍🏫' : activeQrRole === 'student' ? 'الطالب 🎓' : 'المدير 👑'} للربط الفوري
                 </span>
               </div>
             </div>

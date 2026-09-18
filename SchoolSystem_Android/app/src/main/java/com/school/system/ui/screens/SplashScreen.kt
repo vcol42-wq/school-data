@@ -44,8 +44,8 @@ fun SplashScreen(
 
     LaunchedEffect(Unit) {
         startAnimation = true
-        // Stay on splash screen for 3.0 seconds then transition
-        delay(3000)
+        // Stay on splash screen for 3.4 seconds then transition smoothly
+        delay(3400)
         onAnimationFinished()
     }
 
@@ -143,6 +143,26 @@ fun SplashScreen(
         label = "shineSweep"
     )
 
+    // Golden Shimmer sweep & Sparkle rotation
+    val goldShimmerOffset by infiniteTransition.animateFloat(
+        initialValue = -120f,
+        targetValue = 350f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "goldShimmer"
+    )
+    val sparkleRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(9000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sparkleRotation"
+    )
+
     // 5. Logo & Typography Entrance
     val contentAlpha by animateFloatAsState(
         targetValue = if (capRiseProgress > 0.6f) 1f else 0f,
@@ -153,6 +173,50 @@ fun SplashScreen(
         targetValue = if (capRiseProgress > 0.6f) 0f else 35f,
         animationSpec = tween(800, delayMillis = 400, easing = FastOutSlowInEasing),
         label = "contentSlideY"
+    )
+
+    // Highlighted "الموحدة" Kinetic Pop & Golden Aura Animation
+    val popScale by animateFloatAsState(
+        targetValue = if (startAnimation && capRiseProgress > 0.5f) 1f else 0.25f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "popScale"
+    )
+    val popAlpha by animateFloatAsState(
+        targetValue = if (startAnimation && capRiseProgress > 0.5f) 1f else 0f,
+        animationSpec = tween(600, delayMillis = 450, easing = FastOutSlowInEasing),
+        label = "popAlpha"
+    )
+
+    // Unified Subtitle "بوابة موحدة للمعلم والطالب" Fade & Slide Pop Animation
+    val subTextAlpha by animateFloatAsState(
+        targetValue = if (startAnimation && capRiseProgress > 0.7f) 1f else 0f,
+        animationSpec = tween(700, delayMillis = 750, easing = FastOutSlowInEasing),
+        label = "subTextAlpha"
+    )
+    val subTextSlideY by animateFloatAsState(
+        targetValue = if (startAnimation && capRiseProgress > 0.7f) 0f else 24f,
+        animationSpec = tween(700, delayMillis = 750, easing = FastOutSlowInEasing),
+        label = "subTextSlideY"
+    )
+    val subTextScale by animateFloatAsState(
+        targetValue = if (startAnimation && capRiseProgress > 0.7f) 1f else 0.88f,
+        animationSpec = tween(700, delayMillis = 750, easing = FastOutSlowInEasing),
+        label = "subTextScale"
+    )
+
+    // Pill Badge Entrance
+    val badgeAlpha by animateFloatAsState(
+        targetValue = if (startAnimation && capRiseProgress > 0.85f) 1f else 0f,
+        animationSpec = tween(600, delayMillis = 1100, easing = FastOutSlowInEasing),
+        label = "badgeAlpha"
+    )
+    val badgeSlideY by animateFloatAsState(
+        targetValue = if (startAnimation && capRiseProgress > 0.85f) 0f else 18f,
+        animationSpec = tween(600, delayMillis = 1100, easing = FastOutSlowInEasing),
+        label = "badgeSlideY"
     )
 
     Box(
@@ -276,45 +340,151 @@ fun SplashScreen(
 
                 Spacer(Modifier.height(20.dp))
 
-                // Title with Gold Shimmer Sparkles
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                // Line 1: Word "الموحدة" in an independent prominent line at the top with Pop & Gold Shimmer
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .scale(popScale)
+                        .alpha(popAlpha)
                 ) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color(0xFFFBBF24),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = "سجل المدرس الذكي",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color.White,
-                        letterSpacing = 0.6.sp
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color(0xFFFBBF24),
-                        modifier = Modifier.size(24.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFFFBBF24),
+                            modifier = Modifier
+                                .size(22.dp)
+                                .rotate(sparkleRotation)
+                                .scale(starGlowPulse)
+                        )
+                        Spacer(Modifier.width(10.dp))
+
+                        Box(contentAlignment = Alignment.Center) {
+                            // Golden aura blur effect
+                            Text(
+                                text = "الموحدة",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFF59E0B).copy(alpha = 0.7f),
+                                modifier = Modifier.blur(12.dp)
+                            )
+                            // Radiant text with dynamic golden shimmer
+                            Text(
+                                text = "الموحدة",
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 1.2.sp,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    brush = Brush.linearGradient(
+                                        colors = listOf(
+                                            Color(0xFFFEF08A),
+                                            Color(0xFFFBBF24),
+                                            Color(0xFFF59E0B),
+                                            Color(0xFFFEF08A)
+                                        ),
+                                        start = Offset(goldShimmerOffset, 0f),
+                                        end = Offset(goldShimmerOffset + 140f, 60f)
+                                    )
+                                )
+                            )
+                        }
+
+                        Spacer(Modifier.width(10.dp))
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFFFBBF24),
+                            modifier = Modifier
+                                .size(22.dp)
+                                .rotate(-sparkleRotation)
+                                .scale(starGlowPulse)
+                        )
+                    }
                 }
 
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
 
+                // Line 2: "المنظومة المدرسية الذكية"
                 Text(
-                    text = "نظام الإدارة والتقييم المدرسي المتكامل",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFFCBD5E1),
+                    text = "المنظومة المدرسية الذكية",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White,
+                    letterSpacing = 0.6.sp,
                     textAlign = TextAlign.Center
                 )
 
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(14.dp))
+
+                // Unified Subtitle: "بوابة موحدة للمعلم والطالب" with Fade & Slide Pop
+                Box(
+                    modifier = Modifier
+                        .offset(y = subTextSlideY.dp)
+                        .scale(subTextScale)
+                        .alpha(subTextAlpha)
+                ) {
+                    Surface(
+                        color = Color(0xFF1E1B4B).copy(alpha = 0.75f),
+                        shape = RoundedCornerShape(16.dp),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = 1.2.dp,
+                            brush = Brush.horizontalGradient(
+                                listOf(
+                                    Color(0xFF38BDF8).copy(alpha = 0.7f),
+                                    Color(0xFF818CF8).copy(alpha = 0.9f),
+                                    Color(0xFFF472B6).copy(alpha = 0.7f)
+                                )
+                            )
+                        ),
+                        shadowElevation = 8.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "👨‍🏫 كادر التعليم",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF93C5FD)
+                            )
+
+                            Text(
+                                text = "  •  ",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFFDE68A)
+                            )
+
+                            Text(
+                                text = "بوابة موحدة للمعلم والطالب",
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White
+                            )
+
+                            Text(
+                                text = "  •  ",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFFFDE68A)
+                            )
+
+                            Text(
+                                text = "الطالب وولي الأمر 🎒",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFC084FC)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
 
                 // Cosmic Pill Badge
                 Surface(
@@ -323,7 +493,10 @@ fun SplashScreen(
                     border = androidx.compose.foundation.BorderStroke(
                         1.dp, 
                         Brush.horizontalGradient(listOf(Color(0xFF8B5CF6), Color(0xFF06B6D4)))
-                    )
+                    ),
+                    modifier = Modifier
+                        .offset(y = badgeSlideY.dp)
+                        .alpha(badgeAlpha)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 7.dp),
@@ -332,6 +505,7 @@ fun SplashScreen(
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
+                                .scale(starGlowPulse)
                                 .background(Color(0xFF10B981), CircleShape)
                         )
                         Spacer(Modifier.width(8.dp))

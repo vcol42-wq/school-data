@@ -24,7 +24,8 @@ class SyncManager @Inject constructor(
     private val absenceDao: AbsenceDao,
     private val syncRepository: SyncRepository,
     private val schoolRepository: SchoolRepository,
-    private val geminiAssistantService: GeminiAssistantService
+    private val geminiAssistantService: GeminiAssistantService,
+    private val secureKeyStorage: com.school.system.data.local.SecureKeyStorage
 ) {
     companion object {
         const val DEFAULT_AI_GATEWAY = "https://theprinciple-ai.up.railway.app/" // Example global AI gateway
@@ -96,6 +97,7 @@ class SyncManager @Inject constructor(
             var schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
             var pairingCode = currentConfig.pairingCode
             var teacherName = ""
+            var isPrincipal = false
 
             if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
                 val gson = com.google.gson.Gson()
@@ -107,6 +109,11 @@ class SyncManager @Inject constructor(
                 schoolId = data["schoolId"]?.toString() ?: data["school_id"]?.toString() ?: data["id"]?.toString() ?: schoolId
                 pairingCode = data["pairingCode"]?.toString() ?: data["pairing_code"]?.toString() ?: pairingCode
                 teacherName = data["teacherName"]?.toString() ?: data["teacher_name"]?.toString() ?: data["name"]?.toString() ?: ""
+
+                val roleStr = data["role"]?.toString() ?: ""
+                if (roleStr.equals("principal", ignoreCase = true) || roleStr.equals("supervisor", ignoreCase = true)) {
+                    isPrincipal = true
+                }
             } else if (trimmed.startsWith("OTP:", ignoreCase = true)) {
                 val parts = trimmed.split(":")
                 pairingCode = parts.getOrNull(1) ?: pairingCode
@@ -127,14 +134,15 @@ class SyncManager @Inject constructor(
                 } else if (parts.size == 2) {
                     pairingCode = parts[1].trim()
                 }
-            } else if (trimmed.startsWith("SUPERVISOR:", ignoreCase = true)) {
+            } else if (trimmed.startsWith("SUPERVISOR:", ignoreCase = true) || trimmed.startsWith("PRINCIPAL:", ignoreCase = true)) {
                 val parts = trimmed.split(":")
                 pairingCode = parts.getOrNull(1)?.trim() ?: pairingCode
                 val secondPart = parts.getOrNull(2)?.trim()
                 if (secondPart != null && secondPart.startsWith("SCH-", ignoreCase = true)) {
                     schoolId = secondPart
                 }
-                teacherName = "المشرف العام"
+                teacherName = "مدير المدرسة / المشرف العام"
+                isPrincipal = true
             } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
                 url = trimmed
             } else if (trimmed.startsWith("SCH-", ignoreCase = true)) {
@@ -142,6 +150,36 @@ class SyncManager @Inject constructor(
                 pairingCode = trimmed
             } else if (trimmed.length in 4..14 && trimmed.all { it.isDigit() || it.isLetter() || it == '-' || it == '_' }) {
                 pairingCode = trimmed
+            }
+
+            if (isPrincipal) {
+                if (pairingCode.isNotBlank()) {
+                    secureKeyStorage.saveSupervisorCode(pairingCode)
+                }
+                configDao.saveConfig(
+                    currentConfig.copy(
+                        cloudUrl = url,
+                        cloudKey = apiKey,
+                        schoolId = schoolId,
+                        pairingCode = pairingCode,
+                        role = "supervisor",
+                        managerName = if (teacherName.isNotBlank()) teacherName else "مدير المدرسة / الإشراف العام",
+                        syncSealToken = if (currentConfig.syncSealToken.isNullOrEmpty()) "__supervisor__" else currentConfig.syncSealToken,
+                        isVerified = true,
+                        isActivated = true
+                    )
+                )
+                if (schoolId.isNotBlank() && schoolId != "school_01") {
+                    try {
+                        syncRepository.downloadRoster(
+                            schoolId = schoolId,
+                            teacherId = "__supervisor__",
+                            providedUrl = url,
+                            providedKey = apiKey
+                        )
+                    } catch (_: Exception) {}
+                }
+                return true
             }
 
             // Save basic settings to config
@@ -459,6 +497,45 @@ class SyncManager @Inject constructor(
             }
         }
         return result
+    }
+
+    suspend fun pairPrincipalByCode(pairingCode: String): PairingResult {
+        val clean = pairingCode.trim()
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        
+        // Check school by pairingCode via syncRepository
+        val school = syncRepository.verifySchoolByPairingCode(clean)
+        val targetSchoolId = school?.id ?: currentConfig.schoolId.ifEmpty { "school_01" }
+        
+        secureKeyStorage.saveSupervisorCode(clean)
+        configDao.saveConfig(
+            currentConfig.copy(
+                schoolId = targetSchoolId,
+                pairingCode = clean,
+                role = "supervisor",
+                managerName = "مدير المدرسة / الإشراف العام",
+                syncSealToken = if (currentConfig.syncSealToken.isNullOrEmpty()) "__supervisor__" else currentConfig.syncSealToken,
+                isVerified = true,
+                isActivated = true
+            )
+        )
+        
+        if (targetSchoolId.isNotBlank() && targetSchoolId != "school_01") {
+            try {
+                syncRepository.downloadRoster(
+                    schoolId = targetSchoolId,
+                    teacherId = "__supervisor__",
+                    providedUrl = currentConfig.cloudUrl,
+                    providedKey = currentConfig.cloudKey
+                )
+            } catch (_: Exception) {}
+        }
+        
+        return PairingResult(
+            success = true,
+            warning = false,
+            message = "تم تفعيل بوابة المدير والإشراف العام بنجاح 👑"
+        )
     }
 
     suspend fun downloadSchedule(context: android.content.Context): Boolean {

@@ -45,6 +45,7 @@ extracted_school_system/.env*
 LATEST_BUILDS/The_Principal_v*_Desktop_App/
 LATEST_BUILDS/*_Desktop_App/
 *.exe
+*.apk
 *.zip
 *.asar
 The_Principal_Portable/

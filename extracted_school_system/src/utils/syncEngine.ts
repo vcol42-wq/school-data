@@ -551,13 +551,20 @@ export async function exportSchoolDataWithProgress(
       }
     } catch (_) {}
 
+    const studentPairingCode = (typeof window !== 'undefined' ? localStorage.getItem('diyala_student_pairing_code') : null) || '223344';
+    const principalPairingCode = (typeof window !== 'undefined' ? localStorage.getItem('diyala_principal_pairing_code') : null) || '334455';
+
     const schoolPayload = [
       {
         id: schoolId,
         name: schoolName,
         pairing_code: pairingCode,
         admin_email: adminEmail,
-        config: timingConfig
+        config: {
+          ...timingConfig,
+          student_pairing_code: studentPairingCode,
+          principal_pairing_code: principalPairingCode
+        }
       }
     ];
     const { error: schoolError } = await client.from('schools').upsert(schoolPayload, { onConflict: 'id' });
