@@ -73,15 +73,6 @@ export default function App() {
       const saved = localStorage.getItem('diyala_school_config');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (
-          parsed.schoolName === 'م.كعب بن مالك المسائية للبنين' || 
-          parsed.schoolName === 'م. كعب بن مالك المسائية للبنين' || 
-          parsed.schoolId === 'SCH-VCOL-6072' ||
-          parsed.schoolId === 'SCH-1001'
-        ) {
-          localStorage.setItem('diyala_school_config', JSON.stringify(defaultAppConfig));
-          return defaultAppConfig;
-        }
         return { ...defaultAppConfig, ...parsed };
       }
       return defaultAppConfig;
@@ -175,33 +166,21 @@ export default function App() {
     };
   }, []);
 
-  // Auto-migrate older configs missing schoolId or pairingCode to clean school identity
+  // Sync active school identity to localStorage whenever config is valid
   useEffect(() => {
-    const targetSchoolId = config.schoolId || `SCH-${Math.floor(1000 + Math.random() * 9000)}`;
-    const targetPairingCode = config.pairingCode || Math.floor(100000 + Math.random() * 900000).toString();
-    const targetStudentPairingCode = config.studentPairingCode || Math.floor(100000 + Math.random() * 900000).toString();
-    const targetSchoolName = config.schoolName || 'مدرستي النموذجية';
-    const targetAdminEmail = config.adminEmail || '';
+    if (!config.schoolId || !config.schoolName || config.schoolName === 'مدرستي النموذجية') return;
 
-    localStorage.setItem('diyala_school_id', targetSchoolId);
-    localStorage.setItem('diyala_pairing_code', targetPairingCode);
-    localStorage.setItem('diyala_student_pairing_code', targetStudentPairingCode);
-
-    if (!config.schoolId || !config.pairingCode || !config.studentPairingCode || !config.schoolName) {
-      setConfig(prev => ({
-        ...prev,
-        schoolId: targetSchoolId,
-        pairingCode: targetPairingCode,
-        studentPairingCode: targetStudentPairingCode,
-        schoolName: targetSchoolName,
-        adminEmail: targetAdminEmail
-      }));
-    }
-  }, [config.schoolName, config.schoolId, config.pairingCode, config.studentPairingCode]);
+    localStorage.setItem('diyala_school_id', config.schoolId);
+    if (config.pairingCode) localStorage.setItem('diyala_pairing_code', config.pairingCode);
+    if (config.studentPairingCode) localStorage.setItem('diyala_student_pairing_code', config.studentPairingCode);
+    if (config.principalPairingCode) localStorage.setItem('diyala_principal_pairing_code', config.principalPairingCode);
+    if (config.schoolName) localStorage.setItem('diyala_school_name', config.schoolName);
+    if (config.adminEmail) localStorage.setItem('diyala_admin_email', config.adminEmail);
+  }, [config.schoolName, config.schoolId, config.pairingCode, config.studentPairingCode, config.principalPairingCode, config.adminEmail]);
 
   // Automatic Background Cloud Sync for School, Students, Staff, and Classes
   useEffect(() => {
-    if (!config.schoolId || !config.schoolName) return;
+    if (!config.schoolId || !config.schoolName || config.schoolName === 'مدرستي النموذجية') return;
 
     const activeSchoolId = config.schoolId;
     const activeSchoolName = config.schoolName;
@@ -336,10 +315,11 @@ export default function App() {
           <div className="flex-1 flex items-center justify-center p-4">
              <OnboardingModal
                 onComplete={(data) => {
-                  const { restoredStudents, restoredTeachers, ...onboardConfig } = data;
+                  const { restoredStudents, restoredTeachers, restoredSchedule, ...onboardConfig } = data;
                   setConfig(prev => ({ ...prev, ...onboardConfig }));
                   if (restoredStudents) setStudents(restoredStudents);
                   if (restoredTeachers) setStaffList(restoredTeachers);
+                  if (restoredSchedule) setScheduleMap(restoredSchedule);
                 }}
               />
           </div>

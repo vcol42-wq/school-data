@@ -49,9 +49,48 @@ class StudentSettingsViewModel @Inject constructor(
 
     private val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
 
-    val studentGrade = prefs.getString("student_grade", "الصف الأول المتوسط") ?: "الصف الأول المتوسط"
-    val studentSection = prefs.getString("student_section", "أ") ?: "أ"
-    val studentName = prefs.getString("student_name", "الطالب") ?: "الطالب"
+    var studentGrade by mutableStateOf(prefs.getString("student_grade", "الصف الأول المتوسط") ?: "الصف الأول المتوسط")
+        private set
+    var studentSection by mutableStateOf(prefs.getString("student_section", "أ") ?: "أ")
+        private set
+    var studentName by mutableStateOf(prefs.getString("student_name", "الطالب") ?: "الطالب")
+        private set
+
+    fun updateStudentInfo(name: String, grade: String, section: String) {
+        studentName = name.trim()
+        studentGrade = grade.trim()
+        studentSection = section.trim()
+
+        prefs.edit()
+            .putString("student_name", studentName)
+            .putString("student_grade", studentGrade)
+            .putString("student_section", studentSection)
+            .apply()
+
+        try {
+            context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE).edit()
+                .putString("selected_grade", studentGrade)
+                .putString("selected_section", studentSection)
+                .apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        syncDataNow()
+    }
+
+    fun updateStudentAndSchool(name: String, grade: String, section: String, newCode: String) {
+        updateStudentInfo(name, grade, section)
+        if (newCode.isNotBlank()) {
+            viewModelScope.launch {
+                try {
+                    repository.verifySchoolCode(newCode)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
 
     // Previously stored school code for fast 1-tap re-pairing without barcode!
     val savedSchoolCode: String = prefs.getString("last_saved_school_code", "") ?: ""
@@ -154,6 +193,7 @@ fun StudentSettingsScreen(
     var showConfirmDialogStep2 by remember { mutableStateOf(false) }
     var showResetRoleDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
+    var showEditStudentDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -200,6 +240,17 @@ fun StudentSettingsScreen(
                     Text("اسم المدرسة: ${viewModel.schoolName}", fontSize = 13.5.sp, fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
                     Text("اسم الطالب: ${viewModel.studentName}", fontSize = 12.5.sp, color = Color(0xFF334155))
                     Text("الصف والشعبة: ${viewModel.studentGrade} - (${viewModel.studentSection})", fontSize = 12.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+
+                    Button(
+                        onClick = { showEditStudentDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("تعديل وتسجيل بيانات الطالب ✏️", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                    }
 
                     // Masked connection code
                     Surface(
@@ -642,6 +693,21 @@ fun StudentSettingsScreen(
                 TextButton(onClick = { showResetRoleDialog = false }) {
                     Text("تراجع", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
                 }
+            }
+        )
+    }
+
+    if (showEditStudentDialog) {
+        com.example.theboss.ui.dashboard.StudentInfoEditDialog(
+            initialName = viewModel.studentName,
+            initialGrade = viewModel.studentGrade,
+            initialSection = viewModel.studentSection,
+            initialSchoolCode = viewModel.schoolCode,
+            onDismiss = { showEditStudentDialog = false },
+            onSave = { newName, newGrade, newSection, newCode ->
+                viewModel.updateStudentAndSchool(newName, newGrade, newSection, newCode)
+                showEditStudentDialog = false
+                Toast.makeText(context, "تم تحديث بيانات الطالب والمدرسة بنجاح 🎓", Toast.LENGTH_SHORT).show()
             }
         )
     }

@@ -1,6 +1,8 @@
 package com.example.theboss.ui.dashboard
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.res.Configuration
 import android.media.AudioManager
 import android.media.ToneGenerator
@@ -34,10 +36,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -47,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.local.AttendanceEntity
@@ -187,13 +192,55 @@ fun StudentTimetableScreen(
     val assignments by viewModel.assignments.collectAsState()
     val attendance by viewModel.attendance.collectAsState()
     val directives by viewModel.directives.collectAsState()
+    val syncedScheduleJson by viewModel.syncedSchedule.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
 
-    var studentGrade by remember { mutableStateOf(prefs.getString("student_grade", "الصف الأول المتوسط") ?: "الصف الأول المتوسط") }
-    var studentSection by remember { mutableStateOf(prefs.getString("student_section", "أ") ?: "أ") }
-    var rawScheduleJson by remember { mutableStateOf(prefs.getString("synced_schedule", "{}") ?: "{}") }
+    val diyalaPrefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
+
+    var studentName by remember {
+        mutableStateOf(
+            prefs.getString("student_name", null)?.takeIf { it.isNotBlank() }
+                ?: prefs.getString("student_full_name", null)?.takeIf { it.isNotBlank() }
+                ?: "طالب متميز"
+        )
+    }
+    var studentGrade by remember {
+        mutableStateOf(
+            prefs.getString("student_grade", null)?.takeIf { it.isNotBlank() }
+                ?: diyalaPrefs.getString("selected_grade", null)?.takeIf { it.isNotBlank() }
+                ?: "الصف الأول المتوسط"
+        )
+    }
+    var studentSection by remember {
+        mutableStateOf(
+            prefs.getString("student_section", null)?.takeIf { it.isNotBlank() }
+                ?: diyalaPrefs.getString("selected_section", null)?.takeIf { it.isNotBlank() }
+                ?: "أ"
+        )
+    }
+    var schoolName by remember {
+        mutableStateOf(
+            prefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
+                ?: diyalaPrefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
+                ?: "ثانوية كعب بن مالك المسائية"
+        )
+    }
+    var rawScheduleJson by remember {
+        mutableStateOf(
+            prefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                ?: diyalaPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                ?: "{}"
+        )
+    }
+
+    LaunchedEffect(syncedScheduleJson) {
+        if (syncedScheduleJson.isNotBlank() && syncedScheduleJson != "{}") {
+            rawScheduleJson = syncedScheduleJson
+        }
+    }
     var customOverridesJson by remember { mutableStateOf(prefs.getString("custom_subject_overrides", "{}") ?: "{}") }
     var isRefreshingSchedule by remember { mutableStateOf(false) }
+    var showStudentInfoDialog by remember { mutableStateOf(false) }
 
     var selectedSlotData by remember { mutableStateOf<Triple<String, Int, StudentLessonSlot>?>(null) }
     var editSubjectText by remember { mutableStateOf("") }
@@ -239,7 +286,7 @@ fun StudentTimetableScreen(
         AppThemePalette(
             id = 0,
             name = "الداكن الفخم (Dark Slate & Luminous Cards) 🌙",
-            topBarBg = Color(0xFF070B14),
+            topBarBg = Color(0xFF0F172A),
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF030712), Color(0xFF0B1120))),
             headerBannerBg = Color(0xFF0B1726),
             headerBannerText = Color(0xFF38BDF8),
@@ -264,7 +311,7 @@ fun StudentTimetableScreen(
         AppThemePalette(
             id = 1,
             name = "العنابي الملكي (Royal Burgundy & Rose Cards) 🍷",
-            topBarBg = Color(0xFF1B040A),
+            topBarBg = Color(0xFF881337),
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF1B040A), Color(0xFF3B0B18))),
             headerBannerBg = Color(0xFF310613),
             headerBannerText = Color(0xFFFDA4AF),
@@ -289,7 +336,7 @@ fun StudentTimetableScreen(
         AppThemePalette(
             id = 2,
             name = "الأزرق الملكي (Royal Sapphire & Ice Cards) 💙",
-            topBarBg = Color(0xFF020B17),
+            topBarBg = Color(0xFF1E40AF),
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF020B17), Color(0xFF091C36))),
             headerBannerBg = Color(0xFF0B203E),
             headerBannerText = Color(0xFF93C5FD),
@@ -314,7 +361,7 @@ fun StudentTimetableScreen(
         AppThemePalette(
             id = 3,
             name = "الفاتح العصري عالي التباين (Modern High-Contrast Light) ☀️",
-            topBarBg = Color(0xFF0F172A),
+            topBarBg = Color(0xFF1E293B),
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFFE2E8F0), Color(0xFFCBD5E1))),
             headerBannerBg = Color(0xFFFFFFFF),
             headerBannerText = Color(0xFF0F172A),
@@ -339,7 +386,7 @@ fun StudentTimetableScreen(
         AppThemePalette(
             id = 4,
             name = "الزمردي النقي (Emerald Mint & Jade Cards) 🌿",
-            topBarBg = Color(0xFF02100B),
+            topBarBg = Color(0xFF065F46),
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF02100B), Color(0xFF07261A))),
             headerBannerBg = Color(0xFF0A2B1D),
             headerBannerText = Color(0xFF6EE7B7),
@@ -364,7 +411,7 @@ fun StudentTimetableScreen(
         AppThemePalette(
             id = 5,
             name = "البنفسجي الإمبراطوري (Amethyst & Lavender Cards) 🔮",
-            topBarBg = Color(0xFF0D0317),
+            topBarBg = Color(0xFF581C87),
             screenBgBrush = Brush.verticalGradient(listOf(Color(0xFF0D0317), Color(0xFF1E0B33))),
             headerBannerBg = Color(0xFF240C3D),
             headerBannerText = Color(0xFFC4B5FD),
@@ -389,6 +436,22 @@ fun StudentTimetableScreen(
     )
 
     val activeTheme = themesList.getOrElse(currentThemeIndex) { themesList[0] }
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            var ctx = view.context
+            while (ctx is ContextWrapper) {
+                if (ctx is Activity) break
+                ctx = ctx.baseContext
+            }
+            val activity = ctx as? Activity
+            activity?.window?.let { window ->
+                window.statusBarColor = activeTheme.topBarBg.toArgb()
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+            }
+        }
+    }
 
     val dayStylesMap = remember {
         mapOf(
@@ -611,12 +674,24 @@ fun StudentTimetableScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refreshData()
-        if (rawScheduleJson == "{}" || rawScheduleJson.length < 10) {
-            isRefreshingSchedule = true
-            viewModel.syncScheduleManual {
-                isRefreshingSchedule = false
-                rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
+        isRefreshingSchedule = true
+        viewModel.syncScheduleManual {
+            isRefreshingSchedule = false
+            val freshJson = prefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                ?: diyalaPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+            if (freshJson != null) {
+                rawScheduleJson = freshJson
             }
+            studentName = prefs.getString("student_name", null)?.takeIf { it.isNotBlank() } ?: studentName
+            studentGrade = prefs.getString("student_grade", null)?.takeIf { it.isNotBlank() }
+                ?: diyalaPrefs.getString("selected_grade", null)?.takeIf { it.isNotBlank() }
+                ?: studentGrade
+            studentSection = prefs.getString("student_section", null)?.takeIf { it.isNotBlank() }
+                ?: diyalaPrefs.getString("selected_section", null)?.takeIf { it.isNotBlank() }
+                ?: studentSection
+            schoolName = prefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
+                ?: diyalaPrefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
+                ?: schoolName
         }
     }
 
@@ -948,6 +1023,17 @@ fun StudentTimetableScreen(
                         .weight(1f)
                         .fillMaxHeight()
                 ) {
+                    // شريط هوية الطالب في الوضع الأفقي
+                    StudentLandscapeIdentityBar(
+                        studentName = studentName,
+                        studentGrade = studentGrade,
+                        studentSection = studentSection,
+                        schoolName = schoolName,
+                        activeTheme = activeTheme,
+                        onEditStudentInfo = { showStudentInfoDialog = true },
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+
                     // Table Grid Surface Container (أرضية الجدول ثلاثية الأبعاد)
                     Surface(
                         shape = RoundedCornerShape(16.dp),
@@ -1127,7 +1213,7 @@ fun StudentTimetableScreen(
             Scaffold(
                 topBar = {
                     TopAppBar(
-                        title = { },
+                        title = { Text("منصة الطالب 🎓", color = Color.White, fontWeight = FontWeight.Black, fontSize = 15.sp) },
                         navigationIcon = {
                             if (onBack != null) {
                                 IconButton(onClick = onBack) {
@@ -1136,27 +1222,11 @@ fun StudentTimetableScreen(
                             }
                         },
                         actions = {
-                            // 1: Themes
-                            IconButton(onClick = { showThemeDialog = true }) {
-                                Icon(Icons.Default.Palette, contentDescription = "الثيمات", tint = Color(0xFFC084FC), modifier = Modifier.size(24.dp))
+                            // 1: Settings Icon - PROMINENT & FIRST
+                            IconButton(onClick = onNavigateToSettings) {
+                                Icon(Icons.Default.Settings, contentDescription = "الضبط والإعدادات", tint = Color.White, modifier = Modifier.size(24.dp))
                             }
-                            // 2: Timing
-                            IconButton(onClick = { showTimingDialog = true }) {
-                                Icon(Icons.Default.AccessTime, contentDescription = "توقيت الدوام", tint = Color(0xFFF59E0B), modifier = Modifier.size(24.dp))
-                            }
-                            // 3: Pomodoro
-                            IconButton(onClick = { showPomodoroDialog = true }) {
-                                Icon(Icons.Default.Timer, contentDescription = "بومودورو", tint = Color(0xFFF43F5E), modifier = Modifier.size(24.dp))
-                            }
-                            // 3: Tasks
-                            IconButton(onClick = { showTasksSheet = true }) {
-                                Icon(Icons.Default.FormatListNumbered, contentDescription = "المهام", tint = Color(0xFF38BDF8), modifier = Modifier.size(24.dp))
-                            }
-                            // 4: Notebook
-                            IconButton(onClick = { showNotebookSheet = true }) {
-                                Icon(Icons.Default.EditNote, contentDescription = "دفتر الملاحظات", tint = Color(0xFFFBBF24), modifier = Modifier.size(26.dp))
-                            }
-                            // 5: Reload
+                            // 2: Manual Schedule Reload
                             IconButton(
                                 onClick = {
                                     isRefreshingSchedule = true
@@ -1164,7 +1234,7 @@ fun StudentTimetableScreen(
                                     viewModel.syncScheduleManual { success ->
                                         isRefreshingSchedule = false
                                         rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
-                                        Toast.makeText(context, if (success) "تم تحديث البيانات ⚡" else "بيانات الجدول متاحة", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, if (success) "تم تحديث بيانات الجدول السحابية بنجاح ⚡" else "بيانات الجدول متاحة محلياً", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             ) {
@@ -1174,13 +1244,65 @@ fun StudentTimetableScreen(
                                     Icon(Icons.Default.Refresh, contentDescription = "إعادة التحميل", tint = Color(0xFF34D399), modifier = Modifier.size(24.dp))
                                 }
                             }
-                            // 6: Help Guide
-                            IconButton(onClick = { showHelpGuideDialog = true }) {
-                                Icon(Icons.Default.MenuBook, contentDescription = "دليل الاستخدام", tint = Color(0xFFFBBF24), modifier = Modifier.size(24.dp))
+                            // 3: Themes Selector
+                            IconButton(onClick = { showThemeDialog = true }) {
+                                Icon(Icons.Default.Palette, contentDescription = "الثيمات", tint = Color(0xFFC084FC), modifier = Modifier.size(22.dp))
                             }
-                            // 7: Settings
-                            IconButton(onClick = onNavigateToSettings) {
-                                Icon(Icons.Default.Settings, contentDescription = "الضبط", tint = Color.White, modifier = Modifier.size(24.dp))
+                            // 4: School Timing
+                            IconButton(onClick = { showTimingDialog = true }) {
+                                Icon(Icons.Default.AccessTime, contentDescription = "توقيت الدوام", tint = Color(0xFFF59E0B), modifier = Modifier.size(22.dp))
+                            }
+                            // 5: Overflow Tools Dropdown Menu (Notebook, Tasks, Pomodoro, Role Switch)
+                            var showMoreToolsMenu by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(onClick = { showMoreToolsMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "المزيد من الأدوات", tint = Color.White, modifier = Modifier.size(22.dp))
+                                }
+                                DropdownMenu(
+                                    expanded = showMoreToolsMenu,
+                                    onDismissRequest = { showMoreToolsMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("تبديل الصفة (أستاذ / طالب) ⇄", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color(0xFF2563EB)) },
+                                        onClick = {
+                                            showMoreToolsMenu = false
+                                            onNavigateToSettings()
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("مؤقت التركيز بومودورو ⏱️", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null, tint = Color(0xFFF43F5E)) },
+                                        onClick = {
+                                            showMoreToolsMenu = false
+                                            showPomodoroDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("دفتر الملاحظات والواجبات 📝", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.Default.EditNote, contentDescription = null, tint = Color(0xFFFBBF24)) },
+                                        onClick = {
+                                            showMoreToolsMenu = false
+                                            showNotebookSheet = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("قائمة المهام اليومية 📋", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.Default.FormatListNumbered, contentDescription = null, tint = Color(0xFF38BDF8)) },
+                                        onClick = {
+                                            showMoreToolsMenu = false
+                                            showTasksSheet = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("دليل منصة الطالب 📖", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.Default.MenuBook, contentDescription = null, tint = Color(0xFF10B981)) },
+                                        onClick = {
+                                            showMoreToolsMenu = false
+                                            showHelpGuideDialog = true
+                                        }
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = activeTheme.topBarBg)
@@ -1362,6 +1484,37 @@ fun StudentTimetableScreen(
                         }
                     }
                 }
+
+                Spacer(Modifier.height(10.dp))
+
+                // ----------------------------------------------------
+                // بطاقة هوية الطالب والصف والشعبة (تحت الجدول مباشرة)
+                // ----------------------------------------------------
+                StudentIdentityCardUnderTimetable(
+                    studentName = studentName,
+                    studentGrade = studentGrade,
+                    studentSection = studentSection,
+                    schoolName = schoolName,
+                    activeTheme = activeTheme,
+                    isRefreshing = isRefreshingSchedule || isRefreshing,
+                    onEditStudentInfo = { showStudentInfoDialog = true },
+                    onSyncNow = {
+                        isRefreshingSchedule = true
+                        viewModel.refreshData()
+                        viewModel.syncScheduleManual { success ->
+                            isRefreshingSchedule = false
+                            val freshJson = prefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                                ?: diyalaPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                            if (freshJson != null) {
+                                rawScheduleJson = freshJson
+                            }
+                            Toast.makeText(context, if (success) "تمت مزامنة وتحديث الجدول بنجاح ⚡" else "بيانات الجدول متاحة محلياً", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp)
+                )
 
                 Spacer(Modifier.height(10.dp))
 
@@ -1744,6 +1897,56 @@ fun StudentTimetableScreen(
                     }
                 }
             }
+        }
+
+        // ----------------------------------------------------
+        // STUDENT REGISTRATION & INFO EDIT DIALOG
+        // ----------------------------------------------------
+        if (showStudentInfoDialog) {
+            val currentSchoolCode = prefs.getString("school_code", null)
+                ?: diyalaPrefs.getString("school_code", null)
+                ?: "762261"
+            StudentInfoEditDialog(
+                initialName = studentName,
+                initialGrade = studentGrade,
+                initialSection = studentSection,
+                initialSchoolCode = currentSchoolCode,
+                onDismiss = { showStudentInfoDialog = false },
+                onSave = { newName, newGrade, newSection, newCode ->
+                    studentName = newName
+                    studentGrade = newGrade
+                    studentSection = newSection
+
+                    prefs.edit()
+                        .putString("student_name", newName)
+                        .putString("student_grade", newGrade)
+                        .putString("student_section", newSection)
+                        .putString("school_code", newCode)
+                        .apply()
+
+                    diyalaPrefs.edit()
+                        .putString("selected_grade", newGrade)
+                        .putString("selected_section", newSection)
+                        .putString("school_code", newCode)
+                        .apply()
+
+                    showStudentInfoDialog = false
+                    Toast.makeText(context, "جاري تحديث بيانات وهوية المدرسة والجدول... ⚡", Toast.LENGTH_SHORT).show()
+
+                    isRefreshingSchedule = true
+                    viewModel.updateStudentAndSchool(newName, newGrade, newSection, newCode) { success ->
+                        isRefreshingSchedule = false
+                        val freshJson = prefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                            ?: diyalaPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                        if (freshJson != null) {
+                            rawScheduleJson = freshJson
+                        }
+                        studentName = prefs.getString("student_name", null)?.takeIf { it.isNotBlank() } ?: studentName
+                        schoolName = prefs.getString("school_name", null)?.takeIf { it.isNotBlank() } ?: schoolName
+                        Toast.makeText(context, "تمت مزامنة الجدول والتعاميم وهوية الطالب بنجاح ✓", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
         }
 
         // ----------------------------------------------------
@@ -2664,6 +2867,411 @@ private fun DirectiveItemView(
                         fontSize = 10.sp,
                         color = Color(0xFF64748B)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StudentIdentityCardUnderTimetable(
+    studentName: String,
+    studentGrade: String,
+    studentSection: String,
+    schoolName: String,
+    activeTheme: AppThemePalette,
+    isRefreshing: Boolean,
+    onEditStudentInfo: () -> Unit,
+    onSyncNow: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = activeTheme.headerBannerBg,
+        border = BorderStroke(1.5.dp, activeTheme.dayCardBorder),
+        modifier = modifier.shadow(5.dp, RoundedCornerShape(16.dp))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Left/Start info
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .shadow(3.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(activeTheme.cornerCellBgBrush),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.School,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(10.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "الطالب: $studentName",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.5.sp,
+                            color = activeTheme.headerBannerText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = activeTheme.dayCardBg,
+                                border = BorderStroke(1.dp, activeTheme.dayCardBorder)
+                            ) {
+                                Text(
+                                    text = "$studentGrade • شعبة ($studentSection)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = activeTheme.dayCardText,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+
+                            Text(
+                                text = "• $schoolName",
+                                fontSize = 10.5.sp,
+                                color = activeTheme.periodTimeText,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                // Action buttons: Edit & Sync
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    IconButton(
+                        onClick = onEditStudentInfo,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(activeTheme.periodCardBg)
+                            .border(1.dp, activeTheme.periodCardBorder, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "تعديل وتسجيل بيانات الطالب",
+                            tint = activeTheme.periodTitleText,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onSyncNow,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(activeTheme.periodCardBg)
+                            .border(1.dp, activeTheme.periodCardBorder, CircleShape)
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                color = activeTheme.headerBannerText,
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "تحديث ومزامنة الجدول",
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = activeTheme.dayCardBorder.copy(alpha = 0.25f))
+
+            // Footer info: Connection status
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF10B981))
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "الجدول السحابي مفعل ومتصل تلقائياً مع المدرسة",
+                        fontSize = 10.sp,
+                        color = activeTheme.headerBannerText.copy(alpha = 0.85f),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Text(
+                    text = "انقر ✏️ لتعديل الصف والشعبة",
+                    fontSize = 9.5.sp,
+                    color = activeTheme.periodTimeText,
+                    fontWeight = FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun StudentLandscapeIdentityBar(
+    studentName: String,
+    studentGrade: String,
+    studentSection: String,
+    schoolName: String,
+    activeTheme: AppThemePalette,
+    onEditStudentInfo: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = activeTheme.headerBannerBg,
+        border = BorderStroke(1.dp, activeTheme.dayCardBorder),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.School,
+                    contentDescription = null,
+                    tint = activeTheme.headerBannerText,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "الطالب: $studentName",
+                    fontWeight = FontWeight.Black,
+                    fontSize = 12.sp,
+                    color = activeTheme.headerBannerText
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "🏫 $studentGrade - شعبة ($studentSection)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.5.sp,
+                    color = activeTheme.periodTitleText
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "• $schoolName",
+                    fontSize = 10.5.sp,
+                    color = activeTheme.periodTimeText
+                )
+            }
+
+            TextButton(
+                onClick = onEditStudentInfo,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Icon(Icons.Default.Edit, contentDescription = null, tint = activeTheme.headerBannerText, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("تعديل البيانات", fontSize = 11.sp, color = activeTheme.headerBannerText, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun StudentInfoEditDialog(
+    initialName: String,
+    initialGrade: String,
+    initialSection: String,
+    initialSchoolCode: String = "",
+    onDismiss: () -> Unit,
+    onSave: (newName: String, newGrade: String, newSection: String, newSchoolCode: String) -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var grade by remember { mutableStateOf(initialGrade) }
+    var section by remember { mutableStateOf(initialSection) }
+    var schoolCode by remember { mutableStateOf(initialSchoolCode.ifEmpty { "762261" }) }
+
+    val commonGrades = listOf(
+        "الصف الأول المتوسط",
+        "الصف الثاني المتوسط",
+        "الصف الثالث المتوسط",
+        "الصف الرابع العلمي",
+        "الصف الرابع الأدبي",
+        "الصف الخامس العلمي",
+        "الصف الخامس الأدبي",
+        "الصف السادس العلمي",
+        "الصف السادس الأدبي",
+        "الصف الأول الابتدائي",
+        "الصف الثاني الابتدائي",
+        "الصف الثالث الابتدائي",
+        "الصف الرابع الابتدائي",
+        "الصف الخامس الابتدائي",
+        "الصف السادس الابتدائي"
+    )
+
+    val commonSections = listOf("أ", "ب", "ج", "د", "هـ", "و")
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            border = BorderStroke(1.5.dp, Color(0xFF0284C7)),
+            modifier = Modifier.fillMaxWidth().padding(8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("تسجيل وتعديل بيانات الطالب 🎓", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFF0F172A))
+                }
+
+                HorizontalDivider(color = Color(0xFFE2E8F0))
+
+                // Name input
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("اسم الطالب الكامل") },
+                    placeholder = { Text("مثال: علي محمد كاظم") },
+                    leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = Color(0xFF0284C7)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                // School code input
+                OutlinedTextField(
+                    value = schoolCode,
+                    onValueChange = { schoolCode = it },
+                    label = { Text("رمز ربط المدرسة (كود الاقتران)") },
+                    placeholder = { Text("مثال: 762261 أو SCH-KAB2-9359") },
+                    leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF0284C7)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                // Grade input & quick selection chips
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = grade,
+                        onValueChange = { grade = it },
+                        label = { Text("الصف الدراسي") },
+                        leadingIcon = { Icon(Icons.Default.Class, contentDescription = null, tint = Color(0xFF0284C7)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+
+                    Text("اختيار سريع للصف:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        commonGrades.forEach { g ->
+                            FilterChip(
+                                selected = (grade == g),
+                                onClick = { grade = g },
+                                label = { Text(g, fontSize = 10.5.sp) }
+                            )
+                        }
+                    }
+                }
+
+                // Section input & quick chips
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(
+                        value = section,
+                        onValueChange = { section = it },
+                        label = { Text("الشعبة") },
+                        leadingIcon = { Icon(Icons.Default.MeetingRoom, contentDescription = null, tint = Color(0xFF0284C7)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+
+                    Text("اختيار سريع للشعبة:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        commonSections.forEach { s ->
+                            FilterChip(
+                                selected = (section == s),
+                                onClick = { section = s },
+                                label = { Text(s, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            )
+                        }
+                    }
+                }
+
+                // Action buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("إلغاء")
+                    }
+
+                    Button(
+                        onClick = {
+                            val finalName = if (name.trim().isBlank()) "طالب متميز" else name.trim()
+                            val finalGrade = if (grade.trim().isBlank()) "الصف الأول المتوسط" else grade.trim()
+                            val finalSection = if (section.trim().isBlank()) "أ" else section.trim()
+                            val finalCode = if (schoolCode.trim().isBlank()) "762261" else schoolCode.trim()
+                            onSave(finalName, finalGrade, finalSection, finalCode)
+                        },
+                        modifier = Modifier.weight(1.5f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("حفظ ومزامنة ⚡", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

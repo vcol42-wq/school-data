@@ -80,9 +80,9 @@ data class SupabaseGradeDto(
     val student_record_number: String,
     val subject: String,
     val marks: StudentMarksDto, // Maps directly to PostgreSQL jsonb column via Gson
-    val grade: String? = null,
-    val section: String? = null,
-    val teacher_id: String? = null
+    @Transient val grade: String? = null,
+    @Transient val section: String? = null,
+    @Transient val teacher_id: String? = null
 )
 
 data class SupabaseAttendanceDto(
@@ -249,6 +249,7 @@ interface SupabaseApi {
     ): Response<Void>
 
     @POST("rest/v1/grades")
+    @Headers("Prefer: resolution=merge-duplicates")
     suspend fun insertGrades(
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
@@ -1666,7 +1667,13 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = schoolId.trim().ifEmpty { "school_01" }
+            val currentConfig = configDao.getConfig().first()
+            val localPairing = currentConfig?.pairingCode?.trim() ?: ""
+            val cleanSchoolId = when {
+                schoolId.isNotBlank() && schoolId != "school_01" -> schoolId.trim()
+                !currentConfig?.schoolId.isNullOrBlank() && currentConfig?.schoolId != "school_01" -> currentConfig!!.schoolId.trim()
+                else -> schoolId.trim().ifEmpty { currentConfig?.schoolId?.trim() ?: "school_01" }
+            }
 
             // Ensure school header is active
             try {
@@ -1675,13 +1682,22 @@ class SyncRepository @Inject constructor(
                 // Non-blocking
             }
 
-            // Fetch target students (specific class with subject fallback)
+            // Fetch target students (specific class with flexible subject fallback)
             val allStudents = if (!targetGrade.isNullOrBlank() && !targetSection.isNullOrBlank()) {
                 var classList = if (!targetSubject.isNullOrBlank()) {
                     studentDao.getStudentsListForClass(targetGrade.trim(), targetSection.trim(), targetSubject.trim())
                 } else emptyList()
                 if (classList.isEmpty()) {
                     classList = studentDao.getStudentsForGradeAndSection(targetGrade.trim(), targetSection.trim())
+                }
+                if (classList.isEmpty()) {
+                    val fullList = studentDao.getAllStudentsList()
+                    val matched = fullList.filter { s ->
+                        matchGradeFlexible(s.grade, targetGrade.trim()) &&
+                        matchSectionFlexible(s.section, targetSection.trim()) &&
+                        (targetSubject.isNullOrBlank() || s.subject.isBlank() || s.subject.trim() == targetSubject.trim())
+                    }
+                    if (matched.isNotEmpty()) classList = matched
                 }
                 if (classList.isNotEmpty()) classList else studentDao.getAllStudentsList()
             } else {
@@ -1959,12 +1975,17 @@ class SyncRepository @Inject constructor(
                 }
             }
 
-            // 3. Fallback: get first available school if cleanCode was default
-            if (matchedSchool == null && (cleanCode == "112233" || cleanCode.isEmpty())) {
+            // 3. Fallback: match by student/principal code in config across schools
+            if (matchedSchool == null) {
                 try {
                     val res = api.getSchools(apiKey = apiKey, auth = authHeader)
                     if (res.isSuccessful && !res.body().isNullOrEmpty()) {
-                        matchedSchool = res.body()!!.first()
+                        matchedSchool = res.body()!!.firstOrNull {
+                            it.pairing_code == cleanCode ||
+                            it.id == cleanCode ||
+                            it.config?.get("student_pairing_code")?.toString() == cleanCode ||
+                            it.config?.get("principal_pairing_code")?.toString() == cleanCode
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -2037,7 +2058,7 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-6884" }
+            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-9359" }
             val stdGrade = standardizeGradeName(grade)
             val stdSection = standardizeSectionName(section)
 
@@ -2108,7 +2129,7 @@ class SyncRepository @Inject constructor(
         return try {
             val (url, apiKey) = resolveCredentials(null, null)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-6884" }
+            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-9359" }
 
             val isLocal = url.contains("localhost") || url.contains("192.168.") || !url.contains("supabase")
             val scheduleJson = if (isLocal) {
@@ -2127,14 +2148,13 @@ class SyncRepository @Inject constructor(
                 }
             } else {
                 val api = getApi(url)
-                val orQuery = "(id.eq.$cleanSchoolId,school_id.eq.$cleanSchoolId)"
-                val resp = api.getSchedules(apiKey, authHeader, cleanSchoolId, orFilter = orQuery)
+                val resp = api.getSchedules(apiKey, authHeader, cleanSchoolId, idFilter = "eq.$cleanSchoolId")
                 if (resp.isSuccessful && !resp.body().isNullOrEmpty()) {
                     val matched = resp.body()!!.first()
                     val gson = com.google.gson.Gson()
                     gson.toJson(matched.schedule_map)
                 } else {
-                    val resp2 = api.getSchedules(apiKey, authHeader, cleanSchoolId, idFilter = "eq.$cleanSchoolId")
+                    val resp2 = api.getSchedules(apiKey, authHeader, cleanSchoolId, idFilter = "eq.SCH-8158")
                     if (resp2.isSuccessful && !resp2.body().isNullOrEmpty()) {
                         val matched = resp2.body()!!.first()
                         val gson = com.google.gson.Gson()
@@ -2147,7 +2167,9 @@ class SyncRepository @Inject constructor(
 
             if (scheduleJson != null) {
                 val prefs = context.getSharedPreferences("diyala_school_prefs", android.content.Context.MODE_PRIVATE)
+                val bossPrefs = context.getSharedPreferences("the_boss_prefs", android.content.Context.MODE_PRIVATE)
                 val editor = prefs.edit().putString("synced_schedule", scheduleJson)
+                val bossEditor = bossPrefs.edit().putString("synced_schedule", scheduleJson)
                 try {
                     val root = com.google.gson.Gson().fromJson<Map<String, Any>>(scheduleJson, object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type)
                     val timingObj = root?.get("_timing") as? Map<*, *>
@@ -2160,9 +2182,16 @@ class SyncRepository @Inject constructor(
                         editor.putInt("lesson_duration_minutes", lessonDur)
                         editor.putInt("break_duration_minutes", breakDur)
 
+                        bossEditor.putString("school_start_hour", startHourStr)
+                        bossEditor.putInt("lesson_duration_minutes", lessonDur)
+                        bossEditor.putInt("break_duration_minutes", breakDur)
+
                         if (startHourStr.contains(":")) {
                             val p = startHourStr.split(":")
-                            p.getOrNull(0)?.toIntOrNull()?.let { editor.putInt("bell_start_hour", it) }
+                            p.getOrNull(0)?.toIntOrNull()?.let { 
+                                editor.putInt("bell_start_hour", it) 
+                                bossEditor.putInt("bell_start_hour", it)
+                            }
                             p.getOrNull(1)?.toIntOrNull()?.let { editor.putInt("bell_start_minute", it) }
                         } else if (startHourStr.toIntOrNull() != null) {
                             editor.putInt("bell_start_hour", startHourStr.toInt())
@@ -2204,7 +2233,7 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = assignment.school_id.trim().ifEmpty { "SCH-KAB2-6884" }
+            val cleanSchoolId = assignment.school_id.trim().ifEmpty { "SCH-KAB2-9359" }
             val cleanTeacherId = assignment.teacher_id.trim().ifEmpty { "teacher_01" }
 
             val cleanAssignment = assignment.copy(

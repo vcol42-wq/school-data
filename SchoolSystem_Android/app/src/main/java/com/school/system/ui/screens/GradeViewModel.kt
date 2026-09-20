@@ -169,7 +169,11 @@ class GradeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val conf = config.value ?: SchoolConfig()
-                val schoolId = conf.schoolId.ifEmpty { "SCH-KAB2-6884" }
+                val localPairing = conf.pairingCode.trim()
+                val schoolId = when {
+                    conf.schoolId.isNotBlank() && conf.schoolId != "school_01" -> conf.schoolId.trim()
+                    else -> conf.schoolId.trim().ifEmpty { "school_01" }
+                }
                 val teacherId = conf.syncSealToken?.ifEmpty { conf.managerName }?.ifEmpty { "teacher_01" } ?: "teacher_01"
 
                 val dto = SupabaseDailyAssignmentDto(

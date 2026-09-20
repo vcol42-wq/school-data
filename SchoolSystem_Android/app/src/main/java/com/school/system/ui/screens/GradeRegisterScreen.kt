@@ -266,37 +266,46 @@ fun GradeRegisterScreen(
         ctx as? androidx.fragment.app.FragmentActivity
     }
 
+    val performUpload: (String) -> Unit = { pinToUse ->
+        isUploadingGrades = true
+        viewModel.uploadGradesSecurely(grade, section, subject, pinToUse) { result ->
+            isUploadingGrades = false
+            when (result) {
+                is SecureUploadResult.Success -> {
+                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                }
+                is SecureUploadResult.InvalidPin -> {
+                    invalidPinDialogMessage = result.reason
+                    showInvalidPinDialog = true
+                }
+                is SecureUploadResult.ClassLocked -> {
+                    Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
+                }
+                is SecureUploadResult.Failure -> {
+                    Toast.makeText(context, result.errorMessage, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     val startSecureUploadWithBiometric: (String) -> Unit = { pinToUse ->
-        if (fragmentActivity == null) {
-            Toast.makeText(context, "تعذر تشغيل المصادقة البيومترية في النشاط الحالي", Toast.LENGTH_LONG).show()
+        val avail = BiometricHelper.checkBiometricAvailability(context)
+        if (fragmentActivity == null || avail !is BiometricHelper.BiometricStatus.Available) {
+            performUpload(pinToUse)
         } else {
             BiometricHelper.authenticate(
                 activity = fragmentActivity,
                 title = "تأكيد رفع درجات: $subject ($section)",
                 subtitle = "المصادقة البيومترية مطلوبة لاعتماد درجات الشعبة ورفعها للسحابة",
                 onSuccess = {
-                    isUploadingGrades = true
-                    viewModel.uploadGradesSecurely(grade, section, subject, pinToUse) { result ->
-                        isUploadingGrades = false
-                        when (result) {
-                            is SecureUploadResult.Success -> {
-                                Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
-                            }
-                            is SecureUploadResult.InvalidPin -> {
-                                invalidPinDialogMessage = result.reason
-                                showInvalidPinDialog = true
-                            }
-                            is SecureUploadResult.ClassLocked -> {
-                                Toast.makeText(context, result.reason, Toast.LENGTH_LONG).show()
-                            }
-                            is SecureUploadResult.Failure -> {
-                                Toast.makeText(context, result.errorMessage, Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    }
+                    performUpload(pinToUse)
                 },
                 onError = { err ->
-                    Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                    if (err.contains("إلغاء")) {
+                        Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                    } else {
+                        performUpload(pinToUse)
+                    }
                 }
             )
         }
@@ -503,7 +512,8 @@ fun GradeRegisterScreen(
                                         if (storedPin != null) {
                                             startSecureUploadWithBiometric(storedPin)
                                         } else {
-                                            inputPin = ""
+                                            val activeSchoolPairing = config?.pairingCode?.trim().takeIf { !it.isNullOrBlank() } ?: "112233"
+                                            inputPin = activeSchoolPairing
                                             showPinDialog = true
                                         }
                                     },
@@ -1327,6 +1337,31 @@ fun GradeRegisterScreen(
                         )
 
                         val savedSup = remember { viewModel.getSavedSupervisorCode() }
+                        val activeSchoolPairing = config?.pairingCode?.trim().takeIf { !it.isNullOrBlank() } ?: "112233"
+
+                        // زر سريع لاستخدام كود المدرسة
+                        Surface(
+                            color = Color(0xFFEFF6FF),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                            onClick = { inputPin = activeSchoolPairing },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.School, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "كود المدرسة ($activeSchoolPairing) - اضغط للاستخدام 🏫",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E40AF)
+                                )
+                            }
+                        }
+
                         if (!savedSup.isNullOrBlank()) {
                             Surface(
                                 color = Color(0xFFFFFBEB),
@@ -1353,39 +1388,36 @@ fun GradeRegisterScreen(
 
                         Spacer(Modifier.height(4.dp))
 
-                        // أزرار عريضة وواضحة تمتد على كامل العرض لمنع تقطع الأحرف وضغط الأزرار
+                        // الزر الأول: رفع مباشر فوري بدون رمز
                         Button(
                             onClick = {
-                                if (inputPin.isNotBlank()) {
-                                    val pin = inputPin.trim()
-                                    showPinDialog = false
-                                    startSecureUploadWithBiometric(pin)
-                                } else {
-                                    Toast.makeText(context, "يرجى كتابة الرمز السري أو اختيار رفع مباشر أدناه", Toast.LENGTH_SHORT).show()
-                                }
+                                showPinDialog = false
+                                startSecureUploadWithBiometric("DIRECT")
                             },
                             modifier = Modifier.fillMaxWidth().height(46.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("رفع مباشر فوري للسحابة ⚡", fontWeight = FontWeight.Black, fontSize = 13.5.sp)
+                        }
+
+                        // الزر الثاني: تأكيد الرمز والرفع بالبصمة
+                        OutlinedButton(
+                            onClick = {
+                                val pin = inputPin.trim().ifEmpty { activeSchoolPairing }
+                                showPinDialog = false
+                                startSecureUploadWithBiometric(pin)
+                            },
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = currentTheme.primaryColor),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.primaryColor),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("تأكيد الرمز والرفع بالبصمة 🔒", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                showPinDialog = false
-                                startSecureUploadWithBiometric("DIRECT")
-                            },
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF059669)),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF10B981)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("رفع مباشر فوري بدون رمز ⚡", fontWeight = FontWeight.Black, fontSize = 13.sp)
                         }
                     }
                 },
@@ -1411,7 +1443,7 @@ fun GradeRegisterScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "تنبيه أمني من الإدارة",
+                            "تأكيد الرفع والمصادقة",
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFDC2626),
                             fontSize = 16.sp
@@ -1425,7 +1457,7 @@ fun GradeRegisterScreen(
                     ) {
                         Text(
                             text = invalidPinDialogMessage.ifEmpty {
-                                "تم تحديث أو تغيير رمز اعتماد هذه المادة من الإدارة، يرجى إدخال الرمز الجديد أو التجاوز بالرفع المباشر."
+                                "يمكنك المتابعة بالرفع المباشر الفوري إلى السحابة أو إدخال رمز آخر."
                             },
                             fontSize = 13.sp,
                             color = currentTheme.textPrimaryColor,
@@ -1438,31 +1470,31 @@ fun GradeRegisterScreen(
                         Button(
                             onClick = {
                                 showInvalidPinDialog = false
-                                inputPin = ""
-                                showPinDialog = true
+                                startSecureUploadWithBiometric("DIRECT")
                             },
                             modifier = Modifier.fillMaxWidth().height(46.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("إدخال الرمز الجديد 🔑", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("تجاوز ورفع مباشر فوري للسحابة ⚡", fontWeight = FontWeight.Black, fontSize = 13.5.sp)
                         }
 
                         OutlinedButton(
                             onClick = {
                                 showInvalidPinDialog = false
-                                startSecureUploadWithBiometric("DIRECT")
+                                inputPin = ""
+                                showPinDialog = true
                             },
                             modifier = Modifier.fillMaxWidth().height(44.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF059669)),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF10B981)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFDC2626)),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("تجاوز ورفع مباشر فوري ⚡", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                            Text("إدخال رمز جديد 🔑", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
                     }
                 },

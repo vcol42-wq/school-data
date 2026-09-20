@@ -8,7 +8,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class SessionManager @Inject constructor(@ApplicationContext context: Context) {
+class SessionManager @Inject constructor(@ApplicationContext private val context: Context) {
 
     private val masterKey = MasterKey.Builder(context)
         .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -28,6 +28,22 @@ class SessionManager @Inject constructor(@ApplicationContext context: Context) {
             .putString("KEY_SCHOOL_CODE", schoolCode)
             .putString("KEY_SCHOOL_NAME", schoolName)
             .apply()
+
+        try {
+            context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).edit()
+                .putString("school_id", schoolId)
+                .putString("school_code", schoolCode)
+                .putString("school_name", schoolName)
+                .apply()
+
+            context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE).edit()
+                .putString("diyala_school_id", schoolId)
+                .putString("school_id", schoolId)
+                .putString("school_name", schoolName)
+                .apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun getSchoolId(): String? = sharedPreferences.getString("KEY_SCHOOL_ID", null)

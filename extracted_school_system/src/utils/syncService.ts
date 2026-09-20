@@ -597,14 +597,164 @@ export async function importGradesAndAttendance(
 
 /**
  * Restores all school data (students, staff, etc.) from Supabase
+export interface CloudSchoolSummary {
+  id: string;
+  name: string;
+  admin_email: string;
+  pairing_code: string;
+  student_pairing_code?: string;
+  principal_pairing_code?: string;
+  config?: any;
+  created_at?: string;
+}
+
+/**
+ * Searches schools in Supabase by name, admin email, or pairing code.
+ */
+export async function searchSchoolsInSupabase(query: string): Promise<CloudSchoolSummary[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  try {
+    const client = getSupabase('anonymous');
+    
+    // Search by name, admin_email, pairing_code, or id
+    const { data: schools, error } = await client
+      .from('schools')
+      .select('id, name, admin_email, pairing_code, config, created_at')
+      .or(`name.ilike.%${trimmed}%,admin_email.ilike.%${trimmed}%,pairing_code.eq.${trimmed},id.eq.${trimmed}`);
+
+    if (error) {
+      console.warn('Notice searching schools:', error.message);
+      // Fallback: fetch schools and filter locally if complex or syntax mismatch
+      const { data: allSchools } = await client
+        .from('schools')
+        .select('id, name, admin_email, pairing_code, config, created_at')
+        .limit(50);
+      
+      const filtered = (allSchools || []).filter(s => {
+        const nameMatch = (s.name || '').toLowerCase().includes(trimmed.toLowerCase());
+        const emailMatch = (s.admin_email || '').toLowerCase().includes(trimmed.toLowerCase());
+        const codeMatch = s.pairing_code === trimmed || s.id === trimmed;
+        const cfg = s.config || {};
+        const studentMatch = (cfg.studentPairingCode || cfg.student_pairing_code) === trimmed;
+        const principalMatch = (cfg.principalPairingCode || cfg.principal_pairing_code) === trimmed;
+        return nameMatch || emailMatch || codeMatch || studentMatch || principalMatch;
+      });
+
+      return filtered.map(s => {
+        const cfg = s.config || {};
+        return {
+          id: s.id,
+          name: s.name,
+          admin_email: s.admin_email || '',
+          pairing_code: s.pairing_code,
+          student_pairing_code: cfg.studentPairingCode || cfg.student_pairing_code || '',
+          principal_pairing_code: cfg.principalPairingCode || cfg.principal_pairing_code || '',
+          config: cfg,
+          created_at: s.created_at
+        };
+      });
+    }
+
+    return (schools || []).map(s => {
+      const cfg = s.config || {};
+      return {
+        id: s.id,
+        name: s.name,
+        admin_email: s.admin_email || '',
+        pairing_code: s.pairing_code,
+        student_pairing_code: cfg.studentPairingCode || cfg.student_pairing_code || '',
+        principal_pairing_code: cfg.principalPairingCode || cfg.principal_pairing_code || '',
+        config: cfg,
+        created_at: s.created_at
+      };
+    });
+  } catch (err) {
+    console.error('Failed to search schools in Supabase:', err);
+    return [];
+  }
+}
+
+/**
+ * Checks if a school with the given name or admin email already exists in Supabase.
+ * Returns the matching school summary if found, or null.
+ */
+export async function checkDuplicateSchool(name: string, email: string): Promise<CloudSchoolSummary | null> {
+  const cleanName = (name || '').trim();
+  const cleanEmail = (email || '').trim().toLowerCase();
+  
+  if (!cleanName && !cleanEmail) return null;
+
+  try {
+    const client = getSupabase('anonymous');
+
+    // 1. Check by email if provided
+    if (cleanEmail) {
+      const { data: byEmail } = await client
+        .from('schools')
+        .select('id, name, admin_email, pairing_code, config, created_at')
+        .ilike('admin_email', cleanEmail)
+        .limit(1);
+
+      if (byEmail && byEmail.length > 0) {
+        const s = byEmail[0];
+        const cfg = s.config || {};
+        return {
+          id: s.id,
+          name: s.name,
+          admin_email: s.admin_email || '',
+          pairing_code: s.pairing_code,
+          student_pairing_code: cfg.studentPairingCode || cfg.student_pairing_code || '',
+          principal_pairing_code: cfg.principalPairingCode || cfg.principal_pairing_code || '',
+          config: cfg,
+          created_at: s.created_at
+        };
+      }
+    }
+
+    // 2. Check by exact name or normalized name
+    if (cleanName) {
+      const { data: byName } = await client
+        .from('schools')
+        .select('id, name, admin_email, pairing_code, config, created_at')
+        .ilike('name', cleanName)
+        .limit(1);
+
+      if (byName && byName.length > 0) {
+        const s = byName[0];
+        const cfg = s.config || {};
+        return {
+          id: s.id,
+          name: s.name,
+          admin_email: s.admin_email || '',
+          pairing_code: s.pairing_code,
+          student_pairing_code: cfg.studentPairingCode || cfg.student_pairing_code || '',
+          principal_pairing_code: cfg.principalPairingCode || cfg.principal_pairing_code || '',
+          config: cfg,
+          created_at: s.created_at
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Duplicate check warning:', err);
+  }
+
+  return null;
+}
+
+/**
+ * Restores all school data (metadata, teachers, students, grades, attendance, schedule) from Supabase
  * when a school re-onboards using an existing email or ID.
  */
 export async function restoreSchoolData(schoolId: string): Promise<{
   success: boolean;
   message: string;
   config?: any;
+  schoolMeta?: any;
   students?: Student[];
   teachers?: StaffMember[];
+  schedule?: DayScheduleMap;
 }> {
   try {
     const client = getSupabase(schoolId);
@@ -617,6 +767,13 @@ export async function restoreSchoolData(schoolId: string): Promise<{
       .single();
 
     if (metaError) throw new Error(`School Metadata Error: ${metaError.message}`);
+
+    // 0.5 Fetch schedule if available
+    const { data: scheduleData } = await client
+      .from('schedules')
+      .select('schedule_map')
+      .eq('id', schoolId)
+      .maybeSingle();
 
     // 1. Fetch teachers/staff
     const { data: dbTeachers, error: teachersError } = await client
@@ -727,8 +884,10 @@ export async function restoreSchoolData(schoolId: string): Promise<{
       success: true,
       message: 'تم استعادة بيانات المدرسة من السحاب بنجاح!',
       config: schoolMeta.config,
+      schoolMeta: schoolMeta,
       students: cleanStudentsList,
-      teachers: teachersList
+      teachers: teachersList,
+      schedule: scheduleData?.schedule_map
     };
   } catch (error: any) {
     console.error('Restore Error:', error);

@@ -18,10 +18,14 @@ import {
   Download,
   Upload,
   CalendarPlus,
-  CloudLightning
+  CloudLightning,
+  Cloud,
+  Search,
+  AlertTriangle,
+  Loader2
 } from 'lucide-react';
 import { refreshSupabaseClient, getSupabase } from '../utils/supabaseClient';
-import { purgeSchoolDataFromCloud } from '../utils/syncService';
+import { purgeSchoolDataFromCloud, searchSchoolsInSupabase, restoreSchoolData, CloudSchoolSummary } from '../utils/syncService';
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -218,85 +222,113 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
-  // Save Settings
+  // Cloud Search State
+  const [showCloudSearchModal, setShowCloudSearchModal] = useState(false);
+  const [cloudSearchQuery, setCloudSearchQuery] = useState('');
+  const [cloudSearchResults, setCloudSearchResults] = useState<CloudSchoolSummary[]>([]);
+  const [isCloudSearching, setIsCloudSearching] = useState(false);
+  const [hasCloudSearched, setHasCloudSearched] = useState(false);
+  const [isRestoringSchool, setIsRestoringSchool] = useState(false);
+
+  // Search Schools in Cloud
+  const handleCloudSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!cloudSearchQuery.trim()) return;
+    setIsCloudSearching(true);
+    setHasCloudSearched(true);
+    try {
+      const res = await searchSchoolsInSupabase(cloudSearchQuery);
+      setCloudSearchResults(res);
+    } catch (err) {
+      console.error(err);
+      alert('خطأ أثناء البحث في السحابة');
+    } finally {
+      setIsCloudSearching(false);
+    }
+  };
+
+  // Restore Selected School from Cloud
+  const handleRestoreFromCloud = async (school: CloudSchoolSummary) => {
+    if (!confirm(`هل أنت متأكد من استعادة بيانات (${school.name}) وربط هذا التطبيق بها؟ سيتم سحب الطلاب والأساتذة والجدول المرتبط بهذه المدرسة.`)) return;
+    setIsRestoringSchool(true);
+    try {
+      const res = await restoreSchoolData(school.id);
+      if (res.success) {
+        const studentCode = school.student_pairing_code || res.config?.studentPairingCode || '223344';
+        const principalCode = school.principal_pairing_code || res.config?.principalPairingCode || '334455';
+
+        const newConfig = {
+          ...config,
+          ...(res.config || {}),
+          schoolName: school.name,
+          schoolId: school.id,
+          pairingCode: school.pairing_code,
+          studentPairingCode: studentCode,
+          principalPairingCode: principalCode,
+          adminEmail: school.admin_email
+        };
+
+        setConfig(newConfig);
+        setFormConfig(newConfig);
+        if (res.students) setStudents(res.students);
+        if (res.teachers) setStaffList(res.teachers);
+        if (res.schedule) localStorage.setItem('diyala_school_schedule', JSON.stringify(res.schedule));
+
+        localStorage.setItem('diyala_school_id', school.id);
+        localStorage.setItem('diyala_school_pairing_code', school.pairing_code);
+        localStorage.setItem('diyala_pairing_code', school.pairing_code);
+        localStorage.setItem('diyala_student_pairing_code', studentCode);
+        localStorage.setItem('diyala_principal_pairing_code', principalCode);
+        localStorage.setItem('diyala_admin_email', school.admin_email);
+        localStorage.setItem('diyala_school_name', school.name);
+
+        refreshSupabaseClient(school.id);
+        setShowCloudSearchModal(false);
+        alert(`✅ تم استعادة بيانات (${school.name}) بنجاح!\nرمز المدرس: ${school.pairing_code}\nرمز الطالب: ${studentCode}\nرمز المدير: ${principalCode}`);
+      } else {
+        alert('⚠️ فشلت الاستعادة: ' + res.message);
+      }
+    } catch (e: any) {
+      alert('خطأ أثناء استعادة المدرسة: ' + (e.message || ''));
+    } finally {
+      setIsRestoringSchool(false);
+    }
+  };
+
+  // Save Settings Safely (without destroying data or regenerating IDs)
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
 
-    const isSchoolNameChanged = formConfig.schoolName !== config.schoolName && config.schoolName !== '';
+    setConfig({ ...formConfig });
+    localStorage.setItem('diyala_school_name', formConfig.schoolName || '');
+    localStorage.setItem('diyala_admin_email', formConfig.adminEmail || '');
+    localStorage.setItem('diyala_pairing_code', formConfig.pairingCode || '112233');
+    localStorage.setItem('diyala_student_pairing_code', formConfig.studentPairingCode || '223344');
+    localStorage.setItem('diyala_principal_pairing_code', formConfig.principalPairingCode || '334455');
+    
+    try {
+      const schoolId = formConfig.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
+      const client = getSupabase(schoolId);
+      client.from('schools').upsert({
+        id: schoolId,
+        name: formConfig.schoolName,
+        pairing_code: formConfig.pairingCode || '112233',
+        admin_email: formConfig.adminEmail || '',
+        config: {
+          managerName: formConfig.managerName || '',
+          directorateName: formConfig.directorateName || '',
+          sectionName: formConfig.sectionName || '',
+          schoolStage: formConfig.schoolStage || 'intermediate',
+          schoolStartHour: formConfig.schoolStartHour || '08:00',
+          lessonDurationMinutes: Number(formConfig.lessonDurationMinutes) || 45,
+          breakDurationMinutes: Number(formConfig.breakDurationMinutes) || 10,
+          studentPairingCode: formConfig.studentPairingCode || '223344',
+          principalPairingCode: formConfig.principalPairingCode || '334455'
+        }
+      }, { onConflict: 'id' }).then(() => {});
+    } catch (_) {}
 
-    if (isSchoolNameChanged) {
-      const confirmReset = confirm(
-        `🚨 تحذير إلزامي: لقد قمت بتغيير اسم المدرسة من [${config.schoolName}] إلى [${formConfig.schoolName}].\n\n` +
-        `حسب سياسة النظام، عند تغيير المدرسة يجب فرضا والزاما:\n` +
-        `1️⃣ تصفير كافة بيانات الطلاب (حذف كامل).\n` +
-        `2️⃣ تصفير كافة بيانات الكادر (حذف كامل).\n` +
-        `3️⃣ إلغاء الربط السحابي الحالي وتوليد رموز اقتران جديدة.\n\n` +
-        `هل أنت متأكد من تنفيذ هذا الإجراء الإلزامي؟ لا يمكن التراجع عن الحذف.`
-      );
-
-      if (!confirmReset) {
-        // Revert school name in form if user cancels
-        setFormConfig(prev => ({ ...prev, schoolName: config.schoolName }));
-        return;
-      }
-
-      // 1 & 2: Reset Students and Staff
-      setStudents([]);
-      setStaffList([]);
-
-      // 3: Generate New Codes (Cancel Linking)
-      const email = formConfig.adminEmail || localStorage.getItem('diyala_admin_email') || 'principal@edu.iq';
-      const generatedId = "SCH-" + email.split('@')[0].toUpperCase().slice(0, 4) + "-" + Math.floor(1000 + Math.random() * 9000);
-      const generatedPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const generatedStudentPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const generatedPrincipalPairingCode = Math.floor(100000 + Math.random() * 900000).toString();
-
-      const newConfig = {
-        ...formConfig,
-        schoolId: generatedId,
-        pairingCode: generatedPairingCode,
-        studentPairingCode: generatedStudentPairingCode,
-        principalPairingCode: generatedPrincipalPairingCode
-      };
-
-      setConfig(newConfig);
-
-      // Update localStorage for immediate use by other components that might read it directly
-      localStorage.setItem('diyala_school_id', generatedId);
-      localStorage.setItem('diyala_school_pairing_code', generatedPairingCode);
-      localStorage.setItem('diyala_pairing_code', generatedPairingCode);
-      localStorage.setItem('diyala_student_pairing_code', generatedStudentPairingCode);
-      localStorage.setItem('diyala_principal_pairing_code', generatedPrincipalPairingCode);
-      localStorage.setItem('diyala_school_name', formConfig.schoolName);
-
-      // Refresh sync client with new school ID
-      refreshSupabaseClient();
-
-      alert('✅ تم تغيير المدرسة بنجاح! تم تصفير كافة البيانات وتوليد رموز اقتران ثلاثية جديدة (للمدرس، الطالب، والمدير).');
-    } else {
-      setConfig({ ...formConfig });
-      localStorage.setItem('diyala_pairing_code', formConfig.pairingCode || '112233');
-      localStorage.setItem('diyala_student_pairing_code', formConfig.studentPairingCode || '223344');
-      localStorage.setItem('diyala_principal_pairing_code', formConfig.principalPairingCode || '334455');
-      try {
-        const schoolId = formConfig.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
-        const client = getSupabase(schoolId);
-        client.from('schools').upsert({
-          id: schoolId,
-          name: formConfig.schoolName,
-          pairing_code: formConfig.pairingCode || '112233',
-          admin_email: formConfig.adminEmail || '',
-          config: {
-            schoolStartHour: formConfig.schoolStartHour || '08:00',
-            lessonDurationMinutes: Number(formConfig.lessonDurationMinutes) || 45,
-            breakDurationMinutes: Number(formConfig.breakDurationMinutes) || 10,
-            studentPairingCode: formConfig.studentPairingCode || '223344',
-            principalPairingCode: formConfig.principalPairingCode || '334455'
-          }
-        }, { onConflict: 'id' }).then(() => {});
-      } catch (_) {}
-      alert('تم حفظ كافة إعدادات النظام وتحديث التوقيتات وأكواد الاقتران الثلاثية بنجاح!');
-    }
+    alert('تم حفظ كافة إعدادات النظام وتحديث التوقيتات وأكواد الاقتران الثلاثية بنجاح!');
   };
 
   if (!isAuthenticated) {
@@ -359,6 +391,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100"
         >
           قفل الإعدادات 🔒
+        </button>
+      </div>
+
+      {/* Cloud School Status & Direct Cloud Restore Bar */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-50 to-emerald-50 dark:from-indigo-950/30 dark:to-emerald-950/30 border border-indigo-200 dark:border-indigo-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-indigo-600 text-white rounded-xl shadow-md">
+            <Building2 className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xs font-black text-slate-800 dark:text-slate-100">
+              {formConfig.schoolName ? `المدرسة النشطة: ${formConfig.schoolName}` : 'لم يتم تحديد مدرسة بعد'}
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
+              معرف المدرسة: <span className="font-bold text-indigo-600 dark:text-indigo-400">{formConfig.schoolId || 'غير محدد'}</span>
+              {formConfig.adminEmail && <span> • {formConfig.adminEmail}</span>}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => { setCloudSearchQuery(''); setCloudSearchResults([]); setHasCloudSearched(false); setShowCloudSearchModal(true); }}
+          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-md transition-all flex items-center gap-2 cursor-pointer"
+        >
+          <Search className="w-4 h-4" />
+          <span>استعادة / تبديل المدرسة من السحابة (بالاسم/البريد/الرمز) ☁️</span>
         </button>
       </div>
 
@@ -857,6 +916,99 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
 
       </form>
+
+      {/* Cloud Search & Restore Modal */}
+      {showCloudSearchModal && (
+        <div className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto dir-rtl font-sans">
+          <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 dark:border-slate-800 my-8">
+            <div className="bg-slate-50 dark:bg-slate-800/80 px-6 py-5 flex items-center justify-between border-b border-slate-200 dark:border-slate-700">
+              <div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white">البحث عن مدرسة في السحابة واستعادتها</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-0.5">
+                  ابحث باسم المدرسة، أو البريد الإلكتروني، أو رمز الاقتران (المدرس/الطالب/المدير)
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCloudSearchModal(false)}
+                className="p-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-black cursor-pointer"
+              >
+                إغلاق ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              <form onSubmit={handleCloudSearch} className="flex gap-2">
+                <input
+                  type="text"
+                  value={cloudSearchQuery}
+                  onChange={e => setCloudSearchQuery(e.target.value)}
+                  placeholder="مثال: كعب بن مالك أو 922769 أو البريد..."
+                  className="flex-1 px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:border-indigo-600 outline-none font-bold text-sm text-slate-900 dark:text-white"
+                />
+                <button
+                  type="submit"
+                  disabled={isCloudSearching || !cloudSearchQuery.trim()}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-sm shadow transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isCloudSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                  <span>بحث</span>
+                </button>
+              </form>
+
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {cloudSearchResults.length > 0 ? (
+                  cloudSearchResults.map(school => (
+                    <div 
+                      key={school.id}
+                      className="p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-indigo-400 rounded-2xl transition-all space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="font-black text-slate-900 dark:text-white text-base">{school.name}</h4>
+                          <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-0.5">
+                            معرف المدرسة: <span className="font-mono text-indigo-600 font-bold">{school.id}</span>
+                            {school.admin_email && <span> • {school.admin_email}</span>}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isRestoringSchool}
+                          onClick={() => handleRestoreFromCloud(school)}
+                          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs shadow transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          {isRestoringSchool ? <Loader2 className="w-4 h-4 animate-spin" /> : <Cloud className="w-4 h-4" />}
+                          <span>استعادة هذه المدرسة ⚡</span>
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 text-center text-xs">
+                        <div className="bg-indigo-50 dark:bg-indigo-950/40 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
+                          <span className="block text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">رمز المدرس</span>
+                          <span className="font-mono font-black text-indigo-900 dark:text-indigo-200">{school.pairing_code}</span>
+                        </div>
+                        <div className="bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
+                          <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">رمز الطالب</span>
+                          <span className="font-mono font-black text-emerald-900 dark:text-emerald-200">{school.student_pairing_code || '223344'}</span>
+                        </div>
+                        <div className="bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-100 dark:border-amber-900/40">
+                          <span className="block text-[10px] text-amber-700 dark:text-amber-400 font-bold">رمز المدير</span>
+                          <span className="font-mono font-black text-amber-900 dark:text-amber-200">{school.principal_pairing_code || '334455'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : hasCloudSearched && !isCloudSearching ? (
+                  <div className="p-8 text-center bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400">لم يتم العثور على أي مدرسة مطابقة.</p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

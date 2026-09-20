@@ -8,6 +8,7 @@ import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.remote.SupabaseApi
 import com.example.theboss.data.remote.DirectiveDto
 import com.example.theboss.data.remote.JoinRequest
+import com.example.theboss.data.remote.ScheduleDto
 import com.google.gson.Gson
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +18,7 @@ import java.net.UnknownHostException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 @Singleton
 class StudentRepository @Inject constructor(
@@ -28,9 +30,26 @@ class StudentRepository @Inject constructor(
     private val _directives = MutableStateFlow<List<DirectiveDto>>(emptyList())
     val directives = _directives
 
+    private val _syncedSchedule = MutableStateFlow<String>(
+        context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("synced_schedule", "{}") ?: "{}"
+    )
+    val syncedSchedule: StateFlow<String> = _syncedSchedule
+
+    private fun countLessonsInSchedule(dto: ScheduleDto?): Int {
+        val map = dto?.scheduleMap ?: return 0
+        var total = 0
+        for ((key, value) in map) {
+            if (key == "_timing") continue
+            if (value is List<*>) {
+                total += value.size
+            }
+        }
+        return total
+    }
+
     suspend fun verifySchoolCode(enteredCode: String): Result<Boolean> {
         return try {
-            val cleanCode = enteredCode.trim().ifEmpty { "112233" }
+            val cleanCode = enteredCode.trim().ifEmpty { "223344" }
             var response = api.getSchoolByCode(pairingCodeFilter = "eq.$cleanCode")
             if (!response.isSuccessful || response.body().isNullOrEmpty()) {
                 response = api.getSchoolByCode(idFilter = "eq.$cleanCode")
@@ -39,9 +58,20 @@ class StudentRepository @Inject constructor(
                 response = api.getSchools()
             }
 
-            val school = response.body()?.firstOrNull()
-            val targetSchoolId = school?.id ?: "SCH-VCOL-6072"
-            val targetSchoolName = school?.name ?: "م.كعب بن مالك المسائية للبنين"
+            val schoolsList = response.body().orEmpty()
+            // اختيار المدرسة المطابقة بكود الطالب أو كود الاقتران أو المعرف
+            val school = schoolsList.firstOrNull { 
+                it.pairingCode == cleanCode || 
+                it.id == cleanCode || 
+                it.config?.get("student_pairing_code")?.toString() == cleanCode
+            } ?: schoolsList.firstOrNull()
+
+            if (school == null) {
+                return Result.failure(Exception("لم يتم العثور على مدرسة مطابقة للكود ($cleanCode)"))
+            }
+
+            val targetSchoolId = school.id
+            val targetSchoolName = school.name ?: school.schoolName ?: "المدرسة الذكية"
 
             sessionManager.saveSchoolSession(
                 schoolId = targetSchoolId,
@@ -50,6 +80,8 @@ class StudentRepository @Inject constructor(
             )
             withContext(Dispatchers.IO) {
                 try {
+                    syncSchedule(targetSchoolId)
+                    syncDirectives(targetSchoolId)
                     syncTimetableAndInstructions(targetSchoolId)
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -59,9 +91,9 @@ class StudentRepository @Inject constructor(
         } catch (e: Exception) {
             e.printStackTrace()
             sessionManager.saveSchoolSession(
-                schoolId = "SCH-VCOL-6072",
-                schoolCode = enteredCode.ifEmpty { "112233" },
-                schoolName = "م.كعب بن مالك المسائية للبنين"
+                schoolId = "SCH-KAB2-9359",
+                schoolCode = enteredCode.ifEmpty { "762261" },
+                schoolName = "ثانوية كعب بن مالك المسائية"
             )
             Result.success(true)
         }
@@ -347,52 +379,141 @@ class StudentRepository @Inject constructor(
     }
 
     /**
-     * مزامنة الجدول الأسبوعي للمدرسة وحفظه في SharedPreferences لعرضه للطالب فوراً
+     * مزامنة الجدول الأسبوعي للمدرسة وحفظه في SharedPreferences وبثه للمكونات فوراً
      */
     suspend fun syncSchedule(schoolId: String): Result<Boolean> {
         return try {
-            val cleanSchoolId = schoolId.trim()
-            if (cleanSchoolId.isBlank()) return Result.failure(Exception("معرف المدرسة غير محدد"))
+            val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "SCH-KAB2-9359" }
 
-            val response = api.getSchoolSchedule(idFilter = "eq.$cleanSchoolId")
-            val list = if (response.isSuccessful && !response.body().isNullOrEmpty()) response.body()!! else emptyList()
-            
-            val scheduleDto = list.firstOrNull { it.scheduleMap != null }
-            if (scheduleDto?.scheduleMap != null) {
+            var candidateSchedule: ScheduleDto? = null
+
+            // 1. استعلام مباشر بـ ID المدرسة والتحقق من احتوائه على حصص فعلية
+            try {
+                val responseById = api.getSchoolSchedule(idFilter = "eq.$cleanSchoolId")
+                if (responseById.isSuccessful && !responseById.body().isNullOrEmpty()) {
+                    candidateSchedule = responseById.body()!!.firstOrNull { countLessonsInSchedule(it) > 0 }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 2. إذا لم يُعثر على جدول أو كان الجدول فارغاً، نفحص إذا كان المدخل هو كود الاقتران (Pairing Code)
+            if (candidateSchedule == null) {
+                try {
+                    val schoolResp = api.getSchoolByCode(pairingCodeFilter = "eq.$cleanSchoolId")
+                    val matchedSchool = schoolResp.body()?.firstOrNull()
+                    if (matchedSchool != null && matchedSchool.id.isNotBlank()) {
+                        val respByResolvedId = api.getSchoolSchedule(idFilter = "eq.${matchedSchool.id}")
+                        if (respByResolvedId.isSuccessful && !respByResolvedId.body().isNullOrEmpty()) {
+                            candidateSchedule = respByResolvedId.body()!!.firstOrNull { countLessonsInSchedule(it) > 0 }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // 3. خيار احتياطي فائق الذكاء: فحص أحدث الجداول المرفوعة في السحابة واختيار أحدث جدول ممتلئ بالحصص الفعلية
+            if (candidateSchedule == null) {
+                try {
+                    val latestResp = api.getLatestSchedule(limit = 10)
+                    if (latestResp.isSuccessful && !latestResp.body().isNullOrEmpty()) {
+                        candidateSchedule = latestResp.body()!!.firstOrNull { countLessonsInSchedule(it) > 0 }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (candidateSchedule?.scheduleMap != null) {
                 val gson = com.google.gson.Gson()
-                val scheduleJson = gson.toJson(scheduleDto.scheduleMap)
+                val scheduleJson = gson.toJson(candidateSchedule.scheduleMap)
                 val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                val diyalaPrefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+
                 val editor = prefs.edit().putString("synced_schedule", scheduleJson)
-                val timingObj = scheduleDto.scheduleMap["_timing"] as? Map<*, *>
+                val diyalaEditor = diyalaPrefs.edit().putString("synced_schedule", scheduleJson)
+
+                val timingObj = candidateSchedule.scheduleMap["_timing"] as? Map<*, *>
                 if (timingObj != null) {
-                    timingObj["schoolStartHour"]?.toString()?.let { editor.putString("school_start_hour", it) }
-                    (timingObj["lessonDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("lesson_duration_minutes", it) }
-                    (timingObj["breakDurationMinutes"] as? Number)?.toInt()?.let { editor.putInt("break_duration_minutes", it) }
+                    timingObj["schoolStartHour"]?.toString()?.let {
+                        editor.putString("school_start_hour", it)
+                        diyalaEditor.putString("school_start_hour", it)
+                    }
+                    (timingObj["lessonDurationMinutes"] as? Number)?.toInt()?.let {
+                        editor.putInt("lesson_duration_minutes", it)
+                        diyalaEditor.putInt("lesson_duration_minutes", it)
+                    }
+                    (timingObj["breakDurationMinutes"] as? Number)?.toInt()?.let {
+                        editor.putInt("break_duration_minutes", it)
+                        diyalaEditor.putInt("break_duration_minutes", it)
+                    }
                 }
                 editor.apply()
+                diyalaEditor.apply()
+                _syncedSchedule.value = scheduleJson
                 return Result.success(true)
             }
+
+            // إذا كان هناك جدول محفوظ محلياً مسبقاً في أي من التفضيلات، نعتبره نجاحاً محلياً
+            val localBoss = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("synced_schedule", null)
+            val localDiyala = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE).getString("synced_schedule", null)
+            if (!localBoss.isNullOrBlank() && localBoss != "{}" || !localDiyala.isNullOrBlank() && localDiyala != "{}") {
+                _syncedSchedule.value = (localBoss ?: localDiyala)!!
+                return Result.success(true)
+            }
+
             Result.failure(Exception("لم يتم العثور على جدول مرفوع للمدرسة"))
         } catch (e: Exception) {
             e.printStackTrace()
+            // في حالة انقطاع النت ولكن يوجد جدول محلي
+            val localBoss = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("synced_schedule", null)
+            if (!localBoss.isNullOrBlank() && localBoss != "{}") {
+                _syncedSchedule.value = localBoss
+                return Result.success(true)
+            }
             Result.failure(e)
         }
     }
 
     /**
-     * مزامنة تعاميم الإدارة الموجهة للطلاب، مع إشعار المستخدم بالتعميم الجديد مرة واحدة.
+     * مزامنة تعاميم الإدارة الموجهة للطلاب، مع إشعار المستخدم بالتعميم الجديد فوراً بصوت واهتزاز.
      */
     suspend fun syncDirectives(schoolId: String): Result<List<DirectiveDto>> {
-            return try {
-                val response = api.getStudentDirectives(
-                    schoolFilter = "eq.$schoolId",
-                    roleFilter = "in.(all,student,students)"
-                )
-                if (!response.isSuccessful) {
-                    return Result.failure(Exception("تعذر جلب تعاميم المدرسة"))
-                }
+        return try {
+            val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "SCH-KAB2-9359" }
+            var directives: List<DirectiveDto> = emptyList()
 
-                val directives = response.body().orEmpty().filter { it.isActive }
+            // 1. محاولة جلب التعاميم الموجهة للطلبة أو العامة لمعرف المدرسة
+            try {
+                val response = api.getStudentDirectives(
+                    schoolFilter = "eq.$cleanSchoolId",
+                    roleFilter = null
+                )
+                if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                    directives = response.body()!!.filter {
+                        it.isActive && (it.targetRole.isNullOrBlank() || it.targetRole in listOf("all", "students", "student"))
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 2. إذا لم توجد توجيهات لمطابقة المعرف، جلب التوجيهات النشطة العامة والموجهة للطلبة بالسحابة
+            if (directives.isEmpty()) {
+                try {
+                    val fallbackResp = api.getAllActiveDirectives()
+                    if (fallbackResp.isSuccessful && !fallbackResp.body().isNullOrEmpty()) {
+                        directives = fallbackResp.body()!!.filter {
+                            it.isActive && (it.targetRole.isNullOrBlank() || it.targetRole in listOf("all", "students", "student"))
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (directives.isNotEmpty()) {
                 _directives.value = directives
                 val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
                 val seen = prefs.getStringSet("seen_directive_ids", emptySet()).orEmpty().toMutableSet()
@@ -407,9 +528,13 @@ class StudentRepository @Inject constructor(
                     seen += directive.id
                 }
                 prefs.edit().putStringSet("seen_directive_ids", seen).apply()
-                Result.success(directives)
-            } catch (e: Exception) {
-                Result.failure(e)
+                return Result.success(directives)
+            }
+
+            Result.success(emptyList())
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
         }
     }
 
@@ -609,14 +734,14 @@ class StudentRepository @Inject constructor(
         val sId = sessionManager.getSchoolId()
         if (!sId.isNullOrBlank()) return sId
         val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("school_id", null)?.takeIf { it.isNotBlank() } ?: "SCH-VCOL-6072"
+        return prefs.getString("school_id", null)?.takeIf { it.isNotBlank() } ?: "SCH-KAB2-9359"
     }
 
     fun getSchoolName(): String? {
         val sName = sessionManager.getSchoolName()
         if (!sName.isNullOrBlank()) return sName
         val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("school_name", null)?.takeIf { it.isNotBlank() } ?: "م.كعب بن مالك المسائية للبنين"
+        return prefs.getString("school_name", null)?.takeIf { it.isNotBlank() } ?: "ثانوية كعب بن مالك المسائية"
     }
 
     fun getDeviceId() = sessionManager.getDeviceId()

@@ -246,9 +246,13 @@ class SyncManager @Inject constructor(
         )
     }
 
+    private fun resolveActiveSchoolId(currentConfig: SchoolConfig): String {
+        return currentConfig.schoolId.trim().ifEmpty { "school_01" }
+    }
+
     suspend fun fetchDataFromPrincipal(): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId.trim() else "SCH-KAB2-6884"
+        val schoolId = resolveActiveSchoolId(currentConfig)
         val token = currentConfig.syncSealToken ?: ""
 
         val localPackages = packageDao.getAllPackagesList()
@@ -280,7 +284,7 @@ class SyncManager @Inject constructor(
 
             val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
             val url = currentConfig.cloudUrl.ifEmpty { SyncRepository.DEFAULT_SUPABASE_URL }
-            val schoolId = currentConfig.schoolId.ifEmpty { "SCH-KAB2-6884" }
+            val schoolId = resolveActiveSchoolId(currentConfig)
             val isSupabase = url.contains("supabase")
 
             // 1. Ensure ClassPackage exists without creating duplicates
@@ -449,7 +453,7 @@ class SyncManager @Inject constructor(
 
     suspend fun syncGrades(grade: String, section: String, subject: String): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = if (currentConfig.schoolId.isNotEmpty()) currentConfig.schoolId.trim() else "SCH-KAB2-6884"
+        val schoolId = resolveActiveSchoolId(currentConfig)
         val token = if (!currentConfig.syncSealToken.isNullOrEmpty()) currentConfig.syncSealToken!!.trim() else null
         return syncRepository.syncGradesAndAttendance(
             schoolId = schoolId,
@@ -540,19 +544,19 @@ class SyncManager @Inject constructor(
 
     suspend fun downloadSchedule(context: android.content.Context): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = currentConfig.schoolId.trim().ifEmpty { "SCH-KAB2-6884" }
+        val schoolId = resolveActiveSchoolId(currentConfig)
         return syncRepository.downloadSchedule(context, schoolId)
     }
 
     suspend fun getSchoolAvailableClasses(): List<SchoolClassSubjectItem> {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = currentConfig.schoolId.ifEmpty { "SCH-KAB2-6884" }
+        val schoolId = resolveActiveSchoolId(currentConfig)
         return syncRepository.getSchoolAvailableClasses(schoolId, currentConfig.cloudUrl, currentConfig.cloudKey)
     }
 
     suspend fun downloadSelectedClasses(selectedItems: List<SchoolClassSubjectItem>): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = currentConfig.schoolId.ifEmpty { "SCH-KAB2-6884" }
+        val schoolId = resolveActiveSchoolId(currentConfig)
         val ok = syncRepository.downloadSelectedClassesRoster(schoolId, selectedItems, currentConfig.cloudUrl, currentConfig.cloudKey)
         if (ok) {
             propagateStudents()

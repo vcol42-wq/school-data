@@ -157,7 +157,7 @@ class SettingsViewModel @Inject constructor(
                 val result = schoolRepository.verifySchoolCode(code)
                 if (result.isSuccess) {
                     val current = configDao.getConfig().first() ?: SchoolConfig()
-                    val schoolId = schoolRepository.getSchoolId() ?: "SCH-KAB2-6884"
+                    val schoolId = schoolRepository.getSchoolId() ?: "SCH-KAB2-9359"
                     val schoolName = schoolRepository.getSchoolName() ?: "مدرسة سحابية"
                     
                     configDao.saveConfig(

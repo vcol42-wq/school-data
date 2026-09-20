@@ -57,7 +57,35 @@ class DynamicUrlInterceptor(private val context: Context) : Interceptor {
         val defaultKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleGVobHZrcGRobXB1a2p5ZHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Njk4NDUsImV4cCI6MjEwMjQ0NTg0NX0.YFDRTLJnB56uD-rGtknex_NhycexP57WHhhTRVas5EY"
         val url = prefs.getString("supabase_url", null)?.takeIf { it.isNotBlank() } ?: defaultUrl
         val apiKey = prefs.getString("supabase_key", null)?.takeIf { it.isNotBlank() } ?: defaultKey
-        val schoolId = prefs.getString("school_id", null)
+        var schoolId = prefs.getString("school_id", null)?.takeIf { it.isNotBlank() }
+        if (schoolId.isNullOrBlank()) {
+            try {
+                schoolId = com.example.theboss.data.local.SessionManager(context).getSchoolId()?.takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                // Ignore session lookup error
+            }
+        }
+        if (schoolId.isNullOrBlank()) {
+            try {
+                val diyalaPrefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                schoolId = diyalaPrefs.getString("diyala_school_id", null)?.takeIf { it.isNotBlank() }
+                    ?: diyalaPrefs.getString("school_id", null)?.takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                // Ignore diyala prefs lookup error
+            }
+        }
+        if (schoolId.isNullOrBlank()) {
+            try {
+                val teacherPrefs = context.getSharedPreferences("school_system_prefs", Context.MODE_PRIVATE)
+                schoolId = teacherPrefs.getString("school_id", null)?.takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                // Ignore teacher prefs lookup error
+            }
+        }
+        if (schoolId.isNullOrBlank()) {
+            schoolId = "SCH-KAB2-9359"
+        }
+
         val builder = request.newBuilder()
 
         if (apiKey.isNotBlank()) {

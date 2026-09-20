@@ -153,7 +153,7 @@ fun JoinRequestScreen(
             Button(
                 onClick = {
                     val finalEmail = email.ifEmpty { "student_${System.currentTimeMillis()}@school.edu" }
-                    val finalSchoolCode = schoolCode.ifEmpty { "112233" }
+                    val finalSchoolCode = schoolCode.trim()
                     viewModel.sendRequest(name, finalEmail, finalSchoolCode, stage.ifEmpty { "الصف الأول" }, grade.ifEmpty { "الأول" }, section.ifEmpty { "أ" })
                 },
                 modifier = Modifier.fillMaxWidth().height(54.dp),

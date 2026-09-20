@@ -68,8 +68,9 @@ class DashboardViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val directives: StateFlow<List<DirectiveDto>> = repository.directives
+    val syncedSchedule: StateFlow<String> = repository.syncedSchedule
 
-    val schoolName = repository.getSchoolName() ?: "مدرستي الذكية"
+    val schoolName = repository.getSchoolName() ?: "ثانوية كعب بن مالك المسائية"
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing
@@ -82,32 +83,27 @@ class DashboardViewModel @Inject constructor(
     private fun startPeriodicDirectivesSync() {
         viewModelScope.launch {
             while (true) {
-                kotlinx.coroutines.delay(12000L)
-                val schoolId = repository.getSchoolId()
-                if (!schoolId.isNullOrBlank()) {
-                    try {
-                        repository.syncDirectives(schoolId)
-                    } catch (e: Exception) {
-                        // ignore background network issues
-                    }
+                kotlinx.coroutines.delay(10000L)
+                val schoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
+                try {
+                    repository.syncDirectives(schoolId)
+                } catch (e: Exception) {
+                    // ignore background network issues
                 }
             }
         }
     }
 
     fun refreshData() {
-        val schoolId = repository.getSchoolId()
-        if (schoolId.isNullOrBlank()) {
-            _isRefreshing.value = false
-            return
-        }
+        val schoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
+                // مزامنة الجدول والتعاميم بالدرجة الأولى لتحديث واجهة الطالب فوراً
+                repository.syncSchedule(schoolId)
+                repository.syncDirectives(schoolId)
                 repository.syncDailyAssignments(schoolId)
                 repository.syncTimetableAndInstructions(schoolId)
-                repository.syncDirectives(schoolId)
-                repository.syncSchedule(schoolId)
                 repository.syncDirectMessages()
                 val deviceId = repository.getDeviceId()
                 repository.syncAttendance(schoolId, deviceId)
@@ -119,17 +115,40 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    fun syncScheduleManual(onComplete: (Boolean) -> Unit = {}) {
-        val schoolId = repository.getSchoolId()
-        if (schoolId.isNullOrBlank()) {
-            _isRefreshing.value = false
-            onComplete(false)
-            return
+    fun updateStudentAndSchool(
+        name: String,
+        grade: String,
+        section: String,
+        schoolCode: String,
+        onComplete: (Boolean) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                if (schoolCode.isNotBlank()) {
+                    repository.verifySchoolCode(schoolCode)
+                }
+                val finalSchoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
+                repository.syncSchedule(finalSchoolId)
+                repository.syncDirectives(finalSchoolId)
+                repository.syncDailyAssignments(finalSchoolId)
+                onComplete(true)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                onComplete(false)
+            } finally {
+                _isRefreshing.value = false
+            }
         }
+    }
+
+    fun syncScheduleManual(onComplete: (Boolean) -> Unit = {}) {
+        val schoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
                 val res = repository.syncSchedule(schoolId)
+                repository.syncDirectives(schoolId)
                 onComplete(res.isSuccess)
             } catch (e: Exception) {
                 e.printStackTrace()
