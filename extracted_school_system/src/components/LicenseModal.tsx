@@ -160,38 +160,58 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
               </div>
 
               {/* Payment instructions Iraq & Official Channels */}
-              <div className="bg-gradient-to-br from-slate-800/70 to-slate-900 border border-slate-700/80 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                  <CreditCard className="w-4 h-4" />
-                  <span>طرق التحويل والسداد المحلي داخل العراق 🇮🇶:</span>
+              <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-700/90 rounded-2xl p-5 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center gap-2.5 text-sm font-black text-amber-300">
+                    <CreditCard className="w-5 h-5 text-amber-400" />
+                    <span>طرق الدفع المحلي واستلام كود التفعيل 🇮🇶:</span>
+                  </div>
+                  <span className="text-[11px] font-black px-2.5 py-1 bg-amber-500/10 text-amber-400 border border-amber-500/30 rounded-lg">
+                    تفعيل لمرة واحدة مدى الحياة
+                  </span>
                 </div>
-                <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside">
-                  <li>محفظة <strong>زين كاش (ZainCash)</strong></li>
-                  <li>بطاقة <strong>ماستر كارد / كي كارد / مصرف الرافدين</strong></li>
-                  <li>التحويل المباشر بعد استلام كود التفعيل</li>
-                </ul>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div className="bg-slate-800/70 border border-slate-700/80 rounded-xl p-3 text-center space-y-1">
+                    <div className="text-xs font-black text-white">زين كاش (ZainCash)</div>
+                    <div className="text-[10px] text-amber-300/90 font-medium">تحويل فوري عبر المحفظة</div>
+                  </div>
+                  <div className="bg-slate-800/70 border border-slate-700/80 rounded-xl p-3 text-center space-y-1">
+                    <div className="text-xs font-black text-white">كي كارد / ماستر كارد</div>
+                    <div className="text-[10px] text-teal-300/90 font-medium">سداد إلكتروني مباشر</div>
+                  </div>
+                  <div className="bg-slate-800/70 border border-slate-700/80 rounded-xl p-3 text-center space-y-1">
+                    <div className="text-xs font-black text-white">مصرف الرافدين</div>
+                    <div className="text-[10px] text-sky-300/90 font-medium">إيداع وحوالة مصرفية</div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-950/20 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-200/90 leading-relaxed">
+                  💡 <strong>طريقة التفعيل السريعة:</strong> انقر على زر الواتساب بالأسفل لإرسال بصمة جهازك واسم مدرستك، وسيصلك كود التفعيل المعتمد فوراً لإدخاله في الخانة المخصصة أدناه.
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                   <button
                     onClick={openWhatsApp}
-                    className="py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition-all"
+                    className="py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 transition-all cursor-pointer active:scale-95"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>طلب كود التفعيل عبر واتساب 💬</span>
+                    <span>طلب كود التفعيل الفوري (WhatsApp) 💬</span>
                   </button>
 
                   <a
                     href="https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="py-2.5 bg-slate-800 hover:bg-slate-700 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                    className="py-3 bg-slate-800/90 hover:bg-slate-700 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
-                    <span>قناة التحديثات على WhatsApp 📢</span>
+                    <span>قناة التحديثات الرسمية 📢</span>
                   </a>
                 </div>
 
-                <div className="text-[11px] text-slate-400 text-center pt-1 border-t border-slate-800">
-                  البريد الإلكتروني المعتمد: <a href="mailto:vcol42@gmail.com" className="text-amber-300 underline font-mono">vcol42@gmail.com</a>
+                <div className="text-[11px] text-slate-400 text-center pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2">
+                  <span>البريد الإلكتروني الرسمي للدعم:</span>
+                  <a href="mailto:vcol42@gmail.com" className="text-amber-300 hover:underline font-mono font-bold">vcol42@gmail.com</a>
                 </div>
               </div>
 
@@ -232,15 +252,22 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
         {/* Footer */}
         <div className="p-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
           <div className="flex items-center gap-2">
-            <Laptop className="w-4 h-4 text-slate-500" />
-            <span>The Principal Desktop v6.0 Super Edition</span>
+            <Laptop className="w-4 h-4 text-amber-400" />
+            <span className="font-bold text-slate-300">The Principal Desktop v6.0 Super Edition</span>
           </div>
-          <button 
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-colors"
-          >
-            إغلاق
-          </button>
+          {!forceLock && (
+            <button 
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold transition-colors cursor-pointer"
+            >
+              إغلاق
+            </button>
+          )}
+          {forceLock && (
+            <span className="text-[11px] text-amber-400 font-bold">
+              🔒 يتطلب إدخال كود التفعيل لفتح المنظومة
+            </span>
+          )}
         </div>
 
       </div>
