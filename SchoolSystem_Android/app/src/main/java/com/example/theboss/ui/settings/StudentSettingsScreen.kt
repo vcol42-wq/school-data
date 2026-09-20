@@ -20,7 +20,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -575,6 +579,89 @@ fun StudentSettingsScreen(
                         tint = Color(0xFF16A34A),
                         modifier = Modifier.size(16.dp)
                     )
+                }
+            }
+
+            // Card 7: Official Support & Channels Card
+            val clipboardManager = LocalClipboardManager.current
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = Color(0xFF059669).copy(alpha = 0.12f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.HeadsetMic, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "قنوات التواصل والدعم الفني الرسمي 💬",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = "دعم الطلبة وأولياء الأمور ومتابعة التحديثات المعتمدة",
+                                fontSize = 11.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J")).apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "تعذر فتح رابط القناة", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("الانضمام لقناة المنظومة على واتساب 📢", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                    data = Uri.parse("mailto:vcol42@gmail.com")
+                                    putExtra(Intent.EXTRA_SUBJECT, "استفسار منصة الطالب - ThePrincipal")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                clipboardManager.setText(AnnotatedString("vcol42@gmail.com"))
+                                Toast.makeText(context, "تم نسخ البريد الإلكتروني للحافظة: vcol42@gmail.com", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1E293B)),
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF2563EB))
+                        Spacer(Modifier.width(8.dp))
+                        Text("البريد الإلكتروني: vcol42@gmail.com ✉️", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

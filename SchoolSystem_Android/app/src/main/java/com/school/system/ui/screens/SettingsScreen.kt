@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -1066,13 +1068,16 @@ fun SettingsScreen(
             }
 
             // The Principal Desktop PC App Card
+            val clipboardManager = LocalClipboardManager.current
+            val desktopUrl = "https://1drv.ms/u/c/e8597871b593c5a5/IQBj4vf3AdrpQI2gXaxFCtZ7AdSHX3HBF-6Z10WF25kCid0?e=zlPoP0"
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.6f))
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.5f))
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1081,7 +1086,7 @@ fun SettingsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(40.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFF38BDF8).copy(alpha = 0.2f)),
                                 contentAlignment = Alignment.Center
@@ -1090,19 +1095,19 @@ fun SettingsScreen(
                                     Icons.Default.Computer,
                                     contentDescription = null,
                                     tint = Color(0xFF38BDF8),
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
-                            Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(12.dp))
                             Column {
                                 Text(
                                     text = "منظومة الكمبيوتر المركزية (PC) 💻",
                                     color = Color.White,
                                     fontWeight = FontWeight.Black,
-                                    fontSize = 13.5.sp
+                                    fontSize = 14.sp
                                 )
                                 Text(
-                                    text = "The Principal Desktop v6.0",
+                                    text = "The Principal Desktop v6.0 Super Edition",
                                     color = Color(0xFF94A3B8),
                                     fontSize = 11.sp
                                 )
@@ -1110,29 +1115,26 @@ fun SettingsScreen(
                         }
 
                         Surface(
-                            color = Color(0xFF10B981).copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(8.dp)
+                            color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f))
                         ) {
                             Text(
                                 text = "تفعيل دائم 💎",
-                                color = Color(0xFF34D399),
-                                fontSize = 10.sp,
+                                color = Color(0xFFFBBF24),
+                                fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
 
-                    Spacer(Modifier.height(10.dp))
-
                     Text(
-                        text = "لإدارة المدرسة على الحاسوب، طباعة الشيتات وسجلات الدرجات، واستيراد قوائم إكسل الرسمية.",
+                        text = "المنظومة الاحترافية لإدارة المدرسة على أجهزة الحاسوب (Windows): استيراد وتصدير إكسل الوزاري، طباعة الشيت الإلكتروني وسجلات الدرجات، والتوليد الآلي الذكي للجدول المدرسي، مع ربط سحابي فوري مع هواتف الكادر.",
                         color = Color(0xFFCBD5E1),
-                        fontSize = 11.sp,
-                        lineHeight = 16.sp
+                        fontSize = 11.5.sp,
+                        lineHeight = 17.sp
                     )
-
-                    Spacer(Modifier.height(12.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1140,46 +1142,142 @@ fun SettingsScreen(
                     ) {
                         Button(
                             onClick = {
-                                val desktopUrl = "https://github.com/vcol42-wq/school-data/releases/download/v6.0/The_Principal_Setup_v6.0.exe"
                                 try {
                                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(desktopUrl)).apply {
                                         addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                                     }
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "تعذر فتح الرابط", android.widget.Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "تعذر فتح الرابط", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f).height(40.dp)
+                            modifier = Modifier.weight(1.3f).height(42.dp)
                         ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("تنزيل للحاسوب", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("تنزيل للحاسوب", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                         }
 
-                        Button(
+                        OutlinedButton(
                             onClick = {
-                                try {
-                                    val msg = "السلام عليكم، أرغب في تفعيل ترخيص منظومة The Principal للحاسوب لمرة واحدة مدى الحياة لمدرستنا."
-                                    val encoded = java.net.URLEncoder.encode(msg, "UTF-8")
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.whatsapp.com/send?text=$encoded")).apply {
-                                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    android.widget.Toast.makeText(context, "يرجى تثبيت تطبيق واتساب", android.widget.Toast.LENGTH_SHORT).show()
-                                }
+                                clipboardManager.setText(AnnotatedString(desktopUrl))
+                                Toast.makeText(context, "تم نسخ رابط تنزيل الحاسوب إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1f).height(40.dp)
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
+                            border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.6f)),
+                            modifier = Modifier.weight(0.9f).height(42.dp)
                         ) {
-                            Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("طلب التفعيل الدائم", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("نسخ الرابط", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
+                    }
+
+                    Button(
+                        onClick = {
+                            try {
+                                val msg = "السلام عليكم، أرغب في تفعيل ترخيص منظومة The Principal للحاسوب لمرة واحدة مدى الحياة لمدرستنا."
+                                val encoded = java.net.URLEncoder.encode(msg, "UTF-8")
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://api.whatsapp.com/send?text=$encoded")).apply {
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "يرجى تثبيت تطبيق واتساب", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(42.dp)
+                    ) {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("طلب كود التفعيل الدائم (زين كاش / كي كارد) 🔑", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            // Official Support & Communication Channels Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = Color(0xFF059669).copy(alpha = 0.12f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.HeadsetMic, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "قنوات التواصل والدعم الفني الرسمي 💬",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.sp,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = "الدعم المباشر ومتابعة تحديثات المنظومة المعتمدة",
+                                fontSize = 11.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFFF1F5F9))
+
+                    Button(
+                        onClick = {
+                            try {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J")).apply {
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "تعذر فتح رابط القناة", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("الانضمام لقناة المنظومة على واتساب 📢", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            try {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+                                    data = android.net.Uri.parse("mailto:vcol42@gmail.com")
+                                    putExtra(android.content.Intent.EXTRA_SUBJECT, "استفسار بخصوص منظومة ThePrincipal")
+                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                clipboardManager.setText(AnnotatedString("vcol42@gmail.com"))
+                                Toast.makeText(context, "تم نسخ البريد الإلكتروني للحافظة: vcol42@gmail.com", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1E293B)),
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF2563EB))
+                        Spacer(Modifier.width(8.dp))
+                        Text("البريد الإلكتروني: vcol42@gmail.com ✉️", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

@@ -895,6 +895,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
+        {/* Official Support & Channels Card */}
+        <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-indigo-950/40 p-6 rounded-2xl border border-emerald-500/30 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h3 className="text-base font-black text-white flex items-center gap-2">
+                قنوات التواصل والدعم الفني الرسمي 💬
+              </h3>
+              <p className="text-xs text-slate-300 font-medium mt-0.5">
+                تواصل مباشر لمتابعة التحديثات، الدعم الفني، وطلب تراخيص التفعيل لمرة واحدة
+              </p>
+            </div>
+            <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full text-xs font-bold">
+              دعم معتمد ومستمر ✓
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            <a
+              href="https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-3 bg-emerald-900/40 hover:bg-emerald-800/50 border border-emerald-500/40 rounded-xl text-xs font-bold text-emerald-200 flex items-center justify-center gap-2 transition-all"
+            >
+              <span>الانضمام لقناة المنظومة على WhatsApp 📢</span>
+            </a>
+
+            <a
+              href="mailto:vcol42@gmail.com"
+              className="p-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold text-slate-200 flex items-center justify-center gap-2 transition-all font-mono"
+            >
+              <span>البريد الإلكتروني المعتمد: vcol42@gmail.com ✉️</span>
+            </a>
+          </div>
+        </div>
+
         {/* Form Action Controls */}
         <div className="flex items-center justify-between pt-4 border-t border-[var(--theme-card-border)]">
           <button

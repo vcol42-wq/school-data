@@ -18,6 +18,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
@@ -25,6 +28,8 @@ import androidx.compose.ui.window.DialogProperties
 fun StudentHelpGuideDialog(
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -220,6 +225,62 @@ fun StudentHelpGuideDialog(
                             color = Color(0xFF334155),
                             lineHeight = 19.sp
                         )
+                    }
+
+                    // Section 7: Official Support & Channels
+                    StudentHelpCard(
+                        icon = Icons.Default.SupportAgent,
+                        iconTint = Color(0xFF059669),
+                        title = "7. الدعم الفني وقناة الواتساب والبريد المعتمد",
+                        badge = "تواصل مباشر 💬",
+                        badgeColor = Color(0xFFECFDF5),
+                        badgeTextColor = Color(0xFF047857)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "يسعدنا دائماً استقبال استفسارات الطلبة وأولياء الأمور والكوادر التعليمية عبر القنوات الرسمية لمنظومة ThePrincipal:",
+                                fontSize = 12.sp,
+                                color = Color(0xFF334155),
+                                lineHeight = 18.sp
+                            )
+
+                            Button(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J")).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) { }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("الانضمام لقناة المنظومة على واتساب 📢", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_SENDTO).apply {
+                                            data = Uri.parse("mailto:vcol42@gmail.com")
+                                            putExtra(Intent.EXTRA_SUBJECT, "استفسار منصة الطالب - ThePrincipal")
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) { }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF2563EB))
+                                Spacer(Modifier.width(8.dp))
+                                Text("البريد الإلكتروني: vcol42@gmail.com ✉️", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+                            }
+                        }
                     }
 
                     Spacer(Modifier.height(8.dp))

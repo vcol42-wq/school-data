@@ -67,6 +67,40 @@ export function isDesktopActivated(): boolean {
 }
 
 /**
+ * Compute 2-character hex checksum for a license key.
+ */
+export function computeLicenseChecksum(base: string): string {
+  const clean = base.replace(/[^0-9A-Z]/g, '');
+  let hash = 0x55AA;
+  for (let i = 0; i < clean.length; i++) {
+    hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+    hash = (hash & 0xFFFF);
+  }
+  const hex = Math.abs(hash).toString(16).toUpperCase().padStart(4, '0');
+  return hex.substring(hex.length - 2);
+}
+
+/**
+ * Check whether a key is valid according to the Unified KeyGen algorithm.
+ */
+export function isValidUnifiedLicenseKey(key: string): boolean {
+  const clean = key.trim().toUpperCase();
+  const parts = clean.split('-');
+  if (parts.length < 3) return false;
+
+  // If format ends with a 2-char checksum:
+  const lastPart = parts[parts.length - 1];
+  if (lastPart.length === 2) {
+    const base = parts.slice(0, parts.length - 1).join('-');
+    const expected = computeLicenseChecksum(base);
+    if (lastPart === expected) return true;
+  }
+
+  // Fallback for standard BOSS keys (e.g. BOSS-XXXX-XXXX-XXXX)
+  return clean.startsWith('BOSS-') && clean.length >= 14;
+}
+
+/**
  * Verify and activate a lifetime product license key in Supabase.
  */
 export async function activateDesktopLicense(
@@ -92,7 +126,7 @@ export async function activateDesktopLicense(
     if (error) {
       console.warn('License verification error:', error);
       // Fallback: If offline or table not yet migrated, verify format
-      if (cleanKey.startsWith('BOSS-') && cleanKey.length >= 14) {
+      if (isValidUnifiedLicenseKey(cleanKey)) {
         const fallbackLic: LicenseRecord = {
           license_key: cleanKey,
           school_name: schoolNameInput || 'مدرستنا الكريمة',
@@ -111,6 +145,22 @@ export async function activateDesktopLicense(
     }
 
     if (!data) {
+      // If not in Supabase yet (e.g. issued offline from phone), test unified algorithm
+      if (isValidUnifiedLicenseKey(cleanKey)) {
+        const fallbackLic: LicenseRecord = {
+          license_key: cleanKey,
+          school_name: schoolNameInput || 'مدرستنا الكريمة',
+          machine_fingerprint: currentFp,
+          is_activated: true,
+          activated_at: new Date().toISOString()
+        };
+        localStorage.setItem(LOCAL_LICENSE_STORAGE_KEY, JSON.stringify(fallbackLic));
+        return {
+          success: true,
+          message: 'تهانينا! تم التحقق من الكود المعتمد وتفعيل المنظومة بنجاح 💎✓',
+          license: fallbackLic
+        };
+      }
       return { success: false, message: 'كود التفعيل المدخل غير صحيح، يرجى التأكد من الرمز.' };
     }
 
