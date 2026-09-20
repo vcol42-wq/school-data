@@ -9,6 +9,7 @@ import {
 import { QrCodeSvg } from './QrCodeSvg';
 import { supabase, isSupabaseConfigured, getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
 import { exportSchoolData, importGradesAndAttendance, sendDirective } from '../utils/syncService';
+import { LicenseModal } from './LicenseModal';
 
 interface GradeLocksState {
   m1: boolean;      // الشهر الأول
@@ -57,6 +58,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [isKeyValid, setIsKeyValid] = useState<boolean>(true);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
 
   // Corrected state initialization to prevent blank screen if localStorage is empty
   const [config] = useState<any>(() => {
@@ -323,6 +325,14 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
             </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-3">
+              <button
+                onClick={() => setShowLicenseModal(true)}
+                className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs md:text-sm transition-all shadow-xl cursor-pointer active:scale-95 border border-amber-300"
+                title="إدارة وتفعيل تراخيص الحواسب وتوليد الأكواد للمدارس"
+              >
+                <VpnKey className="w-4 h-4" />
+                <span>إدارة التراخيص والتفعيل 🔑</span>
+              </button>
               {onBack && (
                 <button
                   onClick={onBack}
@@ -754,8 +764,13 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
              </div>
           </div>
         </div>
-
       </div>
+
+      {/* Desktop License Management Modal */}
+      <LicenseModal
+        isOpen={showLicenseModal}
+        onClose={() => setShowLicenseModal(false)}
+      />
     </div>
   );
 };

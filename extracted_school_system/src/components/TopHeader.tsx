@@ -31,10 +31,13 @@ import {
   ClipboardList,
   QrCode,
   Copy,
-  Check
+  Check,
+  Key
 } from 'lucide-react';
 import { QrCodeSvg } from './QrCodeSvg';
 import { getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
+import { LicenseModal } from './LicenseModal';
+import { isDesktopActivated } from '../utils/licenseService';
 
 interface TopHeaderProps {
   config: AppConfig;
@@ -63,6 +66,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPairingModal, setShowPairingModal] = useState(false);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
+  const [isActivated, setIsActivated] = useState(() => isDesktopActivated());
   const [copiedCode, setCopiedCode] = useState(false);
   const [pairingTab, setPairingTab] = useState<'teacher' | 'student' | 'principal'>('teacher');
   const [now, setNow] = useState<Date>(new Date());
@@ -286,6 +291,20 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 <Sparkles className="w-4.5 h-4.5" />
               </button>
 
+              {/* License Status / Activation Trigger */}
+              <button
+                onClick={() => setShowLicenseModal(true)}
+                title={isActivated ? "المنظومة مفعلة لمدى الحياة 💎" : "تفعيل المنظومة لمرة واحدة 🔑"}
+                className={`px-3 py-1.5 rounded-xl border font-black text-xs transition-all shrink-0 cursor-pointer shadow-md flex items-center gap-1.5 ${
+                  isActivated
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 hover:bg-amber-500/25'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 animate-pulse'
+                }`}
+              >
+                <Key className="w-4 h-4" />
+                <span className="hidden lg:inline">{isActivated ? 'مفعل 💎' : 'تفعيل المنظومة 🔑'}</span>
+              </button>
+
               {/* Lock / Settings Trigger */}
               <button
                 onClick={onOpenPasscode}
@@ -452,6 +471,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </div>
         </div>
       )}
+
+      {/* Lifetime License Modal */}
+      <LicenseModal
+        isOpen={showLicenseModal}
+        onClose={() => setShowLicenseModal(false)}
+        onLicenseChanged={() => setIsActivated(isDesktopActivated())}
+      />
 
       {/* Side Drawer Overlay (الشريط الجانبي) */}
       {isSidebarOpen && (
