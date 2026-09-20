@@ -39,11 +39,11 @@ CREATE TABLE IF NOT EXISTS public.app_releases (
 INSERT INTO public.app_releases (version, desktop_setup_url, desktop_portable_url, android_apk_url, file_size, release_notes)
 VALUES (
     'v6.0',
-    'https://github.com/vcol42-wq/school-data/releases/download/v6.0/The_Principal_Setup_v6.0.exe',
-    'https://github.com/vcol42-wq/school-data/releases/download/v6.0/The_Principal_Portable_v6.0.exe',
+    'https://drive.google.com/file/d/1MyvouuykZmwDx7Lm5hj2qNVIIDbZlqFj/view?usp=sharing',
+    'https://drive.google.com/file/d/1MyvouuykZmwDx7Lm5hj2qNVIIDbZlqFj/view?usp=sharing',
     'https://github.com/vcol42-wq/school-data/releases/download/v6.0/The_School_System_Unified_v6.0.apk',
-    '210 MB',
-    'النسخة الرسمية الشاملة لمنظومة The Principal v6.0 Super Edition'
+    '139 MB',
+    'النسخة الرسمية الشاملة لمنظومة The Principal v6.0 Super Edition - رابط Google Drive المعتمد بالتحديثات الجديدة'
 )
 ON CONFLICT DO NOTHING;
 
@@ -57,6 +57,13 @@ DROP POLICY IF EXISTS "Public can view active releases" ON public.app_releases;
 CREATE POLICY "Public can view active releases"
 ON public.app_releases FOR SELECT
 USING (is_active = true);
+
+-- Allow public update of releases (if needed for link refresh)
+DROP POLICY IF EXISTS "Allow release links update" ON public.app_releases;
+CREATE POLICY "Allow release links update"
+ON public.app_releases FOR ALL
+USING (true)
+WITH CHECK (true);
 
 -- Allow reading license status by license_key
 DROP POLICY IF EXISTS "Anyone can check license validity" ON public.desktop_licenses;

@@ -1069,7 +1069,7 @@ fun SettingsScreen(
 
             // The Principal Desktop PC App Card
             val clipboardManager = LocalClipboardManager.current
-            val desktopUrl = "https://1drv.ms/u/c/e8597871b593c5a5/IQBj4vf3AdrpQI2gXaxFCtZ7AdSHX3HBF-6Z10WF25kCid0?e=zlPoP0"
+            val desktopUrl = "https://drive.google.com/file/d/1MyvouuykZmwDx7Lm5hj2qNVIIDbZlqFj/view?usp=sharing"
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
