@@ -39,6 +39,8 @@ import {
 import { getSupabase, isSupabaseConfigured, getSupabaseKey } from '../utils/supabaseClient';
 import { standardizeSubjectInput, STANDARD_APPROVED_SUBJECTS } from '../utils/subjectHelper';
 import { standardizeGradeName, standardizeSectionName, standardizeSubjectName, parseClassTaught } from '../utils/syncEngine';
+import { LicenseModal } from './LicenseModal';
+import { isDesktopActivated } from '../utils/licenseService';
 
 // Data Transfer Interface matching cloud table & local storage
 export interface SubjectAssignmentRecord {
@@ -239,6 +241,8 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
 
   // 1. TEACHER PROFILES STATE
   const [profiles, setProfiles] = useState<TeacherAuthorityProfile[]>([]);
+  const [isActivated, setIsActivated] = useState(() => isDesktopActivated());
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
   
   // 2. SUPERVISOR PROFILE STATE
   const [supervisor, setSupervisor] = useState<SupervisorAuthorityProfile>(() => {
@@ -2010,10 +2014,16 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
                     <div>
                       <div className="text-[10px] text-slate-400 font-bold">كود المشرف العام (PIN):</div>
                       <div className="font-mono text-xl font-black tracking-widest text-amber-400">
-                        {supervisor.code}
+                        {isActivated ? supervisor.code : '••••'}
                       </div>
                     </div>
-                    <QrCodeSvg value={`SUPERVISOR:${supervisor.code}:${activeSchoolId}`} size={56} />
+                    {isActivated ? (
+                      <QrCodeSvg value={`SUPERVISOR:${supervisor.code}:${activeSchoolId}`} size={56} />
+                    ) : (
+                      <div className="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[9px] font-black">
+                        مقفل 🔒
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-center pt-1">
@@ -2068,14 +2078,24 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
                       <div>
                         <div className="text-[9px] text-slate-400 font-bold">كود رفع الدرجات الموحد (PIN):</div>
                         <div className="font-mono text-lg font-black tracking-widest text-amber-400">
-                          {prof.secretCode}
+                          {isActivated ? prof.secretCode : '••••'}
                         </div>
                       </div>
-                      <QrCodeSvg value={`TEACHER:${prof.secretCode}:${activeSchoolId}:${prof.teacherName}`} size={48} />
+                      {isActivated ? (
+                        <QrCodeSvg value={`TEACHER:${prof.secretCode}:${activeSchoolId}:${prof.teacherName}`} size={48} />
+                      ) : (
+                        <div className="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[9px] font-black">
+                          مقفل 🔒
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-center pt-1">
-                      <BarcodeSvg value={prof.secretCode} height={28} />
+                      {isActivated ? (
+                        <BarcodeSvg value={prof.secretCode} height={28} />
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-bold">••••••••••••••</span>
+                      )}
                     </div>
 
                     <div className="text-[9px] text-slate-400 text-center font-bold">
@@ -2088,7 +2108,13 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
             {/* Modal Actions */}
             <div className="flex justify-end gap-3 pt-4 border-t">
               <button
-                onClick={() => window.print()}
+                onClick={() => {
+                  if (!isActivated) {
+                    setShowLicenseModal(true);
+                    return;
+                  }
+                  window.print();
+                }}
                 className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs md:text-sm shadow-lg cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
@@ -2104,6 +2130,13 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
           </div>
         </div>
       )}
+
+      {/* License Modal */}
+      <LicenseModal
+        isOpen={showLicenseModal}
+        onClose={() => setShowLicenseModal(false)}
+        onLicenseChanged={() => setIsActivated(isDesktopActivated())}
+      />
 
     </div>
   );

@@ -77,7 +77,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
 
   const getWhatsAppMessageText = () => {
     const school = schoolNameInput.trim() ? schoolNameInput.trim() : 'مدرستنا الكريمة';
-    return `السلام عليكم، أرغب في تفعيل ترخيص منظومة The Principal للحاسوب لمرة واحدة.\nمعرّف الحاسوب الخاص بنا (Hardware ID): ${fingerprint}\nاسم المدرسة: ${school}`;
+    return `السلام عليكم، أرغب في تفعيل ترخيص الربط السحابي لربط هواتف الأساتذة والطلبة لمنظومة The Principal.\nمعرّف الحاسوب الخاص بنا (Hardware ID): ${fingerprint}\nاسم المدرسة: ${school}`;
   };
 
   const openWhatsApp = () => {
@@ -96,18 +96,18 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
       <div className="relative w-full max-w-2xl bg-slate-900 border-2 border-slate-700 rounded-3xl shadow-2xl overflow-hidden text-white flex flex-col max-h-[92vh]">
         
         {/* Header */}
-        <div className="relative bg-gradient-to-r from-amber-600 via-amber-700 to-emerald-800 p-6 flex items-center justify-between border-b border-amber-500/40">
+        <div className="relative bg-gradient-to-r from-indigo-700 via-blue-800 to-indigo-950 p-6 flex items-center justify-between border-b border-amber-400/40">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
-              <Key className="w-6 h-6 text-amber-200" />
+              <Key className="w-6 h-6 text-amber-300" />
             </div>
             <div>
               <h2 className="text-xl font-black text-white flex items-center gap-2">
-                تفعيل منظومة The Principal للحاسوب
-                <Sparkles className="w-4 h-4 text-amber-200" />
+                تفعيل ترخيص الربط والمزامنة السحابية
+                <Sparkles className="w-4 h-4 text-amber-300" />
               </h2>
               <p className="text-xs text-amber-100 font-bold">
-                ترخيص تفعيل لمرة واحدة مدى الحياة (Lifetime Activation)
+                فتح الباركود والرموز الثلاثية ومزامنة هواتف الأساتذة والطلبة مدى الحياة
               </p>
             </div>
           </div>
@@ -136,6 +136,16 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
               <span>{statusMsg.text}</span>
             </div>
           )}
+
+          {/* Freemium clarification banner */}
+          <div className="p-3.5 bg-indigo-950/70 border border-indigo-400/40 rounded-2xl text-xs font-bold text-indigo-200 flex items-center gap-3">
+            <span className="p-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-lg shrink-0 font-black text-[10px]">
+              مجاني 100%
+            </span>
+            <p className="leading-relaxed">
+              كافة ميزات سطح المكتب (شيتات الإكسل، الشيت الإلكتروني، توليد الجدول المدرسي، الطباعة) متاحة ومجانية بالكامل. هذا التفعيل يفتح الربط السحابي ومزامنة هواتف الأساتذة والطلبة.
+            </p>
+          </div>
 
           {/* If Activated Already */}
           {currentLicense?.is_activated ? (

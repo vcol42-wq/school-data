@@ -23,12 +23,15 @@ import {
   Server,
   Trash2,
   Edit2,
-  Check,
-  AlertTriangle,
-  Key
+  Check, 
+  AlertTriangle, 
+  Key,
+  Lock
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { Portal } from './common/Portal';
+import { LicenseModal } from './LicenseModal';
+import { isDesktopActivated } from '../utils/licenseService';
 import { Student, StaffMember, AppConfig, DayScheduleMap } from '../types';
 import { 
   exportSchoolDataWithProgress, 
@@ -91,6 +94,8 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
   // QR Code State
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [showLicenseModal, setShowLicenseModal] = useState(false);
+  const [isActivated, setIsActivated] = useState(() => isDesktopActivated());
 
   // Initial Load
   useEffect(() => {
@@ -152,6 +157,10 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
   };
 
   const handleStartExport = async () => {
+    if (!isDesktopActivated()) {
+      setShowLicenseModal(true);
+      return;
+    }
     setIsSyncing(true);
     setSyncPercent(0);
     setSyncSteps([]);
@@ -186,6 +195,10 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
   };
 
   const handleDeepPurgeAndSync = async () => {
+    if (!isDesktopActivated()) {
+      setShowLicenseModal(true);
+      return;
+    }
     if (!confirm('⚠️ تنبيه هام للتطهير السحابي الشامل:\n\nسيقوم هذا الإجراء بمسح أي شعب مكررة، ومسح المواد الوهمية ذات الأحرف المفردة (أ، ب، ج، د)، ومسح الحصص المزدوجة من السحابة تماماً، ثم إعادة رفع ومزامنة البيانات النقية المعتمدة وفق المعايير الوزارية 100%.\n\nهل أنت متأكد وترغب بالمتابعة؟')) return;
 
     setIsSyncing(true);
@@ -604,14 +617,32 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
           </p>
 
           {/* QR Image Box with dynamic border color */}
-          <div className={`p-3 bg-white rounded-2xl border-3 shadow-lg relative group transition-all ${
+          <div className={`p-3 bg-white rounded-2xl border-3 shadow-lg relative group transition-all overflow-hidden ${
             activeQrRole === 'teacher' ? 'border-indigo-400' : activeQrRole === 'student' ? 'border-emerald-400' : 'border-amber-400'
           }`}>
-            {qrDataUrl ? (
-              <img src={qrDataUrl} alt={`QR Code ${activeQrRole}`} className="w-44 h-44 object-contain rounded-xl" />
+            {isActivated ? (
+              qrDataUrl ? (
+                <img src={qrDataUrl} alt={`QR Code ${activeQrRole}`} className="w-44 h-44 object-contain rounded-xl" />
+              ) : (
+                <div className="w-44 h-44 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-xs font-bold">
+                  جاري توليد الباركود...
+                </div>
+              )
             ) : (
-              <div className="w-44 h-44 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 text-xs font-bold">
-                جاري توليد الباركود...
+              <div className="w-44 h-44 flex flex-col items-center justify-center text-center p-3 bg-slate-900/95 rounded-xl text-white">
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/40 mb-2">
+                  <Lock className="w-5 h-5 text-amber-400" />
+                </div>
+                <span className="text-xs font-black text-amber-300 mb-1">الباركود مقفل</span>
+                <p className="text-[9px] text-slate-300 font-bold leading-tight mb-2.5">
+                  يتطلب تفعيل ترخيص الربط السحابي
+                </p>
+                <button
+                  onClick={() => setShowLicenseModal(true)}
+                  className="px-3 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-lg text-[10px] font-black shadow transition-all cursor-pointer active:scale-95"
+                >
+                  تفعيل الآن ⚡
+                </button>
               </div>
             )}
           </div>
@@ -624,21 +655,35 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
               {activeQrRole === 'principal' && 'كود اقتران المدير (6 أرقام):'}
             </div>
             <div className="flex items-center justify-center gap-2">
-              <span className={`font-mono text-2xl font-black tracking-widest bg-white px-3 py-1 rounded-xl border shadow-xs ${
-                activeQrRole === 'teacher' ? 'text-indigo-700' : activeQrRole === 'student' ? 'text-emerald-700' : 'text-amber-700'
-              }`}>
-                {activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode}
-              </span>
-              <button
-                type="button"
-                onClick={copyCurrentCode}
-                className={`p-2 rounded-xl text-white font-bold transition-all cursor-pointer shadow-md ${
-                  activeQrRole === 'teacher' ? 'bg-indigo-600 hover:bg-indigo-700' : activeQrRole === 'student' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
-                }`}
-                title="نسخ الرمز"
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </button>
+              {isActivated ? (
+                <span className={`font-mono text-2xl font-black tracking-widest bg-white px-3 py-1 rounded-xl border shadow-xs ${
+                  activeQrRole === 'teacher' ? 'text-indigo-700' : activeQrRole === 'student' ? 'text-emerald-700' : 'text-amber-700'
+                }`}>
+                  {activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode}
+                </span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-2xl font-black tracking-widest text-slate-400 select-none">
+                    ••••••
+                  </span>
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10px] font-black">
+                    مقفل 🔒
+                  </span>
+                </div>
+              )}
+
+              {isActivated && (
+                <button
+                  type="button"
+                  onClick={copyCurrentCode}
+                  className={`p-2 rounded-xl text-white font-bold transition-all cursor-pointer shadow-md ${
+                    activeQrRole === 'teacher' ? 'bg-indigo-600 hover:bg-indigo-700' : activeQrRole === 'student' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+                  title="نسخ الرمز"
+                >
+                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              )}
             </div>
             {copied && <span className="text-[10px] font-black text-emerald-600 block">تم نسخ الرمز! ✓</span>}
           </div>
@@ -1068,6 +1113,12 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
       </Portal>
       )}
 
+      {/* License Modal */}
+      <LicenseModal
+        isOpen={showLicenseModal}
+        onClose={() => setShowLicenseModal(false)}
+        onLicenseChanged={() => setIsActivated(isDesktopActivated())}
+      />
     </div>
   );
 };

@@ -51,10 +51,9 @@ fun PrincipalOnboardingScreen(
     var principalCodeInput by remember { mutableStateOf("334455") }
     var isLoading by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
-    var showLifetimeLicenseModal by remember { mutableStateOf(false) }
 
     val clipboardManager = LocalClipboardManager.current
-    val desktopDownloadUrl = "https://github.com/vcol42-wq/school-data/releases/download/v6.0/The_Principal_Setup_v6.0.exe"
+    val desktopDownloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
 
     fun openBrowser(url: String) {
         try {
@@ -71,27 +70,14 @@ fun PrincipalOnboardingScreen(
         try {
             val sendIntent = Intent().apply {
                 action = Intent.ACTION_SEND
-                putExtra(Intent.EXTRA_TEXT, "رابط تنزيل منظومة The Principal للحاسوب (Windows PC):\n$desktopDownloadUrl\n\nمنظومة الإدارة المدرسية الموحدة.")
+                putExtra(Intent.EXTRA_TEXT, "رابط تنزيل برنامج الإدارة المدرسية The Principal من متجر مايكروسوفت الرسمي (Microsoft Store):\n$desktopDownloadUrl\n\nتطبيق معتمد وموثق رسمياً لويندوز 10 و 11.")
                 type = "text/plain"
             }
-            val shareIntent = Intent.createChooser(sendIntent, "مشاركة رابط منظومة الحاسوب")
+            val shareIntent = Intent.createChooser(sendIntent, "مشاركة رابط منظومة مايكروسوفت")
             shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(shareIntent)
         } catch (e: Exception) {
             Toast.makeText(context, "تعذر مشاركة الرابط", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun openWhatsAppForLicense() {
-        try {
-            val msg = "السلام عليكم، أود الاستفسار وطلب تفعيل ترخيص منظومة The Principal للحاسوب لمرة واحدة مدى الحياة لمدرستنا."
-            val encoded = URLEncoder.encode(msg, "UTF-8")
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?text=$encoded")).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Toast.makeText(context, "يرجى التأكد من تثبيت تطبيق واتساب", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -271,7 +257,7 @@ fun PrincipalOnboardingScreen(
                 }
             }
 
-            // 0. VIP CARD: The Principal Desktop for PC & Windows
+            // 0. VIP CARD: The Principal Desktop for PC & Windows (Microsoft Store Edition)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -279,7 +265,7 @@ fun PrincipalOnboardingScreen(
                 shape = RoundedCornerShape(22.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
                 border = BorderStroke(1.5.dp, Brush.horizontalGradient(
-                    listOf(Color(0xFFF59E0B), Color(0xFF10B981), Color(0xFF38BDF8))
+                    listOf(Color(0xFF0078D4), Color(0xFF10B981), Color(0xFF38BDF8))
                 ))
             ) {
                 Column(
@@ -289,73 +275,72 @@ fun PrincipalOnboardingScreen(
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = Color(0xFF38BDF8).copy(alpha = 0.2f),
-                                shape = CircleShape,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.Computer,
-                                        contentDescription = null,
-                                        tint = Color(0xFF38BDF8),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "منظومة الكمبيوتر المركزية (PC) 💻",
-                                    color = Color.White,
-                                    fontSize = 14.5.sp,
-                                    fontWeight = FontWeight.Black
-                                )
-                                Text(
-                                    text = "The Principal Desktop v6.0 Super Edition",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp
+                        Surface(
+                            color = Color(0xFF0078D4).copy(alpha = 0.25f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Computer,
+                                    contentDescription = null,
+                                    tint = Color(0xFF38BDF8),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-
-                        Surface(
-                            color = Color(0xFF10B981).copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "تفعيل لمرة واحدة 💎",
-                                color = Color(0xFF34D399),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                text = "منظومة الحاسوب الرسمية (PC) 💻",
+                                color = Color.White,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Black
                             )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = "سوق مايكروسوفت (Microsoft Store)",
+                                color = Color(0xFF38BDF8),
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Surface(
+                                color = Color(0xFF10B981).copy(alpha = 0.2f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "معتمد رسمياً ✓",
+                                    color = Color(0xFF34D399),
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
                     }
 
                     Spacer(Modifier.height(8.dp))
 
                     Text(
-                        text = "برنامج حاسوب الإدارة المعتمد: استيراد وتصدير إكسل الوزاري، طباعة الشيت الإلكتروني والسجلات، والتوليد الذكي للجدول المدرسي بمزامنة سحابية مع هواتف الكادر.",
+                        text = "برنامج إدارة المدرسة المعتمد على ويندوز 10 و 11: استيراد وتصدير إكسل الوزاري، طباعة الشيت الإلكتروني، والتوليد الذكي للجدول المدرسي بمزامنة سحابية فورية.",
                         color = Color(0xFFCBD5E1),
                         fontSize = 11.sp,
                         lineHeight = 16.sp
                     )
 
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(12.dp))
 
-                    // Action buttons
+                    // Row 1: Direct Store Action + Share
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
                             onClick = { openBrowser(desktopDownloadUrl) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0078D4)),
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                             modifier = Modifier
@@ -369,7 +354,7 @@ fun PrincipalOnboardingScreen(
                             ) {
                                 Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("تنزيل للحاسوب", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text("تنزيل من المتجر 📥", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
 
@@ -390,16 +375,20 @@ fun PrincipalOnboardingScreen(
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("مشاركة", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Text("مشاركة 📤", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
                     }
 
                     Spacer(Modifier.height(8.dp))
 
+                    // Row 2: Copy Microsoft Store Link
                     Button(
-                        onClick = { showLifetimeLicenseModal = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(desktopDownloadUrl))
+                            Toast.makeText(context, "تم نسخ رابط التنزيل من سوق مايكروسوفت بنجاح ✓", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F766E)),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         modifier = Modifier
@@ -411,11 +400,11 @@ fun PrincipalOnboardingScreen(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "طلب كود التفعيل عبر واتساب 💬",
-                                fontSize = 11.sp,
+                                text = "نسخ رابط التنزيل من سوق مايكروسوفت 📋",
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1
                             )
@@ -638,114 +627,6 @@ fun PrincipalOnboardingScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
         }
-    }
-
-    if (showLifetimeLicenseModal) {
-        AlertDialog(
-            onDismissRequest = { showLifetimeLicenseModal = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.Star,
-                        contentDescription = null,
-                        tint = Color(0xFFF59E0B),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "ترخيص التفعيل لمرة واحدة 💎",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF0F172A)
-                    )
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "يمنحك الترخيص تفعيل نسخة الحاسوب (The Principal Desktop) لمدرستكم لمرة واحدة مدى الحياة وبلا أي اشتراكات شهرية متكررة.",
-                        fontSize = 12.sp,
-                        color = Color(0xFF334155),
-                        lineHeight = 18.sp
-                    )
-
-                    Surface(
-                        color = Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "طرق التحويل والسداد المحلي المتاحة داخل العراق 🇮🇶:",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.5.sp,
-                                color = Color(0xFF0F172A)
-                            )
-                            Text(
-                                text = "1. محفظة زين كاش (ZainCash)\n2. بطاقة ماستر كارد / كي كارد / مصرف الرافدين\n3. التحويل المباشر",
-                                fontSize = 11.sp,
-                                color = Color(0xFF475569),
-                                lineHeight = 17.sp
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "تواصل مباشرة مع المطور عبر واتساب لتزويدك برقم المحفظة وإصدار كود التفعيل الدائم لمدرستكم فوراً:",
-                        fontSize = 11.5.sp,
-                        color = Color(0xFF64748B)
-                    )
-
-                    Button(
-                        onClick = {
-                            openWhatsAppForLicense()
-                            showLifetimeLicenseModal = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(46.dp)
-                    ) {
-                        Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "مراسلة الدعم والترخيص عبر واتساب 💬",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 12.sp,
-                            color = Color.White
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString("رابط تنزيل برنامج الحاسوب The Principal:\n$desktopDownloadUrl"))
-                            Toast.makeText(context, "تم نسخ رابط تنزيل برنامج الحاسوب ✓", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(42.dp)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("نسخ رابط تنزيل برنامج الحاسوب", fontSize = 11.5.sp)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showLifetimeLicenseModal = false }) {
-                    Text("إغلاق", fontWeight = FontWeight.Bold)
-                }
-            }
-        )
     }
 }
 

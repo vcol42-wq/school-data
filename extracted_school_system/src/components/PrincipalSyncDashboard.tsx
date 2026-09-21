@@ -10,6 +10,9 @@ import { QrCodeSvg } from './QrCodeSvg';
 import { supabase, isSupabaseConfigured, getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
 import { exportSchoolData, importGradesAndAttendance, sendDirective } from '../utils/syncService';
 import { LicenseModal } from './LicenseModal';
+import { AndroidAppModal } from './AndroidAppModal';
+import { IntegrationGuideModal } from './IntegrationGuideModal';
+import { isDesktopActivated } from '../utils/licenseService';
 
 interface GradeLocksState {
   m1: boolean;      // الشهر الأول
@@ -59,6 +62,9 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [isKeyValid, setIsKeyValid] = useState<boolean>(true);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
+  const [showAndroidModal, setShowAndroidModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
+  const [isActivated, setIsActivated] = useState<boolean>(() => isDesktopActivated());
 
   // Corrected state initialization to prevent blank screen if localStorage is empty
   const [config] = useState<any>(() => {
@@ -282,6 +288,10 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   }, [schoolId, pairingCode, config, fetchTeachersFromSupabase, addLog]);
 
   const handleSyncAll = async () => {
+    if (!isDesktopActivated()) {
+      setShowLicenseModal(true);
+      return;
+    }
     setIsSyncing(true);
     addLog('upload', 'بدء تصدير البيانات...', 'info');
     try {
@@ -293,6 +303,10 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   };
 
   const handlePullAllGrades = async () => {
+    if (!isDesktopActivated()) {
+      setShowLicenseModal(true);
+      return;
+    }
     setIsSyncing(true);
     addLog('download', 'سحب الدرجات...', 'info');
     try {
@@ -324,31 +338,48 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                onClick={() => setShowGuideModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-black text-xs transition-all shadow-md cursor-pointer active:scale-95 border border-white/25"
+                title="عرض دليل العمل والربط المتكامل بين الحاسوب والهاتف"
+              >
+                <BookOpen className="w-4 h-4 text-amber-300" />
+                <span>دليل التشغيل 📘</span>
+              </button>
+
+              <button
+                onClick={() => setShowAndroidModal(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition-all shadow-md cursor-pointer active:scale-95 border border-emerald-400/40"
+                title="تحميل ومشاركة تطبيق أندرويد للكادر والطلبة"
+              >
+                <Smartphone className="w-4 h-4 text-white" />
+                <span>تطبيق أندرويد 📱</span>
+              </button>
+
               <button
                 onClick={() => setShowLicenseModal(true)}
-                className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs md:text-sm transition-all shadow-xl cursor-pointer active:scale-95 border border-amber-300"
-                title="إدارة وتفعيل تراخيص الحواسب وتوليد الأكواد للمدارس"
+                className={`flex items-center gap-1.5 px-4 py-2.5 rounded-2xl font-black text-xs transition-all shadow-xl cursor-pointer active:scale-95 border ${
+                  isActivated
+                    ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400/50 hover:bg-emerald-500/35'
+                    : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-300 animate-pulse'
+                }`}
+                title="إدارة وتفعيل ترخيص الربط السحابي"
               >
                 <VpnKey className="w-4 h-4" />
-                <span>إدارة التراخيص والتفعيل 🔑</span>
+                <span>{isActivated ? 'السحابة مفعلة 💎' : 'تفعيل الربط السحابي ⚡'}</span>
               </button>
+
               {onBack && (
                 <button
                   onClick={onBack}
-                  className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-white text-indigo-900 hover:bg-slate-100 font-black text-xs md:text-sm transition-all shadow-xl cursor-pointer active:scale-95"
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-white text-indigo-900 hover:bg-slate-100 font-black text-xs transition-all shadow-xl cursor-pointer active:scale-95"
                   title="الرجوع إلى الشاشة الرئيسية"
                 >
                   <ArrowRight className="w-4 h-4" />
-                  <span>العودة للرئيسية ✕</span>
+                  <span>الرئيسية ✕</span>
                 </button>
               )}
-              <div className="px-6 py-3 rounded-2xl backdrop-blur-xl border border-emerald-400/30 bg-emerald-500/20 flex items-center gap-3 shadow-inner">
-                <div className="w-3 h-3 rounded-full animate-pulse bg-emerald-400" />
-                <span className="text-white font-black text-sm">
-                  النظام الموحد المحدث (v6.0)
-                </span>
-              </div>
             </div>
           </div>
         </div>
@@ -411,7 +442,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
             </div>
 
             <div className="space-y-6">
-              <div className="p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-indigo-200 flex flex-col items-center text-center group">
+              <div className="p-6 bg-slate-50 rounded-3xl border-2 border-dashed border-indigo-200 flex flex-col items-center text-center group relative overflow-hidden">
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
                   {activeQrRole === 'teacher' 
                     ? 'كود ربط الأساتذة الموحد' 
@@ -419,42 +450,78 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
                       ? 'كود ربط الطلاب وأولياء الأمور' 
                       : 'كود ربط وبوابة المدير / الإدارة'}
                 </span>
-                <span className={`text-5xl font-black tracking-widest group-hover:scale-110 transition-transform duration-300 select-all ${
-                  activeQrRole === 'teacher' 
-                    ? 'text-indigo-700' 
-                    : activeQrRole === 'student' 
-                      ? 'text-emerald-700' 
-                      : 'text-amber-700'
-                }`}>
-                  {activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode}
-                </span>
+
+                {isActivated ? (
+                  <span className={`text-5xl font-black tracking-widest group-hover:scale-110 transition-transform duration-300 select-all ${
+                    activeQrRole === 'teacher' 
+                      ? 'text-indigo-700' 
+                      : activeQrRole === 'student' 
+                        ? 'text-emerald-700' 
+                        : 'text-amber-700'
+                  }`}>
+                    {activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode}
+                  </span>
+                ) : (
+                  <div className="flex flex-col items-center py-2">
+                    <span className="text-3xl font-black tracking-widest text-slate-400 font-mono select-none">
+                      ••••••
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 mt-2 px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-black">
+                      <Lock className="w-3.5 h-3.5 text-amber-700" />
+                      كود الربط مقفل (يتطلب تفعيل السحابة)
+                    </span>
+                  </div>
+                )}
+
                 <p className="text-[10px] text-slate-500 mt-3 font-bold">
-                  {activeQrRole === 'teacher'
-                    ? 'أعطِ هذا الرمز للمدرسين لربط سجل درجاتهم يدوياً'
-                    : activeQrRole === 'student'
-                      ? 'أعطِ هذا الرمز للطلبة وأولياء الأمور لربط جدولهم ونتائجهم'
-                      : 'الرمز السداسي الحصري للمدير للمصادقة السريعة على الجوال'}
+                  {isActivated ? (
+                    activeQrRole === 'teacher'
+                      ? 'أعطِ هذا الرمز للمدرسين لربط سجل درجاتهم يدوياً'
+                      : activeQrRole === 'student'
+                        ? 'أعطِ هذا الرمز للطلبة وأولياء الأمور لربط جدولهم ونتائجهم'
+                        : 'الرمز السداسي الحصري للمدير للمصادقة السريعة على الجوال'
+                  ) : (
+                    'يتم إظهار هذا الرمز تلقائياً فور تفعيل ترخيص الربط السحابي'
+                  )}
                 </p>
               </div>
 
               <div className="flex flex-col items-center">
-                <div className={`bg-white p-6 rounded-[2.5rem] shadow-2xl border-4 ring-8 transform hover:rotate-1 transition-transform ${
+                <div className={`bg-white p-6 rounded-[2.5rem] shadow-2xl border-4 ring-8 transform transition-all relative overflow-hidden ${
                   activeQrRole === 'teacher' 
                     ? 'border-indigo-400 ring-indigo-50' 
                     : activeQrRole === 'student' 
                       ? 'border-emerald-400 ring-emerald-50' 
                       : 'border-amber-400 ring-amber-50'
                 }`}>
-                  <QrCodeSvg value={JSON.stringify({
-                    url: getSupabaseUrl(),
-                    apiKey: getSupabaseKey(),
-                    schoolId: schoolId,
-                    pairingCode: activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode,
-                    studentPairingCode: studentPairingCode,
-                    principalPairingCode: principalPairingCode,
-                    schoolName: config.schoolName || 'المدرسة النموذجية',
-                    role: activeQrRole
-                  })} size={180} />
+                  {isActivated ? (
+                    <QrCodeSvg value={JSON.stringify({
+                      url: getSupabaseUrl(),
+                      apiKey: getSupabaseKey(),
+                      schoolId: schoolId,
+                      pairingCode: activeQrRole === 'teacher' ? pairingCode : activeQrRole === 'student' ? studentPairingCode : principalPairingCode,
+                      studentPairingCode: studentPairingCode,
+                      principalPairingCode: principalPairingCode,
+                      schoolName: config.schoolName || 'المدرسة النموذجية',
+                      role: activeQrRole
+                    })} size={180} />
+                  ) : (
+                    <div className="w-[180px] h-[180px] flex flex-col items-center justify-center text-center p-3 bg-slate-900/95 rounded-2xl text-white">
+                      <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/40 mb-2">
+                        <Lock className="w-6 h-6 text-amber-400" />
+                      </div>
+                      <span className="text-xs font-black text-amber-300 mb-1">الباركود السحابي مقفل</span>
+                      <p className="text-[9px] text-slate-300 font-bold leading-tight mb-2.5">
+                        يتطلب تفعيل ترخيص الربط السحابي لربط هواتف الكادر
+                      </p>
+                      <button
+                        onClick={() => setShowLicenseModal(true)}
+                        className="px-3 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-lg text-[10px] font-black shadow transition-all cursor-pointer active:scale-95"
+                      >
+                        تفعيل الآن ⚡
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <span className={`mt-4 px-4 py-1.5 text-xs font-black rounded-full border ${
                   activeQrRole === 'teacher' 
@@ -463,7 +530,9 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
                       ? 'bg-emerald-100 text-emerald-900 border-emerald-200' 
                       : 'bg-amber-100 text-amber-900 border-amber-200'
                 }`}>
-                  امسح باركود {activeQrRole === 'teacher' ? 'الأستاذ 👨‍🏫' : activeQrRole === 'student' ? 'الطالب 🎓' : 'المدير 👑'} للربط الفوري
+                  {isActivated
+                    ? `امسح باركود ${activeQrRole === 'teacher' ? 'الأستاذ 👨‍🏫' : activeQrRole === 'student' ? 'الطالب 🎓' : 'المدير 👑'} للربط الفوري`
+                    : '🔒 الباركود الثلاثي محمي ويتطلب التفعيل'}
                 </span>
               </div>
             </div>
@@ -770,6 +839,22 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
       <LicenseModal
         isOpen={showLicenseModal}
         onClose={() => setShowLicenseModal(false)}
+        onLicenseChanged={() => setIsActivated(isDesktopActivated())}
+      />
+
+      {/* Android App Download Modal */}
+      <AndroidAppModal
+        isOpen={showAndroidModal}
+        onClose={() => setShowAndroidModal(false)}
+        schoolName={config.schoolName || 'المدرسة النموذجية'}
+      />
+
+      {/* Integration Lifecycle Guide Modal */}
+      <IntegrationGuideModal
+        isOpen={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+        onOpenLicenseModal={() => setShowLicenseModal(true)}
+        onOpenAndroidModal={() => setShowAndroidModal(true)}
       />
     </div>
   );

@@ -37,6 +37,8 @@ import {
 import { QrCodeSvg } from './QrCodeSvg';
 import { getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
 import { LicenseModal } from './LicenseModal';
+import { AndroidAppModal } from './AndroidAppModal';
+import { IntegrationGuideModal } from './IntegrationGuideModal';
 import { isDesktopActivated } from '../utils/licenseService';
 
 interface TopHeaderProps {
@@ -68,6 +70,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [showLicenseModal, setShowLicenseModal] = useState(false);
   const [isActivated, setIsActivated] = useState(() => isDesktopActivated());
+  const [showAndroidModal, setShowAndroidModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [pairingTab, setPairingTab] = useState<'teacher' | 'student' | 'principal'>('teacher');
   const [now, setNow] = useState<Date>(new Date());
@@ -291,10 +295,20 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 <Sparkles className="w-4.5 h-4.5" />
               </button>
 
+              {/* Android App Button */}
+              <button
+                onClick={() => setShowAndroidModal(true)}
+                title="تحميل ومشاركة تطبيق أندرويد للكادر والطلبة"
+                className="p-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 transition-colors border border-emerald-300 shrink-0 cursor-pointer flex items-center gap-1.5 font-black text-xs shadow-xs"
+              >
+                <Smartphone className="w-4 h-4 text-emerald-600" />
+                <span className="hidden xl:inline">تطبيق أندرويد</span>
+              </button>
+
               {/* License Status / Activation Trigger */}
               <button
                 onClick={() => setShowLicenseModal(true)}
-                title={isActivated ? "المنظومة مفعلة لمدى الحياة 💎" : "تفعيل المنظومة لمرة واحدة 🔑"}
+                title={isActivated ? "ترخيص الربط السحابي مفعل 💎" : "تفعيل ترخيص الربط السحابي ⚡"}
                 className={`px-3 py-1.5 rounded-xl border font-black text-xs transition-all shrink-0 cursor-pointer shadow-md flex items-center gap-1.5 ${
                   isActivated
                     ? 'bg-amber-500/15 border-amber-500/40 text-amber-700 hover:bg-amber-500/25'
@@ -302,7 +316,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 }`}
               >
                 <Key className="w-4 h-4" />
-                <span className="hidden lg:inline">{isActivated ? 'مفعل 💎' : 'تفعيل المنظومة 🔑'}</span>
+                <span className="hidden lg:inline">{isActivated ? 'السحابة مفعلة 💎' : 'تفعيل السحابة ⚡'}</span>
               </button>
 
               {/* Lock / Settings Trigger */}
@@ -377,26 +391,44 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             </div>
 
             {/* Giant QR Code */}
-            <div className={`bg-white p-4 rounded-3xl shadow-xl border-4 mb-5 ${
+            <div className={`bg-white p-4 rounded-3xl shadow-xl border-4 mb-5 relative overflow-hidden ${
               pairingTab === 'teacher' ? 'border-indigo-400' : pairingTab === 'student' ? 'border-emerald-400' : 'border-amber-400'
             }`}>
-              <QrCodeSvg
-                value={JSON.stringify({
-                  url: getSupabaseUrl(),
-                  apiKey: getSupabaseKey(),
-                  schoolId: config.schoolId || 'SCH-MAIN-001',
-                  pairingCode: pairingTab === 'teacher' 
-                    ? (config.pairingCode || '112233') 
-                    : pairingTab === 'student' 
-                      ? (config.studentPairingCode || '223344') 
-                      : (config.principalPairingCode || '334455'),
-                  studentPairingCode: config.studentPairingCode || '223344',
-                  principalPairingCode: config.principalPairingCode || '334455',
-                  schoolName: config.schoolName || 'المدرسة النموذجية',
-                  role: pairingTab
-                })}
-                size={180}
-              />
+              {isActivated ? (
+                <QrCodeSvg
+                  value={JSON.stringify({
+                    url: getSupabaseUrl(),
+                    apiKey: getSupabaseKey(),
+                    schoolId: config.schoolId || 'SCH-MAIN-001',
+                    pairingCode: pairingTab === 'teacher' 
+                      ? (config.pairingCode || '112233') 
+                      : pairingTab === 'student' 
+                        ? (config.studentPairingCode || '223344') 
+                        : (config.principalPairingCode || '334455'),
+                    studentPairingCode: config.studentPairingCode || '223344',
+                    principalPairingCode: config.principalPairingCode || '334455',
+                    schoolName: config.schoolName || 'المدرسة النموذجية',
+                    role: pairingTab
+                  })}
+                  size={180}
+                />
+              ) : (
+                <div className="w-[180px] h-[180px] flex flex-col items-center justify-center text-center p-3 bg-slate-900/95 rounded-2xl text-white">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/40 mb-2">
+                    <Lock className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <span className="text-xs font-black text-amber-300 mb-1">الباركود مقفل</span>
+                  <p className="text-[9px] text-slate-300 font-bold leading-tight mb-2.5">
+                    يتطلب تفعيل ترخيص الربط السحابي
+                  </p>
+                  <button
+                    onClick={() => { setShowPairingModal(false); setShowLicenseModal(true); }}
+                    className="px-3 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 rounded-lg text-[10px] font-black shadow transition-all cursor-pointer active:scale-95"
+                  >
+                    تفعيل الآن ⚡
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 6-Digit Simple Pairing Code */}
@@ -409,42 +441,56 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                       ? 'كود ربط الطلاب وأولياء الأمور:' 
                       : 'كود ربط وبوابة المدير / الإدارة:'}
                 </span>
-                <span className={`text-3xl font-black tracking-widest ${
-                  pairingTab === 'teacher' 
-                    ? 'text-indigo-700' 
-                    : pairingTab === 'student' 
-                      ? 'text-emerald-700' 
-                      : 'text-amber-700'
-                }`}>
-                  {pairingTab === 'teacher' 
-                    ? (config.pairingCode || '112233') 
-                    : pairingTab === 'student' 
-                      ? (config.studentPairingCode || '223344') 
-                      : (config.principalPairingCode || '334455')}
-                </span>
+
+                {isActivated ? (
+                  <span className={`text-3xl font-black tracking-widest ${
+                    pairingTab === 'teacher' 
+                      ? 'text-indigo-700' 
+                      : pairingTab === 'student' 
+                        ? 'text-emerald-700' 
+                        : 'text-amber-700'
+                  }`}>
+                    {pairingTab === 'teacher' 
+                      ? (config.pairingCode || '112233') 
+                      : pairingTab === 'student' 
+                        ? (config.studentPairingCode || '223344') 
+                        : (config.principalPairingCode || '334455')}
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-2xl font-black tracking-widest text-slate-400 font-mono select-none">
+                      ••••••
+                    </span>
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10px] font-black">
+                      مقفل 🔒
+                    </span>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => {
-                  const targetCode = pairingTab === 'teacher' 
-                    ? (config.pairingCode || '112233') 
-                    : pairingTab === 'student' 
-                      ? (config.studentPairingCode || '223344') 
-                      : (config.principalPairingCode || '334455');
-                  navigator.clipboard.writeText(targetCode);
-                  setCopiedCode(true);
-                  setTimeout(() => setCopiedCode(false), 2000);
-                }}
-                className={`p-2.5 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md ${
-                  pairingTab === 'teacher' 
-                    ? 'bg-indigo-600 hover:bg-indigo-700' 
-                    : pairingTab === 'student' 
-                      ? 'bg-emerald-600 hover:bg-emerald-700' 
-                      : 'bg-amber-600 hover:bg-amber-700'
-                }`}
-              >
-                {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                <span>{copiedCode ? 'تم النسخ' : 'نسخ الرمز'}</span>
-              </button>
+
+              {isActivated && (
+                <button
+                  onClick={() => {
+                    const targetCode = pairingTab === 'teacher' 
+                      ? (config.pairingCode || '112233') 
+                      : pairingTab === 'student' 
+                        ? (config.studentPairingCode || '223344') 
+                        : (config.principalPairingCode || '334455');
+                    navigator.clipboard.writeText(targetCode);
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 2000);
+                  }}
+                  className={`p-2.5 text-white rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all shadow-md ${
+                    pairingTab === 'teacher' 
+                      ? 'bg-indigo-600 hover:bg-indigo-700' 
+                      : pairingTab === 'student' 
+                        ? 'bg-emerald-600 hover:bg-emerald-700' 
+                        : 'bg-amber-600 hover:bg-amber-700'
+                  }`}
+                >
+                  {copiedCode ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                </button>
+              )}
             </div>
 
             <p className={`text-[11px] font-bold px-4 py-2 rounded-xl border text-center w-full mb-4 ${
@@ -477,6 +523,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         isOpen={showLicenseModal}
         onClose={() => setShowLicenseModal(false)}
         onLicenseChanged={() => setIsActivated(isDesktopActivated())}
+      />
+
+      {/* Android App Download Modal */}
+      <AndroidAppModal
+        isOpen={showAndroidModal}
+        onClose={() => setShowAndroidModal(false)}
+        schoolName={config.schoolName || 'المدرسة النموذجية'}
+      />
+
+      {/* Integration Lifecycle Guide Modal */}
+      <IntegrationGuideModal
+        isOpen={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+        onOpenLicenseModal={() => setShowLicenseModal(true)}
+        onOpenAndroidModal={() => setShowAndroidModal(true)}
       />
 
       {/* Side Drawer Overlay (الشريط الجانبي) */}
