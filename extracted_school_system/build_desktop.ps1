@@ -38,11 +38,27 @@ if (Test-Path "..\The_Principal_Portable") {
     Copy-Item -Path "dist_electron\win-unpacked\The Principal v6.0 Super Edition.exe" -Destination "..\The_Principal_Portable\The Principal v6.0 Super Edition.exe" -Force
 }
 
-Write-Host "[6/6] Packaging Professional NSIS Setup Installer & Portable Executables..."
+Write-Host "[6/6] Packaging Professional NSIS Setup Installer..."
 cmd.exe /c "set ELECTRON_RUN_AS_NODE=1 && .\node_modules\electron\dist\electron.exe .\scripts\run_builder.cjs"
-if (Test-Path "dist_electron\The_Principal_Setup_v6.0.exe") {
-    Copy-Item -Path "dist_electron\The_Principal_Setup_v6.0.exe", "dist_electron\The_Principal_Portable_v6.0.exe" -Destination "..\LATEST_BUILDS\" -Force
-}
 
-Write-Host "SUCCESS: Desktop App v6.0 completely built and packaged (Setup Installer + Portable) with 100% updated assets!"
+if (Test-Path "dist_electron\The_Principal_Setup_v6.0.exe") {
+    Write-Host "[EXPORT] Copying NSIS Installer to LATEST_BUILDS and RELEASE_DESKTOP_V6..."
+    New-Item -ItemType Directory -Path "..\LATEST_BUILDS" -Force | Out-Null
+    New-Item -ItemType Directory -Path "..\RELEASE_DESKTOP_V6" -Force | Out-Null
+    
+    Copy-Item -Path "dist_electron\The_Principal_Setup_v6.0.exe" -Destination "..\LATEST_BUILDS\The_Principal_Setup_v6.0.exe" -Force
+    Copy-Item -Path "dist_electron\The_Principal_Setup_v6.0.exe" -Destination "..\RELEASE_DESKTOP_V6\The_Principal_Setup_v6.0.exe" -Force
+    
+    # Remove old unpacked folder from release directory to avoid user confusion
+    Remove-Item -Path "..\RELEASE_DESKTOP_V6\The_Principal_v6_Desktop_App" -Recurse -Force -ErrorAction SilentlyContinue
+    
+    # Create clean zip containing ONLY the setup executable
+    Write-Host "[ZIP] Creating clean release archive The_Principal_Setup_v6.0.zip..."
+    Remove-Item -Path "..\RELEASE_DESKTOP_V6\The_Principal_Setup_v6.0.zip" -Force -ErrorAction SilentlyContinue
+    Compress-Archive -Path "dist_electron\The_Principal_Setup_v6.0.exe" -DestinationPath "..\RELEASE_DESKTOP_V6\The_Principal_Setup_v6.0.zip" -Force
+    
+    Write-Host "SUCCESS: The_Principal_Setup_v6.0.exe ready in RELEASE_DESKTOP_V6 (Setup Installer Only)!"
+} else {
+    Write-Error "ERROR: NSIS Installer was not generated in dist_electron!"
+}
 

@@ -62,8 +62,7 @@
     "win": {
       "icon": "public/logo.png",
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ]
     },
     "nsis": {
@@ -77,6 +76,19 @@
     },
     "portable": {
       "artifactName": "The_Principal_Portable_v6.0.exe"
+    },
+    "appx": {
+      "identityName": "waleedal-hasson.ThePrincipal-",
+      "publisher": "CN=E9515DF7-7B48-41F8-AEE6-8C2B08D31708",
+      "publisherDisplayName": "waleed al-hasson",
+      "applicationId": "ThePrincipal",
+      "displayName": "The Principal - الإدارة المدرسية الذكية",
+      "backgroundColor": "#0F172A",
+      "languages": [
+        "ar",
+        "en-US"
+      ],
+      "artifactName": "The_Principal_v6.0_MicrosoftStore.appx"
     }
   }
 }

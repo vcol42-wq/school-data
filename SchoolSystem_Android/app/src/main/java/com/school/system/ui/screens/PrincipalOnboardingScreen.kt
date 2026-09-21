@@ -337,46 +337,16 @@ fun PrincipalOnboardingScreen(
                         }
                     }
 
-                    Spacer(Modifier.height(12.dp))
-
-                    Text(
-                        text = "المنظومة الإدارية الكاملة لإدارة المدرسة على حاسوب الإدارة:",
-                        color = Color(0xFFE2E8F0),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
                     Spacer(Modifier.height(8.dp))
 
-                    // Feature highlights
-                    val features = listOf(
-                        "📊 استيراد وتصدير بيانات الطلبة والدرجات من شيتات إكسل الوزارية.",
-                        "🖨️ طباعة الشيت الإلكتروني، السجلات، والشهادات والتقارير المدرسية.",
-                        "⚡ التوليد الآلي الذكي للجدول المدرسي وفق ضوابط وزارة التربية.",
-                        "☁️ ربط سحابي شامل ومزامنة فورية مع هواتف المدرسين والطلبة."
+                    Text(
+                        text = "برنامج حاسوب الإدارة المعتمد: استيراد وتصدير إكسل الوزاري، طباعة الشيت الإلكتروني والسجلات، والتوليد الذكي للجدول المدرسي بمزامنة سحابية مع هواتف الكادر.",
+                        color = Color(0xFFCBD5E1),
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
                     )
 
-                    features.forEach { feat ->
-                        Row(
-                            modifier = Modifier.padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Text(
-                                text = "• ",
-                                color = Color(0xFFFBBF24),
-                                fontWeight = FontWeight.Black,
-                                fontSize = 12.sp
-                            )
-                            Text(
-                                text = feat,
-                                color = Color(0xFFCBD5E1),
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(14.dp))
+                    Spacer(Modifier.height(10.dp))
 
                     // Action buttons
                     Row(
@@ -386,23 +356,42 @@ fun PrincipalOnboardingScreen(
                         Button(
                             onClick = { openBrowser(desktopDownloadUrl) },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(44.dp)
+                                .height(38.dp)
                         ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("تنزيل للحاسوب", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("تنزيل للحاسوب", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
 
                         OutlinedButton(
                             onClick = { shareDownloadLink() },
                             border = BorderStroke(1.dp, Color(0xFF38BDF8)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.height(44.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
+                            modifier = Modifier
+                                .weight(0.7f)
+                                .height(38.dp)
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(16.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("مشاركة", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
                     }
 
@@ -411,18 +400,26 @@ fun PrincipalOnboardingScreen(
                     Button(
                         onClick = { showLifetimeLicenseModal = true },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(38.dp)
                     ) {
-                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = "طلب ترخيص التفعيل لمرة واحدة (زين كاش / كي كارد) 🔑",
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Black
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "طلب كود التفعيل عبر واتساب 💬",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
             }

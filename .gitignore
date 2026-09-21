@@ -60,3 +60,13 @@ extracted_school_system/scratch_sync.js
 **/release/
 *.aab
 mapping.txt
+*.appx
+*.msix
+RELEASE_DESKTOP_V6/
+nodejs/
+nodejs_runtime/
+The_Principal_KeyGen_Admin_Android/.gradle/
+The_Principal_KeyGen_Admin_Android/build/
+The_Principal_KeyGen_Admin_Android/app/build/
+The_Principal_KeyGen_Admin_Android/local.properties
+The_Principal_KeyGen_Admin_Android/.kotlin/

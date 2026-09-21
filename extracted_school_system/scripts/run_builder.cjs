@@ -3,10 +3,10 @@ const { build, Platform } = require('electron-builder');
 const path = require('path');
 
 async function run() {
-  console.log('[BUILDER] Starting electron-builder packaging (NSIS Setup & Portable)...');
+  console.log('[BUILDER] Starting electron-builder packaging (NSIS Setup Installer)...');
   try {
     const result = await build({
-      targets: Platform.WINDOWS.createTarget(['nsis', 'portable']),
+      targets: Platform.WINDOWS.createTarget(['nsis']),
       projectDir: path.resolve(__dirname, '..'),
       prepackaged: path.resolve(__dirname, '..', 'dist_electron', 'win-unpacked')
     });

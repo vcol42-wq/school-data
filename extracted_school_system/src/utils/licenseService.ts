@@ -63,7 +63,15 @@ export function getLocalLicense(): LicenseRecord | null {
  */
 export function isDesktopActivated(): boolean {
   const local = getLocalLicense();
-  return !!(local && local.is_activated && local.license_key);
+  if (!local || !local.is_activated || !local.license_key) return false;
+  
+  // Invalidate any previously saved dummy or unverified demo key
+  if (!isValidUnifiedLicenseKey(local.license_key)) {
+    // Check if it exists in local storage and remove it
+    localStorage.removeItem(LOCAL_LICENSE_STORAGE_KEY);
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -82,22 +90,22 @@ export function computeLicenseChecksum(base: string): string {
 
 /**
  * Check whether a key is valid according to the Unified KeyGen algorithm.
+ * Requires a cryptographically valid 2-character checksum ending.
  */
 export function isValidUnifiedLicenseKey(key: string): boolean {
   const clean = key.trim().toUpperCase();
   const parts = clean.split('-');
   if (parts.length < 3) return false;
 
-  // If format ends with a 2-char checksum:
+  // Format MUST end with a valid 2-character checksum computed from base
   const lastPart = parts[parts.length - 1];
   if (lastPart.length === 2) {
     const base = parts.slice(0, parts.length - 1).join('-');
     const expected = computeLicenseChecksum(base);
-    if (lastPart === expected) return true;
+    return lastPart === expected;
   }
 
-  // Fallback for standard BOSS keys (e.g. BOSS-XXXX-XXXX-XXXX)
-  return clean.startsWith('BOSS-') && clean.length >= 14;
+  return false;
 }
 
 /**

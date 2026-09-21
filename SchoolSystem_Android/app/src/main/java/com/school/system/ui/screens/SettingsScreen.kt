@@ -1073,11 +1073,12 @@ fun SettingsScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.5f))
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1086,54 +1087,54 @@ fun SettingsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(36.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF38BDF8).copy(alpha = 0.2f)),
+                                    .background(Color(0xFF0284C7).copy(alpha = 0.1f)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     Icons.Default.Computer,
                                     contentDescription = null,
-                                    tint = Color(0xFF38BDF8),
-                                    modifier = Modifier.size(22.dp)
+                                    tint = Color(0xFF0284C7),
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
-                            Spacer(Modifier.width(12.dp))
+                            Spacer(Modifier.width(10.dp))
                             Column {
                                 Text(
                                     text = "منظومة الكمبيوتر المركزية (PC) 💻",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 14.sp
+                                    color = Color(0xFF0F172A),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
                                 )
                                 Text(
-                                    text = "The Principal Desktop v6.0 Super Edition",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp
+                                    text = "The Principal Desktop v6.0",
+                                    color = Color(0xFF64748B),
+                                    fontSize = 10.5.sp
                                 )
                             }
                         }
 
                         Surface(
-                            color = Color(0xFFF59E0B).copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.4f))
+                            color = Color(0xFFF59E0B).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(0.5.dp, Color(0xFFF59E0B).copy(alpha = 0.4f))
                         ) {
                             Text(
                                 text = "تفعيل دائم 💎",
-                                color = Color(0xFFFBBF24),
-                                fontSize = 10.5.sp,
+                                color = Color(0xFFB45309),
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
 
                     Text(
-                        text = "المنظومة الاحترافية لإدارة المدرسة على أجهزة الحاسوب (Windows): استيراد وتصدير إكسل الوزاري، طباعة الشيت الإلكتروني وسجلات الدرجات، والتوليد الآلي الذكي للجدول المدرسي، مع ربط سحابي فوري مع هواتف الكادر.",
-                        color = Color(0xFFCBD5E1),
-                        fontSize = 11.5.sp,
-                        lineHeight = 17.sp
+                        text = "برنامج الحاسوب لإدارة الشيت الإلكتروني، استيراد وتصدير إكسل الوزاري، وتوليد الجدول المدرسي مع ربط سحابي فوري.",
+                        color = Color(0xFF475569),
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
                     )
 
                     Row(
@@ -1152,12 +1153,19 @@ fun SettingsScreen(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.weight(1.3f).height(42.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                            modifier = Modifier.weight(1f).height(38.dp)
                         ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("تنزيل للحاسوب", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("تنزيل للحاسوب", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
 
                         OutlinedButton(
@@ -1165,14 +1173,21 @@ fun SettingsScreen(
                                 clipboardManager.setText(AnnotatedString(desktopUrl))
                                 Toast.makeText(context, "تم نسخ رابط تنزيل الحاسوب إلى الحافظة 📋", Toast.LENGTH_SHORT).show()
                             },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8)),
-                            border = BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.6f)),
-                            modifier = Modifier.weight(0.9f).height(42.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0284C7)),
+                            border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.5f)),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                            modifier = Modifier.weight(1f).height(38.dp)
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("نسخ الرابط", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("نسخ الرابط", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
                     }
 
@@ -1190,12 +1205,19 @@ fun SettingsScreen(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(42.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.fillMaxWidth().height(38.dp)
                     ) {
-                        Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("طلب كود التفعيل الدائم (زين كاش / كي كارد) 🔑", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("طلب كود التفعيل عبر واتساب 💬", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
                     }
                 }
             }
