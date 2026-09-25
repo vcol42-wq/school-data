@@ -148,8 +148,13 @@ export interface StudentMark {
   finalWrittenD1?: number;
   finalWrittenD2?: number | null;
   finalExamTotal?: number;
-  result?: string;
-  status?: string;
+  // الشهر الثالث الاختياري ودرجات القرار
+  m1Month3?: number;       // شهر ثالث اختياري للفصل الأول
+  m2Month3?: number;       // شهر ثالث اختياري للفصل الثاني
+  decisionGrace?: number;  // درجة القرار المضافة (1 إلى 5)
+  isDecisionApplied?: boolean;
+  calculationMode?: 'sum' | 'average'; // جمع أو تقسيم لليومي
+  isOralSubject?: boolean; // هل المادة ذات تقييم شفهي
 
   final?: number;
   total?: number;
