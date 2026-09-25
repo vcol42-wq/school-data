@@ -1,8 +1,8 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "6.1.0",
-  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v6.1 Super Edition",
+  "version": "6.1.1",
+  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v6.1.1 Super Edition",
   "author": "School Management System",
   "type": "module",
   "main": "electron-main.js",
@@ -89,7 +89,7 @@
         "ar",
         "en-US"
       ],
-      "artifactName": "The_Principal_v6.1_MicrosoftStore.appx"
+      "artifactName": "The_Principal_v6.1.1_MicrosoftStore.appx"
     }
   }
 }

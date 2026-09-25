@@ -34,7 +34,8 @@ TheBoss3/.artifacts/
 
 # === extracted_school_system (Electron / Web Application) ===
 extracted_school_system/node_modules/
-extracted_school_system/build/
+extracted_school_system/build/*
+!extracted_school_system/build/appx/
 extracted_school_system/dist/
 extracted_school_system/dist_electron/
 extracted_school_system/app_staging/
