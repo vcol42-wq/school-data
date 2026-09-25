@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Principal v6.1 | جولة فيديو تعليمية وشرح المنظومة</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(15, 23, 42, 0.85);
+      --bg-surface: rgba(30, 41, 59, 0.7);
+      --primary: #0284c7;
+      --primary-light: #38bdf8;
+      --gold: #f59e0b;
+      --gold-light: #fef08a;
+      --emerald: #10b981;
+      --rose: #f43f5e;
+      --purple: #8b5cf6;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: rgba(148, 163, 184, 0.15);
+      --shadow-glow: 0 0 35px rgba(56, 189, 248, 0.25);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      font-family: 'Cairo', 'Inter', -apple-system, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Ambient animated mesh background */
+    .ambient-bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background: 
+        radial-gradient(circle at 15% 20%, rgba(2, 132, 199, 0.18) 0%, transparent 45%),
+        radial-gradient(circle at 85% 80%, rgba(245, 158, 11, 0.12) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.08) 0%, transparent 60%);
+      filter: blur(50px);
+    }
+
+    /* Top Control Bar */
+    .top-bar {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 28px;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-badge {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, #0284c7, #1e1b4b);
+      border: 1.5px solid var(--primary-light);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 1.25rem;
+      color: #ffffff;
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+    }
+
+    .brand-info h1 {
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: #ffffff;
+    }
+
+    .brand-info p {
+      font-size: 0.75rem;
+      color: var(--primary-light);
+      font-weight: 600;
+    }
+
+    .timeline-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(2, 6, 23, 0.6);
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+
+    .step-pill {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .step-pill.active {
+      background: linear-gradient(135deg, var(--primary) 0%, #0369a1 100%);
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(2, 132, 199, 0.5);
+    }
+
+    .step-pill:hover:not(.active) {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .ctrl-buttons {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-action {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border);
+      color: #ffffff;
+      padding: 8px 16px;
+      border-radius: 9px;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-action:hover {
+      background: rgba(255, 255, 255, 0.16);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-action.primary {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      border-color: #34d399;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Main Video Stage */
+    .video-viewport {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 36px;
+      z-index: 1;
+    }
+
+    .screen-stage {
+      position: relative;
+      width: 100%;
+      max-width: 1240px;
+      height: 100%;
+      max-height: 680px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), var(--shadow-glow);
+      backdrop-filter: blur(20px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Window Header / Title Bar Simulation */
+    .mock-titlebar {
+      height: 42px;
+      background: rgba(2, 6, 23, 0.7);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+    }
+
+    .traffic-lights {
+      display: flex;
+      gap: 8px;
+    }
+
+    .traffic-light {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .light-red { background: #ef4444; }
+    .light-yellow { background: #f59e0b; }
+    .light-green { background: #10b981; }
+
+    .window-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .window-status-badge {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      background: #34d399;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* Scene Container */
+    .scene-canvas {
+      position: relative;
+      flex: 1;
+      padding: 28px 36px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .scene-pane {
+      position: absolute;
+      inset: 28px 36px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateY(20px) scale(0.98);
+      pointer-events: none;
+      transition: opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .scene-pane.active {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      pointer-events: auto;
+    }
+
+    /* Scene 1: Dashboard */
+    .hero-metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+
+    .metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s;
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 4px;
+      height: 100%;
+      background: var(--primary-light);
+    }
+
+    .metric-card.gold::before { background: var(--gold); }
+    .metric-card.emerald::before { background: var(--emerald); }
+    .metric-card.purple::before { background: var(--purple); }
+
+    .metric-title {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    .metric-val {
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: -1px;
+      color: #ffffff;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .metric-delta {
+      font-size: 0.8rem;
+      color: #34d399;
+      font-weight: 700;
+    }
+
+    .dashboard-dual-col {
+      display: grid;
+      grid-template-columns: 2fr 1.2fr;
+      gap: 20px;
+      flex: 1;
+    }
+
+    .panel-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .panel-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Live Activity Stream */
+    .activity-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+    }
+
+    .activity-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border);
+      padding: 12px 16px;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    .activity-item:hover {
+      border-color: rgba(56, 189, 248, 0.4);
+      transform: translateX(-4px);
+    }
+
+    .act-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .act-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+
+    .act-name {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #ffffff;
+    }
+
+    .act-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .act-time {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--primary-light);
+      background: rgba(56, 189, 248, 0.1);
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    /* Scene 2: Students & Grades Table */
+    .data-table-wrap {
+      width: 100%;
+      flex: 1;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .table-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      background: rgba(15, 23, 42, 0.7);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .search-input {
+      background: rgba(2, 6, 23, 0.6);
+      border: 1px solid var(--border);
+      color: #ffffff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 0.88rem;
+      width: 280px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: right;
+    }
+
+    th {
+      background: rgba(15, 23, 42, 0.8);
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 0.82rem;
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+      font-size: 0.9rem;
+      color: #e2e8f0;
+    }
+
+    tr:hover td {
+      background: rgba(56, 189, 248, 0.05);
+    }
+
+    .grade-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    .grade-high { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .grade-mid { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+
+    /* Scene 3: Schedule View */
+    .schedule-grid-wrap {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 12px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .day-column {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .day-header {
+      background: rgba(2, 132, 199, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--primary-light);
+      padding: 8px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: 800;
+      font-size: 0.9rem;
+    }
+
+    .slot-card {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      transition: all 0.3s;
+    }
+
+    .slot-card.generating {
+      animation: slotFlash 0.6s ease forwards;
+    }
+
+    @keyframes slotFlash {
+      0% { transform: scale(0.92); opacity: 0; background: rgba(56, 189, 248, 0.3); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    .slot-card.free {
+      background: rgba(244, 63, 94, 0.08);
+      border: 1px dashed rgba(244, 63, 94, 0.3);
+      color: #fda4af;
+      justify-content: center;
+      align-items: center;
+      font-weight: 700;
+      font-size: 0.78rem;
+    }
+
+    .slot-subject {
+      font-weight: 800;
+      font-size: 0.85rem;
+      color: #ffffff;
+    }
+
+    .slot-teacher {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+    }
+
+    /* Scene 4: Cloud Sync & QR */
+    .sync-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      flex: 1;
+      align-items: center;
+    }
+
+    .qr-card-large {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      border: 4px solid var(--primary-light);
+      width: 320px;
+      margin: 0 auto;
+    }
+
+    .qr-desc {
+      margin-top: 14px;
+      color: #0f172a;
+      font-weight: 800;
+      font-size: 1rem;
+      text-align: center;
+    }
+
+    .sync-spec-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .sync-spec-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      padding: 16px 20px;
+      border-radius: 14px;
+    }
+
+    .spec-icon-badge {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(2, 132, 199, 0.2);
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      flex-shrink: 0;
+    }
+
+    .spec-title {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .spec-desc {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Scene 5: Mobile App Showcase */
+    .mobile-showcase-stage {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 50px;
+      flex: 1;
+    }
+
+    .phone-mockup {
+      width: 290px;
+      height: 540px;
+      background: #020617;
+      border: 6px solid #334155;
+      border-radius: 40px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(56, 189, 248, 0.2);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .phone-notch {
+      width: 110px;
+      height: 18px;
+      background: #334155;
+      border-bottom-left-radius: 12px;
+      border-bottom-right-radius: 12px;
+      align-self: center;
+      z-index: 10;
+    }
+
+    .phone-screen {
+      flex: 1;
+      padding: 16px;
+      background: #0f172a;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .mobile-card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.15);
+    }
+
+    /* Subtitle & Narration Overlay */
+    .narration-overlay {
+      position: relative;
+      z-index: 10;
+      background: rgba(15, 23, 42, 0.95);
+      border-top: 1px solid var(--border);
+      padding: 16px 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(12px);
+    }
+
+    .narration-content {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .speaker-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--gold) 0%, #b45309 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      box-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+      flex-shrink: 0;
+    }
+
+    .narration-text h4 {
+      font-size: 1rem;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 2px;
+    }
+
+    .narration-text p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    /* Progress bar */
+    .progress-bar-wrap {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary) 0%, var(--gold) 100%);
+      width: 0%;
+      transition: width 0.1s linear;
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-bg"></div>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="brand-wrap">
+      <div class="brand-badge">P</div>
+      <div class="brand-info">
+        <h1>The Principal - الإدارة المدرسية الذكية</h1>
+        <p>الإصدار الرسمي المعتمد v6.1 Super Edition</p>
+      </div>
+    </div>
+
+    <!-- Timeline Steps -->
+    <nav class="timeline-nav">
+      <div class="step-pill active" onclick="goToScene(0)"><span>1.</span> لوحة القيادة</div>
+      <div class="step-pill" onclick="goToScene(1)"><span>2.</span> السجلات والدرجات</div>
+      <div class="step-pill" onclick="goToScene(2)"><span>3.</span> الجدول الآلي الذكي</div>
+      <div class="step-pill" onclick="goToScene(3)"><span>4.</span> المزامنة السحابية</div>
+      <div class="step-pill" onclick="goToScene(4)"><span>5.</span> تطبيق المعلم</div>
+      <div class="step-pill" onclick="goToScene(5)"><span>6.</span> الطباعة والشهادات</div>
+    </nav>
+
+    <!-- Controls -->
+    <div class="ctrl-buttons">
+      <button class="btn-action primary" id="playBtn" onclick="togglePlay()">
+        <span id="playIcon">⏸️</span>
+        <span id="playText">إيقاف مؤقت</span>
+      </button>
+      <button class="btn-action" onclick="nextScene()">التالي ⏭️</button>
+      <button class="btn-action" onclick="toggleFullScreen()">ملء الشاشة ⛶</button>
+    </div>
+  </header>
+
+  <!-- Video Viewport -->
+  <main class="video-viewport">
+    <div class="screen-stage">
+      <!-- Top Window Titlebar -->
+      <div class="mock-titlebar">
+        <div class="traffic-lights">
+          <div class="traffic-light light-red"></div>
+          <div class="traffic-light light-yellow"></div>
+          <div class="traffic-light light-green"></div>
+        </div>
+        <div class="window-title">
+          <span>The Principal Desktop v6.1 • ثانوية المتميزين للبنين</span>
+        </div>
+        <div class="window-status-badge">
+          <span class="status-dot"></span>
+          <span>متصل بسحابة Supabase</span>
+        </div>
+      </div>
+
+      <!-- Scenes Canvas -->
+      <div class="scene-canvas">
+
+        <!-- SCENE 1: COMMAND CENTER -->
+        <div class="scene-pane active" id="scene-0">
+          <div class="hero-metric-grid">
+            <div class="metric-card">
+              <div class="metric-title">إجمالي طلاب المدرسة</div>
+              <div class="metric-val"><span>648</span> <span class="metric-delta">طالباً</span></div>
+            </div>
+            <div class="metric-card gold">
+              <div class="metric-title">الكادر التدريسي والأنصبة</div>
+              <div class="metric-val"><span>38</span> <span class="metric-delta">مدرساً</span></div>
+            </div>
+            <div class="metric-card emerald">
+              <div class="metric-title">نسبة الحضور اليومي</div>
+              <div class="metric-val"><span>98.4%</span> <span class="metric-delta">↑ 1.2%</span></div>
+            </div>
+            <div class="metric-card purple">
+              <div class="metric-title">الشعب والفصول الدراسية</div>
+              <div class="metric-val"><span>18</span> <span class="metric-delta">شعبة</span></div>
+            </div>
+          </div>
+
+          <div class="dashboard-dual-col">
+            <div class="panel-box">
+              <div class="panel-header">
+                <div class="panel-title">📡 البث الحي لحركات النظام المدرسية</div>
+                <span class="window-status-badge">محدث لحظياً</span>
+              </div>
+              <div class="activity-list">
+                <div class="activity-item">
+                  <div class="act-info">
+                    <div class="act-icon" style="background: rgba(2, 132, 199, 0.2); color: #38bdf8;">📊</div>
+                    <div>
+                      <div class="act-name">اعتماد درجات امتحان الفيزياء - الشهر الأول</div>
+                      <div class="act-sub">أ. أحمد الصالح • الخامس العلمي (أ)</div>
+                    </div>
+                  </div>
+                  <div class="act-time">منذ 3 دقائق</div>
+                </div>
+                <div class="activity-item">
+                  <div class="act-info">
+                    <div class="act-icon" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">✅</div>
+                    <div>
+                      <div class="act-name">تسجيل حضور الشعبة وتثبيت 2 غياب إلكترونياً</div>
+                      <div class="act-sub">أ. حيدر جاسم • الثالث المتوسط (ب)</div>
+                    </div>
+                  </div>
+                  <div class="act-time">منذ 8 دقائق</div>
+                </div>
+                <div class="activity-item">
+                  <div class="act-info">
+                    <div class="act-icon" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24;">⚡</div>
+                    <div>
+                      <div class="act-name">توليد الجدول الأسبوعي وحفظه في السحابة</div>
+                      <div class="act-sub">إدارة المدرسة • كافة المراحل</div>
+                    </div>
+                  </div>
+                  <div class="act-time">منذ 15 دقيقة</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel-box">
+              <div class="panel-header">
+                <div class="panel-title">🛡️ حالة المزامنة السحابية</div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:12px; justify-content:center; flex:1;">
+                <div style="background:rgba(15,23,42,0.6); padding:14px; border-radius:10px; border:1px solid var(--border);">
+                  <div style="font-size:0.8rem; color:var(--text-muted);">معرّف المدرسة المستقل (Tenant ID)</div>
+                  <div style="font-family:'JetBrains Mono', monospace; font-size:0.95rem; color:#38bdf8; font-weight:700;">SCH-BAGHDAD-2026-X1</div>
+                </div>
+                <div style="background:rgba(15,23,42,0.6); padding:14px; border-radius:10px; border:1px solid var(--border);">
+                  <div style="font-size:0.8rem; color:var(--text-muted);">طبقة الأمان والعزل</div>
+                  <div style="font-size:0.95rem; color:#34d399; font-weight:700;">Row Level Security (RLS) مفعّلة 100%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SCENE 2: STUDENTS & GRADES -->
+        <div class="scene-pane" id="scene-1">
+          <div class="data-table-wrap">
+            <div class="table-tools">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <input type="text" class="search-input" value="الصف: الرابع العلمي - شعبة أ" readonly>
+                <span class="window-status-badge">32 طالباً مسجلاً</span>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button class="btn-action primary" style="padding:6px 14px; font-size:0.8rem;">+ رصد درجات جماعي</button>
+                <button class="btn-action" style="padding:6px 14px; font-size:0.8rem;">🖨️ طباعة الشهادات</button>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>الرقم</th>
+                  <th>اسم الطالب الرباعي</th>
+                  <th>الرياضيات</th>
+                  <th>الكيمياء</th>
+                  <th>الفيزياء</th>
+                  <th>الأحياء</th>
+                  <th>المعدل العام</th>
+                  <th>النتيجة</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td><b>علي وليد حسون العبيدي</b></td>
+                  <td><span class="grade-badge grade-high">98</span></td>
+                  <td><span class="grade-badge grade-high">95</span></td>
+                  <td><span class="grade-badge grade-high">100</span></td>
+                  <td><span class="grade-badge grade-high">96</span></td>
+                  <td><b style="color:#38bdf8; font-size:1.05rem;">97.2%</b></td>
+                  <td><span class="window-status-badge">ناجح بتفوق</span></td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td><b>محمد رضا طارق الموسوي</b></td>
+                  <td><span class="grade-badge grade-high">92</span></td>
+                  <td><span class="grade-badge grade-high">88</span></td>
+                  <td><span class="grade-badge grade-high">90</span></td>
+                  <td><span class="grade-badge grade-high">94</span></td>
+                  <td><b style="color:#38bdf8; font-size:1.05rem;">91.0%</b></td>
+                  <td><span class="window-status-badge">ناجح</span></td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td><b>يوسف عمار عبد الكاظم</b></td>
+                  <td><span class="grade-badge grade-mid">76</span></td>
+                  <td><span class="grade-badge grade-mid">80</span></td>
+                  <td><span class="grade-badge grade-mid">72</span></td>
+                  <td><span class="grade-badge grade-mid">78</span></td>
+                  <td><b style="color:#fbbf24; font-size:1.05rem;">76.5%</b></td>
+                  <td><span class="window-status-badge">ناجح</span></td>
+                </tr>
+                <tr>
+                  <td>4</td>
+                  <td><b>مصطفى عادل شاكر العامري</b></td>
+                  <td><span class="grade-badge grade-high">90</span></td>
+                  <td><span class="grade-badge grade-high">92</span></td>
+                  <td><span class="grade-badge grade-high">89</span></td>
+                  <td><span class="grade-badge grade-high">91</span></td>
+                  <td><b style="color:#38bdf8; font-size:1.05rem;">90.5%</b></td>
+                  <td><span class="window-status-badge">ناجح</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SCENE 3: SMART SCHEDULE GENERATOR -->
+        <div class="scene-pane" id="scene-2">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <div>
+              <h3 style="font-size:1.15rem; font-weight:800; color:#ffffff;">محرك توليد الجدول المدرسي الذكي (AI Schedule Engine)</h3>
+              <p style="font-size:0.82rem; color:var(--text-muted);">تطبيق تلقائي لقواعد ميثاق الجدول: حصر الشواغر في الدرس السادس، سادس الخميس شاغر حتماً، ومنع تكرار المواد العلمية.</p>
+            </div>
+            <button class="btn-action primary" onclick="animateScheduleRegen()">⚡ إعادة توليد آلي ذكي</button>
+          </div>
+
+          <div class="schedule-grid-wrap" id="scheduleGrid">
+            <!-- Sunday -->
+            <div class="day-column">
+              <div class="day-header">الأحد</div>
+              <div class="slot-card"><div class="slot-subject">الرياضيات</div><div class="slot-teacher">أ. عمر فاروق</div></div>
+              <div class="slot-card"><div class="slot-subject">الفيزياء</div><div class="slot-teacher">أ. أحمد الصالح</div></div>
+              <div class="slot-card"><div class="slot-subject">اللغة العربية</div><div class="slot-teacher">أ. سلام قاسم</div></div>
+              <div class="slot-card"><div class="slot-subject">الكيمياء</div><div class="slot-teacher">أ. هيثم نوري</div></div>
+              <div class="slot-card"><div class="slot-subject">اللغة الإنجليزية</div><div class="slot-teacher">أ. مروان علي</div></div>
+              <div class="slot-card"><div class="slot-subject">التربية الإسلامية</div><div class="slot-teacher">أ. محمود طه</div></div>
+            </div>
+            <!-- Monday -->
+            <div class="day-column">
+              <div class="day-header">الإثنين</div>
+              <div class="slot-card"><div class="slot-subject">الأحياء</div><div class="slot-teacher">أ. كمال عبد الله</div></div>
+              <div class="slot-card"><div class="slot-subject">الرياضيات</div><div class="slot-teacher">أ. عمر فاروق</div></div>
+              <div class="slot-card"><div class="slot-subject">اللغة الإنجليزية</div><div class="slot-teacher">أ. مروان علي</div></div>
+              <div class="slot-card"><div class="slot-subject">الحاسوب</div><div class="slot-teacher">أ. رائد عبد الحسين</div></div>
+              <div class="slot-card"><div class="slot-subject">اللغة العربية</div><div class="slot-teacher">أ. سلام قاسم</div></div>
+              <div class="slot-card free">شاغر إداري</div>
+            </div>
+            <!-- Tuesday -->
+            <div class="day-column">
+              <div class="day-header">الثلاثاء</div>
+              <div class="slot-card"><div class="slot-subject">الكيمياء</div><div class="slot-teacher">أ. هيثم نوري</div></div>
+              <div class="slot-card"><div class="slot-subject">الفيزياء</div><div class="slot-teacher">أ. أحمد الصالح</div></div>
+              <div class="slot-card"><div class="slot-subject">الرياضيات</div><div class="slot-teacher">أ. عمر فاروق</div></div>
+              <div class="slot-card"><div class="slot-subject">اللغة العربية</div><div class="slot-teacher">أ. سلام قاسم</div></div>
+              <div class="slot-card"><div class="slot-subject">التربية الفنية</div><div class="slot-teacher">أ. حامد جاسم</div></div>
+              <div class="slot-card free">شاغر إداري</div>
+            </div>
+            <!-- Wednesday -->
+            <div class="day-column">
+              <div class="day-header">الأربعاء</div>
+              <div class="slot-card"><div class="slot-subject">الفيزياء</div><div class="slot-teacher">أ. أحمد الصالح</div></div>
+              <div class="slot-card"><div class="slot-subject">الأحياء</div><div class="slot-teacher">أ. كمال عبد الله</div></div>
+              <div class="slot-card"><div class="slot-subject">الرياضيات</div><div class="slot-teacher">أ. عمر فاروق</div></div>
+              <div class="slot-card"><div class="slot-subject">اللغة الإنجليزية</div><div class="slot-teacher">أ. مروان علي</div></div>
+              <div class="slot-card"><div class="slot-subject">التربية الرياضية</div><div class="slot-teacher">أ. وسام كريم</div></div>
+              <div class="slot-card free">شاغر إداري</div>
+            </div>
+            <!-- Thursday -->
+            <div class="day-column">
+              <div class="day-header">الخميس</div>
+              <div class="slot-card"><div class="slot-subject">اللغة العربية</div><div class="slot-teacher">أ. سلام قاسم</div></div>
+              <div class="slot-card"><div class="slot-subject">الرياضيات</div><div class="slot-teacher">أ. عمر فاروق</div></div>
+              <div class="slot-card"><div class="slot-subject">اللغة الإنجليزية</div><div class="slot-teacher">أ. مروان علي</div></div>
+              <div class="slot-card"><div class="slot-subject">التربية الإسلامية</div><div class="slot-teacher">أ. محمود طه</div></div>
+              <div class="slot-card"><div class="slot-subject">النشاط المدرسي</div><div class="slot-teacher">كادر المدرسة</div></div>
+              <div class="slot-card free" style="background:rgba(245,158,11,0.1); border-color:#f59e0b; color:#fbbf24;">سادس الخميس شاغر حتماً</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SCENE 4: CLOUD SYNC & QR -->
+        <div class="scene-pane" id="scene-3">
+          <div class="sync-split">
+            <div class="sync-spec-list">
+              <div class="sync-spec-item">
+                <div class="spec-icon-badge">☁️</div>
+                <div>
+                  <div class="spec-title">سحابة Supabase فائقة السرعة</div>
+                  <div class="spec-desc">مزامنة ثنائية الاتجاه بدون خوادم محلية معقدة. كافة تعديلات الإدارة تنعكس في هواتف المعلمين فوراً.</div>
+                </div>
+              </div>
+              <div class="sync-spec-item">
+                <div class="spec-icon-badge">🔒</div>
+                <div>
+                  <div class="spec-title">عزل المستأجرين (Tenant Isolation)</div>
+                  <div class="spec-desc">كل مدرسة مشفرة برمز أمان خاص مع سياسات RLS، مما يمنع تداخل أي مدرسة مع بيانات المدارس الأخرى.</div>
+                </div>
+              </div>
+              <div class="sync-spec-item">
+                <div class="spec-icon-badge">📲</div>
+                <div>
+                  <div class="spec-title">اقتران تلقائي بمسح الباركود (QR)</div>
+                  <div class="spec-desc">يكفي أن يفتح المعلم كاميرا التطبيق لمسح الرمز، فيتم ربط الهاتف بالمدرسة فوراً دون كتابة روابط أو كلمات سر.</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:center;">
+              <div class="qr-card-large">
+                <svg width="220" height="220" viewBox="0 0 100 100" fill="#0f172a">
+                  <!-- Realistic Mock QR Code -->
+                  <rect width="100" height="100" fill="#ffffff"/>
+                  <rect x="5" y="5" width="25" height="25" fill="#0f172a"/>
+                  <rect x="8" y="8" width="19" height="19" fill="#ffffff"/>
+                  <rect x="11" y="11" width="13" height="13" fill="#0284c7"/>
+
+                  <rect x="70" y="5" width="25" height="25" fill="#0f172a"/>
+                  <rect x="73" y="8" width="19" height="19" fill="#ffffff"/>
+                  <rect x="76" y="11" width="13" height="13" fill="#0284c7"/>
+
+                  <rect x="5" y="70" width="25" height="25" fill="#0f172a"/>
+                  <rect x="8" y="73" width="19" height="19" fill="#ffffff"/>
+                  <rect x="11" y="76" width="13" height="13" fill="#0284c7"/>
+
+                  <rect x="36" y="10" width="5" height="5" fill="#0f172a"/>
+                  <rect x="46" y="10" width="5" height="5" fill="#0f172a"/>
+                  <rect x="56" y="10" width="5" height="5" fill="#0f172a"/>
+
+                  <rect x="36" y="25" width="25" height="5" fill="#0f172a"/>
+                  <rect x="40" y="40" width="20" height="20" fill="#0284c7"/>
+                  <rect x="70" y="40" width="10" height="10" fill="#0f172a"/>
+                  <rect x="40" y="70" width="15" height="15" fill="#0f172a"/>
+                  <rect x="65" y="75" width="15" height="15" fill="#0f172a"/>
+                </svg>
+                <div class="qr-desc">امسح لربط تطبيق المعلم بالسحابة</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SCENE 5: MOBILE APP -->
+        <div class="scene-pane" id="scene-4">
+          <div class="mobile-showcase-stage">
+            <div class="phone-mockup">
+              <div class="phone-notch"></div>
+              <div class="phone-screen">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:8px;">
+                  <b style="font-size:0.85rem; color:#ffffff;">تطبيق المعلم</b>
+                  <span style="font-size:0.7rem; color:#34d399;">● متصل</span>
+                </div>
+                <div class="mobile-card">
+                  <div style="font-size:0.75rem; color:var(--text-muted);">المعلم الحالي</div>
+                  <div style="font-size:0.95rem; font-weight:800; color:#38bdf8;">أ. أحمد الصالح</div>
+                  <div style="font-size:0.75rem; color:var(--gold);">مدرس الفيزياء • 18 حصة/أسبوع</div>
+                </div>
+                <div class="mobile-card" style="border-right:3px solid #10b981;">
+                  <div style="font-size:0.8rem; font-weight:700; color:#ffffff;">الدرس القادم: الرابع العلمي (أ)</div>
+                  <div style="font-size:0.72rem; color:var(--text-muted);">القاعة رقم 4 • الحصة الثانية</div>
+                </div>
+                <div class="mobile-card">
+                  <div style="font-size:0.8rem; font-weight:800; color:#ffffff; margin-bottom:6px;">تسجيل الغياب السريع</div>
+                  <div style="display:flex; gap:6px;">
+                    <button style="flex:1; background:#10b981; border:none; color:#ffffff; padding:6px; border-radius:6px; font-size:0.75rem; font-weight:700;">حضور الكل</button>
+                    <button style="flex:1; background:#ef4444; border:none; color:#ffffff; padding:6px; border-radius:6px; font-size:0.75rem; font-weight:700;">تحديد غائب</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style="max-width:500px; display:flex; flex-direction:column; gap:16px;">
+              <h3 style="font-size:1.6rem; font-weight:900; color:#ffffff;">تطبيق الأندرويد للكادر والطلبة</h3>
+              <p style="font-size:1rem; color:var(--text-muted); line-height:1.7;">
+                تم تصميم تطبيق الجوال ليرافق المعلم داخل الصف، حيث يمكنه رصد الدرجات اليومية، تسجيل غيابات الطلبة بنقرة زر، ومتابعة جدوله الأسبوعي في الوقت الفعلي دون الحاجة لأي حاسوب.
+              </p>
+              <div style="display:flex; gap:12px;">
+                <span class="window-status-badge" style="padding:6px 14px; font-size:0.85rem;">⚡ مزامنة تلقائية Background Sync</span>
+                <span class="window-status-badge" style="padding:6px 14px; font-size:0.85rem;">📶 يدعم وضع عدم الاتصال Offline</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SCENE 6: PRINTING & TRANSCRIPTS -->
+        <div class="scene-pane" id="scene-5">
+          <div style="display:grid; grid-template-columns:1.2fr 1fr; gap:30px; align-items:center; flex:1;">
+            <div style="display:flex; flex-direction:column; gap:16px;">
+              <h3 style="font-size:1.6rem; font-weight:900; color:#ffffff;">مركز الطباعة والسجلات الوزارية المعتمدة</h3>
+              <p style="font-size:0.95rem; color:var(--text-muted); line-height:1.7;">
+                توليد فوري ومطابق لتعليمات وزارة التربية:
+                <br>• شهادات وبطاقات درجات الطلبة مع الباركود والختم الرسمي.
+                <br>• سجل القيد العام وبطاقات المتابعة الفردية.
+                <br>• جداول الحصص الشاملة وجداول المعلمين الفردية القابلة للطباعة والتصدير.
+              </p>
+              <div style="display:flex; gap:10px;">
+                <button class="btn-action primary">🖨️ طباعة شهادة نموذجية</button>
+                <button class="btn-action">📑 تصدير PDF عالي الدقة</button>
+              </div>
+            </div>
+
+            <div style="background:#ffffff; border-radius:14px; padding:20px; box-shadow:0 15px 35px rgba(0,0,0,0.6); color:#0f172a; border:3px solid var(--primary-light);">
+              <div style="text-align:center; border-bottom:2px solid #0f172a; padding-bottom:10px; margin-bottom:12px;">
+                <div style="font-size:0.75rem; font-weight:700;">جمهورية العراق - وزارة التربية</div>
+                <div style="font-size:1.1rem; font-weight:900; color:#0369a1;">بطاقة الدرجات الرسمية</div>
+                <div style="font-size:0.78rem; font-weight:600;">العام الدراسي 2025 - 2026</div>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:10px;">
+                <span>الطالب: <b>علي وليد حسون</b></span>
+                <span>الصف: <b>الرابع العلمي (أ)</b></span>
+              </div>
+              <div style="background:#f1f5f9; padding:8px; border-radius:6px; font-size:0.75rem; text-align:center; font-weight:700;">
+                المعدل العام: 97.2% • الترتيب: الأول على المرحلة
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Bottom Narration Overlay -->
+      <div class="narration-overlay">
+        <div class="progress-bar-wrap">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <div class="narration-content">
+          <div class="speaker-avatar">🎓</div>
+          <div class="narration-text">
+            <h4 id="narratorTitle">لوحة الإحصائيات والإدارة الشاملة</h4>
+            <p id="narratorText">مرحباً بكم في منظومة The Principal: تحكم كامل في إحصائيات المدرسة، الكادر، والحضور من شاشة واحدة.</p>
+          </div>
+        </div>
+        <div style="font-family:'JetBrains Mono', monospace; font-size:0.85rem; color:var(--primary-light);" id="timerDisplay">
+          00:00 / 01:30
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const scenes = [
+      {
+        title: "المشهد 1: مركز القيادة ولوحة الإحصائيات الذكية",
+        text: "واجهة رئيسية متكاملة تقدم للمدير ملخصاً حياً لأعداد الطلاب، الحضور اليومي، وأنصبة الكادر مع بث مباشر لكافة الأنشطة.",
+        duration: 8
+      },
+      {
+        title: "المشهد 2: سجل الطلاب ورصد الدرجات والشهادات",
+        text: "إدارة تفصيلية لدرجات الشهور ونصف السنة واستخراج بطاقات المتفوقين والمتعثرين وحساب المعدلات تلقائياً.",
+        duration: 8
+      },
+      {
+        title: "المشهد 3: محرك توليد الجدول المدرسي الذكي",
+        text: "توليد آلي بنقرة زر يلتزم بميثاق الحصص الصارم: خلو الخميس من الدرس السادس، حصر الشواغر في نهاية الدوام، ومنع تكرار المواد الصعبة.",
+        duration: 9
+      },
+      {
+        title: "المشهد 4: المزامنة السحابية الفائقة مع Supabase",
+        text: "نظام سحابي آمن متعدد المستأجرين، يقترن بهواتف المعلمين والطلبة فوراً عبر مسح رمز الباركود QR دون تعقيدات.",
+        duration: 8
+      },
+      {
+        title: "المشهد 5: تطبيق المعلم على أجهزة الجوال",
+        text: "تطبيق سلس يتيح للمدرس تسجيل الغياب اليومي ورصد درجات الطلاب مباشرة من داخل الصف مع التحديث الفوري للسحابة.",
+        duration: 8
+      },
+      {
+        title: "المشهد 6: مركز الطباعة والإخراج والشهادات المعتمدة",
+        text: "طباعة أنيقة للشهادات الرسمية، بطاقات القيد العام، وجداول الحصص المدرسية بتنسيقات وزارية فائقة الدقة.",
+        duration: 8
+      }
+    ];
+
+    let currentSceneIdx = 0;
+    let isPlaying = true;
+    let sceneTimer = null;
+    let progressTimer = null;
+    let elapsedInScene = 0;
+    let totalElapsed = 0;
+    const totalDuration = scenes.reduce((acc, s) => acc + s.duration, 0);
+
+    function updateSceneUI() {
+      // Toggle scene panes
+      document.querySelectorAll('.scene-pane').forEach((pane, idx) => {
+        pane.classList.toggle('active', idx === currentSceneIdx);
+      });
+
+      // Toggle pills
+      document.querySelectorAll('.step-pill').forEach((pill, idx) => {
+        pill.classList.toggle('active', idx === currentSceneIdx);
+      });
+
+      // Update narration
+      const scene = scenes[currentSceneIdx];
+      document.getElementById('narratorTitle').innerText = scene.title;
+      document.getElementById('narratorText').innerText = scene.text;
+    }
+
+    function goToScene(idx) {
+      currentSceneIdx = idx;
+      elapsedInScene = 0;
+      updateSceneUI();
+    }
+
+    function nextScene() {
+      currentSceneIdx = (currentSceneIdx + 1) % scenes.length;
+      elapsedInScene = 0;
+      updateSceneUI();
+    }
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      document.getElementById('playIcon').innerText = isPlaying ? '⏸️' : '▶️';
+      document.getElementById('playText').innerText = isPlaying ? 'إيقاف مؤقت' : 'تشغيل العرض';
+    }
+
+    function toggleFullScreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    function animateScheduleRegen() {
+      const cards = document.querySelectorAll('.slot-card:not(.free)');
+      cards.forEach((c, i) => {
+        c.classList.remove('generating');
+        setTimeout(() => c.classList.add('generating'), i * 35);
+      });
+    }
+
+    // Main ticker (100ms)
+    setInterval(() => {
+      if (!isPlaying) return;
+
+      elapsedInScene += 0.1;
+      totalElapsed += 0.1;
+
+      // Progress bar within total
+      const totalProgress = (totalElapsed / totalDuration) * 100;
+      document.getElementById('progressFill').style.width = Math.min(totalProgress, 100) + '%';
+
+      // Timer display
+      const curM = Math.floor(totalElapsed / 60).toString().padStart(2, '0');
+      const curS = Math.floor(totalElapsed % 60).toString().padStart(2, '0');
+      const totM = Math.floor(totalDuration / 60).toString().padStart(2, '0');
+      const totS = Math.floor(totalDuration % 60).toString().padStart(2, '0');
+      document.getElementById('timerDisplay').innerText = `${curM}:${curS} / ${totM}:${totS}`;
+
+      // Next scene check
+      if (elapsedInScene >= scenes[currentSceneIdx].duration) {
+        if (currentSceneIdx === 2) {
+          // If on schedule scene, trigger regen animation for coolness
+          animateScheduleRegen();
+        }
+        if (currentSceneIdx === scenes.length - 1) {
+          // Loop back
+          totalElapsed = 0;
+          currentSceneIdx = 0;
+        } else {
+          currentSceneIdx++;
+        }
+        elapsedInScene = 0;
+        updateSceneUI();
+      }
+    }, 100);
+
+    // Initial setup
+    updateSceneUI();
+  </script>
+</body>
+</html>
