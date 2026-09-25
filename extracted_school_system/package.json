@@ -1,8 +1,8 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "6.1.1",
-  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v6.1.1 Super Edition",
+  "version": "6.2.0",
+  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v6.2.0 Super Edition",
   "author": "School Management System",
   "type": "module",
   "main": "electron-main.js",
@@ -72,11 +72,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "The Principal v6.0",
-      "artifactName": "The_Principal_Setup_v6.0.exe"
+      "shortcutName": "The Principal v6.2",
+      "artifactName": "The_Principal_Setup_v6.2.0.exe"
     },
     "portable": {
-      "artifactName": "The_Principal_Portable_v6.0.exe"
+      "artifactName": "The_Principal_Portable_v6.2.0.exe"
     },
     "appx": {
       "identityName": "waleedal-hasson.ThePrincipal-",
@@ -89,7 +89,7 @@
         "ar",
         "en-US"
       ],
-      "artifactName": "The_Principal_v6.1.1_MicrosoftStore.appx"
+      "artifactName": "The_Principal_v6.2.0_MicrosoftStore.appx"
     }
   }
 }
