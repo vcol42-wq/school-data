@@ -53,8 +53,6 @@ import { TeacherAuthorityHub } from './components/TeacherAuthorityHub';
 import { Sparkles } from 'lucide-react';
 import { exportSchoolData } from './utils/syncService';
 import { sanitizeStudents } from './utils/syncEngine';
-import { isDesktopActivated } from './utils/licenseService';
-import { LicenseModal } from './components/LicenseModal';
 
 
 export default function App() {
@@ -140,7 +138,6 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(false);
   const [showScreensaver, setShowScreensaver] = useState(false);
   const [showVoiceModal, setShowVoiceModal] = useState(false);
-  const [isLicensed, setIsLicensed] = useState<boolean>(() => isDesktopActivated());
 
   // Keep students state in sync whenever updated by any view or sync service
   useEffect(() => {
@@ -562,15 +559,6 @@ export default function App() {
         />
       )}
 
-      {/* Mandatory Activation Wall - Blocks application if not permanently activated */}
-      {!isLicensed && (
-        <LicenseModal
-          isOpen={!isLicensed}
-          onClose={() => {}}
-          forceLock={true}
-          onLicenseChanged={() => setIsLicensed(isDesktopActivated())}
-        />
-      )}
 
       {/* Floating AI Assistant Button */}
       <button
