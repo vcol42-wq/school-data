@@ -551,8 +551,8 @@ export async function exportSchoolDataWithProgress(
       }
     } catch (_) {}
 
-    const studentPairingCode = (typeof window !== 'undefined' ? localStorage.getItem('diyala_student_pairing_code') : null) || '223344';
-    const principalPairingCode = (typeof window !== 'undefined' ? localStorage.getItem('diyala_principal_pairing_code') : null) || '334455';
+    const studentPairingCode = (typeof window !== 'undefined' ? localStorage.getItem('diyala_student_pairing_code') : null) || '';
+    const principalPairingCode = (typeof window !== 'undefined' ? localStorage.getItem('diyala_principal_pairing_code') : null) || '';
 
     const schoolPayload = [
       {

@@ -177,7 +177,7 @@ fun QrScannerScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "أدخل رمز الاقتران الخاص بمدرستك (المكون عادة من 6 أرقام مثل: 112233، أو معرّف المدرسة SCH-...)",
+                        "أدخل رمز الاقتران والتحقق المعتمد الخاص بمدرستك:",
                         fontSize = 12.5.sp,
                         color = Color(0xFF475569),
                         lineHeight = 18.sp
@@ -186,7 +186,7 @@ fun QrScannerScreen(
                         value = manualCodeInput,
                         onValueChange = { manualCodeInput = it },
                         label = { Text("رمز أو كود المدرسة") },
-                        placeholder = { Text("مثال: 112233") },
+                        placeholder = { Text("أدخل الرمز المعتمد...") },
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()

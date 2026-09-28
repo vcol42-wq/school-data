@@ -52,12 +52,16 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel()
 ) {
     val config by viewModel.config.collectAsState()
-    val isSupervisor by viewModel.isSupervisor.collectAsState()
+    val isSupervisorRaw by viewModel.isSupervisor.collectAsState()
+    val context = LocalContext.current
+    val activeRole = remember { com.school.system.utils.RoleManager.getSelectedRole(context) }
+    val isSupervisor = isSupervisorRaw && (activeRole == com.school.system.utils.AppRole.PRINCIPAL)
     val packages by viewModel.packages.collectAsState()
     val directives by viewModel.directives.collectAsState()
     var showSummonDialog by remember { mutableStateOf(false) }
     var showSelectClassesDialog by remember { mutableStateOf(false) }
     var showSupervisorDirectivesDialog by remember { mutableStateOf(false) }
+    var showClearAllClassesConfirmDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showEditTeacherNameDialog by remember { mutableStateOf(false) }
@@ -70,7 +74,6 @@ fun DashboardScreen(
     var schoolPairingData by remember { mutableStateOf<com.school.system.data.SchoolPairingQrData?>(null) }
     var isGeneratingPairingQr by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
     var teacherNameState by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
     var isDirectivesDismissed by remember { mutableStateOf(false) }
@@ -377,7 +380,7 @@ fun DashboardScreen(
                             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                         }
                     },
-                    onOpenExcelImport = { showExcelImportDialog = true },
+                    onClearAllClasses = { showClearAllClassesConfirmDialog = true },
                     onOpenPairingQr = {
                         showSchoolPairingQrDialog = true
                         isGeneratingPairingQr = true
@@ -477,6 +480,11 @@ fun DashboardScreen(
                                 directives = directives,
                                 onDismiss = { isDirectivesDismissed = true }
                             )
+                        }
+                    }
+                    if (!isSupervisor) {
+                        item {
+                            TeacherPromotionCard()
                         }
                     }
                     items(packages) { pkg ->
@@ -640,6 +648,46 @@ fun DashboardScreen(
         if (showHelpGuideDialog) {
             com.school.system.ui.components.HelpGuideDialog(
                 onDismiss = { showHelpGuideDialog = false }
+            )
+        }
+
+        // Dialog: Confirm Clear All Classes & Rosters (مسح كافة الشعب والصفوف)
+        if (showClearAllClassesConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showClearAllClassesConfirmDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = Color(0xFFDC2626))
+                        Spacer(Modifier.width(8.dp))
+                        Text("تأكيد مسح كل الشعب والسجلات 🗑️", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFF991B1B))
+                    }
+                },
+                text = {
+                    Text(
+                        text = "هل أنت متأكد من مسح وحذف كافة الشعب والصفوف المحفوظة على الهاتف؟\n\nيمكنك إعادة سحبها وتنزيلها مجدداً من السحابة في أي وقت.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF334155),
+                        lineHeight = 18.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.clearAllPackagesAndStudents()
+                            showClearAllClassesConfirmDialog = false
+                            Toast.makeText(context, "تم مسح كافة الشعب والسجلات بنجاح 🗑️", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("تأكيد المسح الشامل 🗑️", fontWeight = FontWeight.Black)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearAllClassesConfirmDialog = false }) {
+                        Text("إلغاء")
+                    }
+                }
             )
         }
 
@@ -2113,7 +2161,7 @@ fun SupervisorHubCard(
     schoolName: String,
     onOpenDirectives: () -> Unit,
     onSyncAllClasses: () -> Unit,
-    onOpenExcelImport: () -> Unit,
+    onClearAllClasses: () -> Unit,
     onOpenPairingQr: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2190,21 +2238,21 @@ fun SupervisorHubCard(
             AnimatedVisibility(visible = !isMinimized) {
                 Column {
                     Spacer(Modifier.height(8.dp))
-                    // Row 1: استيراد الإكسل + رمز اقتران المدرسة
+                    // Row 1: مسح كل الشعب + رمز اقتران المدرسة
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Button(
-                            onClick = onOpenExcelImport,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            onClick = onClearAllClasses,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.weight(1f),
                             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                         ) {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("استيراد إكسل 📊", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            Text("مسح كل الشعب 🗑️", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -2393,7 +2441,7 @@ fun SchoolPairingQrDialog(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column {
-                                Text("رمز الاقتران المباشر (6 أرقام):", fontSize = 10.5.sp, color = Color.Gray)
+                                Text("رمز الاقتران المباشر:", fontSize = 10.5.sp, color = Color.Gray)
                                 Text(
                                     text = data.pairingCode,
                                     fontSize = 24.sp,
@@ -2624,6 +2672,133 @@ fun SupervisorDirectivesDialog(
             }
         }
     )
+}
+
+@Composable
+fun TeacherPromotionCard() {
+    val context = LocalContext.current
+    val desktopDownloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
+    val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
+    var isDismissed by remember { mutableStateOf(prefs.getBoolean("teacher_promo_card_dismissed", false)) }
+    if (isDismissed) return
+
+    val dismissPromo = {
+        isDismissed = true
+        prefs.edit().putBoolean("teacher_promo_card_dismissed", true).apply()
+    }
+
+    Surface(
+        color = Color(0xFFF0FDF4),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+        shadowElevation = 2.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Surface(
+                        color = Color(0xFF16A34A).copy(alpha = 0.15f),
+                        shape = CircleShape,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Share, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text("📢 اقترح المنظومة لإدارة مدرستك", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color(0xFF14532D))
+                }
+
+                Surface(
+                    onClick = dismissPromo,
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFFEE2E2),
+                    border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "إغلاق الإعلان",
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            "إغلاق الإعلان ✕",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFDC2626)
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "هل أعجبك التطبيق؟ اقترح على مدير مدرستك تنزيل نظام (The Principal) للكمبيوتر من متجر مايكروسوفت لربط كادر المدرسة وتوليد الجداول سحابياً.",
+                fontSize = 11.sp,
+                color = Color(0xFF166534),
+                lineHeight = 16.sp
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        try {
+                            val sendIntent = android.content.Intent().apply {
+                                action = android.content.Intent.ACTION_SEND
+                                putExtra(
+                                    android.content.Intent.EXTRA_TEXT,
+                                    "حضرة مدير المدرسة المحترم،\nنقترح عليكم تجربة منظومة (The Principal) لإدارة الجداول وسجلات الدرجات.\nرابط التنزيل المباشر من متجر مايكروسوفت:\n$desktopDownloadUrl"
+                                )
+                                type = "text/plain"
+                            }
+                            val shareIntent = android.content.Intent.createChooser(sendIntent, "مشاركة رابط المنظومة")
+                            shareIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(shareIntent)
+                        } catch (_: Exception) {}
+                    },
+                    modifier = Modifier.weight(1f).height(38.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                ) {
+                    Icon(Icons.Default.Share, null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("مشاركة عبر واتساب", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("رابط مايكروسوفت", desktopDownloadUrl)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "تم نسخ رابط برنامج الحاسوب بنجاح ✓", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(0.7f).height(38.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFF16A34A))
+                ) {
+                    Text("نسخ الرابط 📋", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                }
+            }
+        }
+    }
 }
 
 

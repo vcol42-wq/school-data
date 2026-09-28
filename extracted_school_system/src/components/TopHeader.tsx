@@ -276,13 +276,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               {/* Quick Mobile Pairing Button with Generated Code Display */}
               <button
                 onClick={() => setShowPairingModal(true)}
-                title={`رمز الاقتران المولد: ${config.pairingCode || '112233'} - انقر لعرض الباركود QR`}
+                title={`رمز الاقتران المولد: ${config.pairingCode || 'غير محدد'} - انقر لعرض الباركود QR`}
                 className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs transition-all border border-emerald-400/50 shrink-0 cursor-pointer shadow-md flex items-center gap-1.5 active:scale-95"
               >
                 <QrCode className="w-4 h-4 text-amber-300" />
                 <span className="hidden sm:inline">كود الاقتران:</span>
                 <span className="font-mono bg-emerald-950/60 px-2 py-0.5 rounded-md text-amber-300 font-black tracking-widest text-[11px] border border-amber-400/30">
-                  {config.pairingCode || '112233'}
+                  {config.pairingCode || '---'}
                 </span>
               </button>
 
@@ -399,15 +399,15 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                   value={JSON.stringify({
                     url: getSupabaseUrl(),
                     apiKey: getSupabaseKey(),
-                    schoolId: config.schoolId || 'SCH-MAIN-001',
+                    schoolId: config.schoolId || localStorage.getItem('diyala_school_id') || '',
                     pairingCode: pairingTab === 'teacher' 
-                      ? (config.pairingCode || '112233') 
+                      ? (config.pairingCode || '') 
                       : pairingTab === 'student' 
-                        ? (config.studentPairingCode || '223344') 
-                        : (config.principalPairingCode || '334455'),
-                    studentPairingCode: config.studentPairingCode || '223344',
-                    principalPairingCode: config.principalPairingCode || '334455',
-                    schoolName: config.schoolName || 'المدرسة النموذجية',
+                        ? (config.studentPairingCode || '') 
+                        : (config.principalPairingCode || ''),
+                    studentPairingCode: config.studentPairingCode || '',
+                    principalPairingCode: config.principalPairingCode || '',
+                    schoolName: config.schoolName || 'المدرسة الذكية',
                     role: pairingTab
                   })}
                   size={180}
@@ -431,7 +431,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               )}
             </div>
 
-            {/* 6-Digit Simple Pairing Code */}
+            {/* Simple Pairing Code */}
             <div className="w-full bg-slate-50 border-2 border-dashed border-indigo-300 rounded-2xl p-4 flex items-center justify-between mb-4">
               <div>
                 <span className="text-[10px] font-black text-slate-400 block uppercase">
@@ -443,7 +443,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 </span>
 
                 {isActivated ? (
-                  <span className={`text-3xl font-black tracking-widest ${
+                  <span className={`text-2xl font-black tracking-widest ${
                     pairingTab === 'teacher' 
                       ? 'text-indigo-700' 
                       : pairingTab === 'student' 
@@ -451,10 +451,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                         : 'text-amber-700'
                   }`}>
                     {pairingTab === 'teacher' 
-                      ? (config.pairingCode || '112233') 
+                      ? (config.pairingCode || 'غير محدد') 
                       : pairingTab === 'student' 
-                        ? (config.studentPairingCode || '223344') 
-                        : (config.principalPairingCode || '334455')}
+                        ? (config.studentPairingCode || 'غير محدد') 
+                        : (config.principalPairingCode || 'غير محدد')}
                   </span>
                 ) : (
                   <div className="flex items-center gap-2 mt-1">
@@ -472,10 +472,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 <button
                   onClick={() => {
                     const targetCode = pairingTab === 'teacher' 
-                      ? (config.pairingCode || '112233') 
+                      ? (config.pairingCode || '') 
                       : pairingTab === 'student' 
-                        ? (config.studentPairingCode || '223344') 
-                        : (config.principalPairingCode || '334455');
+                        ? (config.studentPairingCode || '') 
+                        : (config.principalPairingCode || '');
                     navigator.clipboard.writeText(targetCode);
                     setCopiedCode(true);
                     setTimeout(() => setCopiedCode(false), 2000);

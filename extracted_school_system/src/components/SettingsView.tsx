@@ -302,9 +302,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setConfig({ ...formConfig });
     localStorage.setItem('diyala_school_name', formConfig.schoolName || '');
     localStorage.setItem('diyala_admin_email', formConfig.adminEmail || '');
-    localStorage.setItem('diyala_pairing_code', formConfig.pairingCode || '112233');
-    localStorage.setItem('diyala_student_pairing_code', formConfig.studentPairingCode || '223344');
-    localStorage.setItem('diyala_principal_pairing_code', formConfig.principalPairingCode || '334455');
+    localStorage.setItem('diyala_pairing_code', formConfig.pairingCode || '');
+    localStorage.setItem('diyala_student_pairing_code', formConfig.studentPairingCode || '');
+    localStorage.setItem('diyala_principal_pairing_code', formConfig.principalPairingCode || '');
     
     try {
       const schoolId = formConfig.schoolId || localStorage.getItem('diyala_school_id') || 'school_01';
@@ -312,7 +312,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       client.from('schools').upsert({
         id: schoolId,
         name: formConfig.schoolName,
-        pairing_code: formConfig.pairingCode || '112233',
+        pairing_code: formConfig.pairingCode || '',
         admin_email: formConfig.adminEmail || '',
         config: {
           managerName: formConfig.managerName || '',
@@ -322,8 +322,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           schoolStartHour: formConfig.schoolStartHour || '08:00',
           lessonDurationMinutes: Number(formConfig.lessonDurationMinutes) || 45,
           breakDurationMinutes: Number(formConfig.breakDurationMinutes) || 10,
-          studentPairingCode: formConfig.studentPairingCode || '223344',
-          principalPairingCode: formConfig.principalPairingCode || '334455'
+          studentPairingCode: formConfig.studentPairingCode || '',
+          principalPairingCode: formConfig.principalPairingCode || ''
         }
       }, { onConflict: 'id' }).then(() => {});
     } catch (_) {}
@@ -500,7 +500,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </span>
                   <input
                     type="text"
-                    value={formConfig.pairingCode || '112233'}
+                    value={formConfig.pairingCode || ''}
+                    placeholder="مثال: TCH-4819"
                     onChange={e => setFormConfig(p => ({ ...p, pairingCode: e.target.value }))}
                     className="w-full p-2 rounded-lg border bg-white text-center font-mono font-black text-sm text-indigo-700 tracking-widest"
                   />
@@ -509,11 +510,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {/* Student Code */}
                 <div className="p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 rounded-xl space-y-1.5">
                   <span className="block text-[11px] font-black text-emerald-700 dark:text-emerald-300">
-                    🎓 كود الطالب وولي الأمر:
+                    🎓 كود الطالب وولي الأمر (مبسط 4 أرقام):
                   </span>
                   <input
                     type="text"
-                    value={formConfig.studentPairingCode || '223344'}
+                    value={formConfig.studentPairingCode || ''}
+                    placeholder="مثال: 5821"
                     onChange={e => setFormConfig(p => ({ ...p, studentPairingCode: e.target.value }))}
                     className="w-full p-2 rounded-lg border bg-white text-center font-mono font-black text-sm text-emerald-700 tracking-widest"
                   />
@@ -522,11 +524,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {/* Principal Code */}
                 <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 rounded-xl space-y-1.5">
                   <span className="block text-[11px] font-black text-amber-800 dark:text-amber-300">
-                    👑 كود وبوابة المدير:
+                    👑 كود وبوابة المدير (ثلاثي المقاطع):
                   </span>
                   <input
                     type="text"
-                    value={formConfig.principalPairingCode || '334455'}
+                    value={formConfig.principalPairingCode || ''}
+                    placeholder="مثال: ADM-7821-X9"
                     onChange={e => setFormConfig(p => ({ ...p, principalPairingCode: e.target.value }))}
                     className="w-full p-2 rounded-lg border bg-white text-center font-mono font-black text-sm text-amber-700 tracking-widest"
                   />

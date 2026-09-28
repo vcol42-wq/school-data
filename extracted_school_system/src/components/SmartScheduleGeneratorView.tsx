@@ -308,7 +308,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
 
   // Enhanced Smart Auto-Import from Student Roster and Staff Distribution Register
   const handleSmartSyncFromStudentsAndStaff = (showToast = true) => {
-    const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
+    const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || '';
 
     // 1. Discover unique classes and sections from students
     const studentSectionMap = new Map<string, { grade: string; section: string; studentCount: number }>();
@@ -430,7 +430,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
       return;
     }
 
-    const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
+    const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || '';
     let authorityAssignments: any[] = [];
     try {
       const rawAss = localStorage.getItem(`diyala_subject_assignments_${activeSchoolId}`);

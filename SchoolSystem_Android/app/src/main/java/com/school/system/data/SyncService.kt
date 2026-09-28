@@ -37,7 +37,7 @@ class SyncService : Service() {
             while (isActive) {
                 try {
                     val config = configDao.getConfig().first()
-                    if (config != null && config.isActivated && config.isVerified && config.cloudUrl.isNotEmpty()) {
+                    if (config != null && config.isActivated && config.isVerified && config.cloudUrl.isNotEmpty() && config.schoolId.isNotBlank() && config.schoolId != "school_01") {
                         Log.d("SyncService", "SyncService background execution - syncing all classes")
                         val packages = packageDao.getAllPackagesList()
                         for (pkg in packages) {

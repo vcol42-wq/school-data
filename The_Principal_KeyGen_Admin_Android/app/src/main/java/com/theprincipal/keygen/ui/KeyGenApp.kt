@@ -70,18 +70,18 @@ fun KeyGenApp() {
     fun buildShareMessage(lic: IssuedLicense): String {
         return """
 مرحباً إدارة (${lic.clientName}) المحترمين،
-تم بنجاح إصدار وتفعيل ترخيصكم الرسمي لمنظومة ${lic.productName} لمرة واحدة مدى الحياة 💎.
+تم بنجاح إصدار وتوثيق الكود / الترخيص الرسمي الخاص بكم: ${lic.productName}.
 
-🔑 كود التفعيل الخاص بمدرستكم:
+🔑 الرمز المعتمد لمدرستكم:
 ${lic.licenseKey}
 
-💻 رابط التنزيل المباشر للمنظومة:
-${selectedProduct.downloadUrl}
+💻 رابط تنزيل برنامج الإدارة المدرسية من متجر مايكروسوفت (Windows 10/11):
+https://apps.microsoft.com/detail/9P0SWQHDT4H5
 
 📢 قناة المنظومة الرسمية على واتساب:
 https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J
 
-✉️ البريد الإلكتروني المعتمد للدعم:
+✉️ البريد الإلكتروني المعتمد للدعم الفني:
 vcol42@gmail.com
 
 نتمنى لكم دوام التوفيق والتميز الإداري!
@@ -366,10 +366,7 @@ vcol42@gmail.com
                                     Toast.makeText(context, "يرجى كتابة اسم المدرسة أو الزبون أولاً", Toast.LENGTH_SHORT).show()
                                     return@Button
                                 }
-                                val newKey = LicenseGeneratorEngine.generateUnifiedLicense(
-                                    productCode = selectedProduct.code,
-                                    tier = selectedProduct.defaultTier
-                                )
+                                val newKey = LicenseGeneratorEngine.generateCodeForProduct(selectedProduct)
                                 val newRecord = IssuedLicense(
                                     licenseKey = newKey,
                                     productCode = selectedProduct.code,

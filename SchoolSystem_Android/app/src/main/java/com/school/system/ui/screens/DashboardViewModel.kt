@@ -19,6 +19,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val packageDao: ClassPackageDao,
     val syncManager: SyncManager,
     private val configDao: ConfigDao,
@@ -33,7 +34,7 @@ class DashboardViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     val isSupervisor = configDao.getConfig()
-        .map { it?.role == "supervisor" }
+        .map { it?.role == "supervisor" && com.school.system.utils.RoleManager.getSelectedRole(context) == com.school.system.utils.AppRole.PRINCIPAL }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val directives = syncRepository.directives
@@ -109,6 +110,14 @@ class DashboardViewModel @Inject constructor(
     fun deletePackage(pkg: ClassPackage) {
         viewModelScope.launch {
             packageDao.deletePackage(pkg)
+        }
+    }
+
+    fun clearAllPackagesAndStudents() {
+        viewModelScope.launch {
+            packageDao.clearAll()
+            studentDao.clearAll()
+            syncManager.propagateStudents()
         }
     }
 

@@ -232,7 +232,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
   scheduleMap,
   onBackToMain
 }) => {
-  const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
+  const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || '';
 
   // Helper to generate 4-digit PIN
   const generateRandomPin = () => {

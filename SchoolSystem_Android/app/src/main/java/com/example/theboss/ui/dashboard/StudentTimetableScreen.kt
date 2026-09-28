@@ -3183,7 +3183,7 @@ fun StudentInfoEditDialog(
                     value = schoolCode,
                     onValueChange = { schoolCode = it },
                     label = { Text("رمز ربط المدرسة (كود الاقتران)") },
-                    placeholder = { Text("مثال: 762261 أو SCH-KAB2-9359") },
+                    placeholder = { Text("أدخل رمز المدرسة المعتمد...") },
                     leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF0284C7)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),

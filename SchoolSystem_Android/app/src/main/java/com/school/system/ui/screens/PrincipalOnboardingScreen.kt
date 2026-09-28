@@ -48,9 +48,14 @@ fun PrincipalOnboardingScreen(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
-    var principalCodeInput by remember { mutableStateOf("334455") }
+    var principalCodeInput by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
+    var showDeterrentDialog by remember { mutableStateOf(false) }
+    val principalPrefs = remember { context.getSharedPreferences("principal_security_prefs", Context.MODE_PRIVATE) }
+    var failedAttempts by remember { mutableStateOf(principalPrefs.getInt("failed_attempts", 0)) }
+    var lockoutTime by remember { mutableStateOf(principalPrefs.getLong("lockout_until", 0L)) }
+    val isLockedOut = lockoutTime > System.currentTimeMillis()
 
     val clipboardManager = LocalClipboardManager.current
     val desktopDownloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
@@ -513,7 +518,7 @@ fun PrincipalOnboardingScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "أو إدخال كود المدير السريع (6 أرقام)",
+                            text = "أو إدخال كود المدير السريع المعتمد",
                             color = Color.White,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
@@ -523,21 +528,49 @@ fun PrincipalOnboardingScreen(
                     Spacer(modifier = Modifier.height(10.dp))
 
                     Text(
-                        text = "أدخل رمز اقتران المدير المحدد في شاشة سطح المكتب (الافتراضي: 334455):",
+                        text = "أدخل رمز التحقق والاقتران المعتمد لإدارة المدرسة:",
                         color = Color(0xFF94A3B8),
-                        fontSize = 11.5.sp
+                        fontSize = 12.sp
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    if (isLockedOut) {
+                        Surface(
+                            color = Color(0x33EF4444),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color(0xFFEF4444)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text(
+                                    text = "🔒 تم تعليق الإدخال لدواعٍ أمنية",
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFFFCA5A5),
+                                    fontSize = 13.sp
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    text = "نظراً لتكرار إدخال رموز غير مصرح بها، تم حظر الإدخال مؤقتاً لحماية النظام من محاولات التخمين. يرجى مسح باركود الـ QR الرسمي أو الانتظار.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFFECACA),
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+
                     OutlinedTextField(
                         value = principalCodeInput,
                         onValueChange = { principalCodeInput = it },
-                        label = { Text("رمز اقتران المدير (6 أرقام)") },
+                        label = { Text("رمز التحقق والاقتران المعتمد") },
+                        placeholder = { Text("أدخل الرمز المعتمد...") },
                         leadingIcon = {
                             Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFFBBF24))
                         },
                         singleLine = true,
+                        enabled = !isLockedOut,
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = Color(0xFFF59E0B),
@@ -554,26 +587,36 @@ fun PrincipalOnboardingScreen(
 
                     Button(
                         onClick = {
+                            if (isLockedOut) return@Button
                             val clean = principalCodeInput.trim()
                             if (clean.isBlank()) {
-                                Toast.makeText(context, "يرجى إدخال رمز المدير", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "يرجى إدخال رمز التحقق", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
                             isLoading = true
-                            statusText = "جاري التحقق من كود المدير وتفعيل المنظومة..."
+                            statusText = "جاري الفحص والتحقق الأمني..."
                             scope.launch {
                                 val res = viewModel.syncManager.pairPrincipalByCode(clean)
                                 isLoading = false
                                 if (res.success) {
+                                    principalPrefs.edit().putInt("failed_attempts", 0).putLong("lockout_until", 0L).apply()
                                     Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
                                     onActivationComplete()
                                 } else {
-                                    statusText = res.message
-                                    Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                                    val newFails = failedAttempts + 1
+                                    failedAttempts = newFails
+                                    principalPrefs.edit().putInt("failed_attempts", newFails).apply()
+                                    if (newFails >= 3) {
+                                        val lockUntil = System.currentTimeMillis() + 300_000L
+                                        lockoutTime = lockUntil
+                                        principalPrefs.edit().putLong("lockout_until", lockUntil).apply()
+                                    }
+                                    showDeterrentDialog = true
+                                    statusText = "تحذير: رمز غير مصرح به!"
                                 }
                             }
                         },
-                        enabled = !isLoading,
+                        enabled = !isLoading && !isLockedOut,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB45309)),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
@@ -589,13 +632,78 @@ fun PrincipalOnboardingScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                         }
                         Text(
-                            text = "تأكيد وتفعيل بوابة المدير ⚡",
+                            text = "تحقق وتفعيل بوابة الإدارة ⚡",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             color = Color.White
                         )
                     }
                 }
+            }
+
+            // Security Deterrent Alert Dialog ⚠️
+            if (showDeterrentDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeterrentDialog = false },
+                    icon = {
+                        Icon(
+                            Icons.Default.Security,
+                            contentDescription = null,
+                            tint = Color(0xFFDC2626),
+                            modifier = Modifier.size(36.dp)
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = "⚠️ تحذير أمني مسجل (الرقابة المركزية)",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp,
+                            color = Color(0xFF991B1B),
+                            textAlign = TextAlign.Center
+                        )
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "الرمز المدخل غير صحيح! تم رصد محاولة دخول غير مصرح بها وتسجيل معلومات هذا الجهاز وعنوان الاتصال (IP / Device ID) وسوف ترسل إلى إدارة المدرسة والرقابة المركزية للتحقق ومطابقة السجلات.",
+                                fontSize = 12.5.sp,
+                                color = Color(0xFF7F1D1D),
+                                lineHeight = 18.sp
+                            )
+                            Surface(
+                                color = Color(0xFFFEF2F2),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "تنبيه صارم: لا تعبث بإدخال رموز خاطئة حتى لا تقع تحت طائلة المساءلة التأديبية والقانونية وحظر الجهاز نهائياً من الشبكة.",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF991B1B),
+                                    modifier = Modifier.padding(8.dp)
+                                )
+                            }
+                            if (failedAttempts >= 3) {
+                                Text(
+                                    text = "🔒 تم إيقاف الإدخال مؤقتاً لمدة 5 دقائق لحماية الخادم من التخمين.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFFDC2626),
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { showDeterrentDialog = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("أقر وأتعهد بالالتزام", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                )
             }
 
             // Information Pill

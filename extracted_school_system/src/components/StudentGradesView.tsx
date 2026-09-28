@@ -219,7 +219,11 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
 
   // سحب الدرجات المرفوعة من تطبيق الأستاذ
   const handlePullCloudGrades = async () => {
-    const schoolId = config.schoolId || 'SCH-VCOL-6072';
+    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || '';
+    if (!schoolId) {
+      setPullMsg('⚠️ يرجى ضبط ومعايرة معرف المدرسة أولاً من الإعدادات قبل سحب الدرجات.');
+      return;
+    }
     setIsPulling(true);
     setPullMsg('جارٍ جلب وتحديث درجات الطلاب من سحابة تطبيق الأستاذ...');
     try {

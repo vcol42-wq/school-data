@@ -55,6 +55,9 @@ fun SchoolSystemNavHost(navController: NavHostController) {
             SplashScreen(
                 onAnimationFinished = {
                     val role = RoleManager.getSelectedRole(context)
+                    if (role == AppRole.TEACHER) {
+                        settingsViewModel.setTeacherRole()
+                    }
                     val nextRoute = when (role) {
                         AppRole.TEACHER -> if (config?.isActivated == true) "dashboard" else "onboarding"
                         AppRole.STUDENT -> if (studentSessionManager.isSchoolConfigured()) "student_schedule" else "student_onboarding"
@@ -71,6 +74,7 @@ fun SchoolSystemNavHost(navController: NavHostController) {
         composable("role_selection") {
             RoleSelectionScreen(
                 onSelectTeacher = {
+                    settingsViewModel.setTeacherRole()
                     val dest = if (config?.isActivated == true) "dashboard" else "onboarding"
                     navController.navigate(dest) {
                         popUpTo("role_selection") { inclusive = true }

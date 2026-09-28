@@ -158,9 +158,10 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   const generateNewIdentity = () => {
     if (!confirm('هل أنت متأكد من توليد هوية ورموز جديدة؟ سيؤدي هذا لقطع الاتصال عن التطبيقات المرتبطة حالياً ويجب عليهم إعادة المسح.')) return;
     const newId = `SCH-${Math.random().toString(36).toUpperCase().substr(2, 6)}`;
-    const newPairing = Math.floor(100000 + Math.random() * 900000).toString();
-    const newStudentPairing = Math.floor(100000 + Math.random() * 900000).toString();
-    const newPrincipalPairing = Math.floor(100000 + Math.random() * 900000).toString();
+    const randSuffix = Math.random().toString(36).substring(2, 4).toUpperCase();
+    const newPrincipalPairing = `ADM-${Math.floor(1000 + Math.random() * 9000)}-${randSuffix}`;
+    const newPairing = `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newStudentPairing = Math.floor(1000 + Math.random() * 9000).toString();
     setSchoolId(newId);
     setPairingCode(newPairing);
     setStudentPairingCode(newStudentPairing);

@@ -512,8 +512,7 @@ fun GradeRegisterScreen(
                                         if (storedPin != null) {
                                             startSecureUploadWithBiometric(storedPin)
                                         } else {
-                                            val activeSchoolPairing = config?.pairingCode?.trim().takeIf { !it.isNullOrBlank() } ?: "112233"
-                                            inputPin = activeSchoolPairing
+                                            inputPin = ""
                                             showPinDialog = true
                                         }
                                     },
@@ -1336,56 +1335,6 @@ fun GradeRegisterScreen(
                             shape = RoundedCornerShape(10.dp)
                         )
 
-                        val savedSup = remember { viewModel.getSavedSupervisorCode() }
-                        val activeSchoolPairing = config?.pairingCode?.trim().takeIf { !it.isNullOrBlank() } ?: "112233"
-
-                        // زر سريع لاستخدام كود المدرسة
-                        Surface(
-                            color = Color(0xFFEFF6FF),
-                            shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                            onClick = { inputPin = activeSchoolPairing },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.School, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    "كود المدرسة ($activeSchoolPairing) - اضغط للاستخدام 🏫",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1E40AF)
-                                )
-                            }
-                        }
-
-                        if (!savedSup.isNullOrBlank()) {
-                            Surface(
-                                color = Color(0xFFFFFBEB),
-                                shape = RoundedCornerShape(8.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
-                                onClick = { inputPin = savedSup },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(
-                                        "اضغط هنا لاستخدام كود المشرف المحفوظ ($savedSup) 🔑",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF92400E)
-                                    )
-                                }
-                            }
-                        }
-
                         Spacer(Modifier.height(4.dp))
 
                         // الزر الأول: رفع مباشر فوري بدون رمز
@@ -1406,7 +1355,11 @@ fun GradeRegisterScreen(
                         // الزر الثاني: تأكيد الرمز والرفع بالبصمة
                         OutlinedButton(
                             onClick = {
-                                val pin = inputPin.trim().ifEmpty { activeSchoolPairing }
+                                val pin = inputPin.trim()
+                                if (pin.isEmpty()) {
+                                    android.widget.Toast.makeText(context, "يرجى إدخال الرمز السري", android.widget.Toast.LENGTH_SHORT).show()
+                                    return@OutlinedButton
+                                }
                                 showPinDialog = false
                                 startSecureUploadWithBiometric(pin)
                             },

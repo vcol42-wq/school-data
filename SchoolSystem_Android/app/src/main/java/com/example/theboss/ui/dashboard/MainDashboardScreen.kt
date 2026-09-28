@@ -84,18 +84,23 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             while (true) {
                 kotlinx.coroutines.delay(10000L)
-                val schoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
-                try {
-                    repository.syncDirectives(schoolId)
-                } catch (e: Exception) {
-                    // ignore background network issues
+                val schoolId = repository.getSchoolId()
+                if (!schoolId.isNullOrBlank() && repository.isSchoolConfigured()) {
+                    try {
+                        repository.syncDirectives(schoolId)
+                    } catch (e: Exception) {
+                        // ignore background network issues
+                    }
                 }
             }
         }
     }
 
     fun refreshData() {
-        val schoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
+        val schoolId = repository.getSchoolId()
+        if (schoolId.isNullOrBlank() || !repository.isSchoolConfigured()) {
+            return
+        }
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
@@ -125,14 +130,22 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
+                var verified = true
                 if (schoolCode.isNotBlank()) {
-                    repository.verifySchoolCode(schoolCode)
+                    val verifyRes = repository.verifySchoolCode(schoolCode)
+                    verified = verifyRes.isSuccess
                 }
-                val finalSchoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
-                repository.syncSchedule(finalSchoolId)
-                repository.syncDirectives(finalSchoolId)
-                repository.syncDailyAssignments(finalSchoolId)
-                onComplete(true)
+                if (verified) {
+                    val finalSchoolId = repository.getSchoolId()
+                    if (!finalSchoolId.isNullOrBlank() && repository.isSchoolConfigured()) {
+                        repository.syncSchedule(finalSchoolId)
+                        repository.syncDirectives(finalSchoolId)
+                        repository.syncDailyAssignments(finalSchoolId)
+                    }
+                    onComplete(true)
+                } else {
+                    onComplete(false)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 onComplete(false)
@@ -143,7 +156,11 @@ class DashboardViewModel @Inject constructor(
     }
 
     fun syncScheduleManual(onComplete: (Boolean) -> Unit = {}) {
-        val schoolId = repository.getSchoolId() ?: "SCH-KAB2-9359"
+        val schoolId = repository.getSchoolId()
+        if (schoolId.isNullOrBlank() || !repository.isSchoolConfigured()) {
+            onComplete(false)
+            return
+        }
         viewModelScope.launch {
             _isRefreshing.value = true
             try {

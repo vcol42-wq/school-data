@@ -82,9 +82,6 @@ class DynamicUrlInterceptor(private val context: Context) : Interceptor {
                 // Ignore teacher prefs lookup error
             }
         }
-        if (schoolId.isNullOrBlank()) {
-            schoolId = "SCH-KAB2-9359"
-        }
 
         val builder = request.newBuilder()
 

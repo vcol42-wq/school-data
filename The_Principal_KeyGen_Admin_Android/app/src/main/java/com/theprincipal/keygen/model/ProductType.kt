@@ -8,26 +8,38 @@ enum class ProductType(
 ) {
     THE_PRINCIPAL_DESKTOP(
         code = "BOSS",
-        titleAr = "The Principal Desktop v6.0 (الحاسوب)",
+        titleAr = "ترخيص برنامج الحاسوب The Principal v6.3 (سوق مايكروسوفت)",
         defaultTier = "L1",
-        downloadUrl = "https://github.com/vcol42-wq/school-data/releases/download/v6.0/The_Principal_Setup_v6.0.exe"
+        downloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
+    ),
+    PRINCIPAL_COMPOSITE_CODE(
+        code = "ADM",
+        titleAr = "كود بوابة المدير والإشراف المركب (ADM-XXXX-XX)",
+        defaultTier = "SUP",
+        downloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
+    ),
+    TEACHER_PAIRING_CODE(
+        code = "TCH",
+        titleAr = "كود ربط بوابة الأستاذ والمعلم (TCH-XXXX)",
+        defaultTier = "EDU",
+        downloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
+    ),
+    STUDENT_PAIRING_CODE(
+        code = "STU",
+        titleAr = "كود ربط بوابة الطالب وولي الأمر (4 أرقام)",
+        defaultTier = "STD",
+        downloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
     ),
     SMART_ACCOUNTS(
         code = "ACCT",
-        titleAr = "منظومة الحسابات والمالية (مستقبلي)",
+        titleAr = "منظومة الحسابات والمالية المدرسية",
         defaultTier = "L1",
-        downloadUrl = "https://github.com/vcol42-wq/school-data/releases/download/v6.0/Smart_Accounts_Setup.exe"
+        downloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
     ),
     SMART_ATTENDANCE(
         code = "ATND",
-        titleAr = "منظومة البصمة والدوام الذكي (مستقبلي)",
+        titleAr = "منظومة البصمة والدوام الذكي",
         defaultTier = "L1",
-        downloadUrl = "https://github.com/vcol42-wq/school-data/releases/download/v6.0/Smart_Attendance_Setup.exe"
-    ),
-    CUSTOM_APP(
-        code = "GEN",
-        titleAr = "تطبيق مخصص عام",
-        defaultTier = "L1",
-        downloadUrl = "https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J"
+        downloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
     )
 }

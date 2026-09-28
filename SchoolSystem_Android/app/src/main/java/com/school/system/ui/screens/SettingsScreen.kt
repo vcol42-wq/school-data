@@ -36,6 +36,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.school.system.data.AuthRepository
 import com.school.system.data.SyncManager
+import com.school.system.data.SyncRepository
 import com.school.system.data.dao.ClassPackageDao
 import com.school.system.data.dao.ConfigDao
 import com.school.system.data.dao.StudentDao
@@ -159,7 +160,11 @@ class SettingsViewModel @Inject constructor(
                 val result = schoolRepository.verifySchoolCode(code)
                 if (result.isSuccess) {
                     val current = configDao.getConfig().first() ?: SchoolConfig()
-                    val schoolId = schoolRepository.getSchoolId() ?: "SCH-KAB2-9359"
+                    val schoolId = schoolRepository.getSchoolId()
+                    if (schoolId.isNullOrBlank()) {
+                        _connectionStatus.value = "فشل الربط: لم يتم العثور على معرف مدرسة صالح"
+                        return@launch
+                    }
                     val schoolName = schoolRepository.getSchoolName() ?: "مدرسة سحابية"
                     
                     configDao.saveConfig(
@@ -227,6 +232,15 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setTeacherRole() {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: SchoolConfig()
+            if (current.role != "teacher") {
+                configDao.saveConfig(current.copy(role = "teacher"))
+            }
+        }
+    }
+
     fun saveTeacherProfileAndSubject(name: String, email: String, subject: String, gender: String) {
         viewModelScope.launch {
             val current = configDao.getConfig().first() ?: SchoolConfig()
@@ -262,12 +276,44 @@ class SettingsViewModel @Inject constructor(
                     onResult(false, "يرجى إدخال رمز مدير المدرسة أو مسؤول الإشراف")
                     return@launch
                 }
+
+                // Strictly verify manager/supervisor code before activating and pulling roster
+                val localPairingCode = current.pairingCode.trim()
+                var isCodeValid = localPairingCode.isNotEmpty() && (cleanCode == localPairingCode || cleanCode == "SUP-$localPairingCode")
+
+                if (!isCodeValid && current.schoolId.isNotEmpty() && current.schoolId != "school_01") {
+                    try {
+                        val rawUrl = current.cloudUrl.trim().ifEmpty { SyncRepository.DEFAULT_SUPABASE_URL }
+                        val apiKey = current.cloudKey.trim().ifEmpty { SyncRepository.DEFAULT_ANON_KEY }
+                        val api = syncRepository.getApi(rawUrl)
+                        val schoolRes = api.getSchools(apiKey, "Bearer $apiKey", current.schoolId, "eq.${current.schoolId}")
+                        val schoolDto = schoolRes.body()?.firstOrNull()
+
+                        val cloudPairing = schoolDto?.pairing_code?.trim().orEmpty()
+                        val cloudSupCode = (schoolDto?.config?.get("supervisor_code") as? String)?.trim().orEmpty()
+                        val cloudManagerCode = (schoolDto?.config?.get("manager_code") as? String)?.trim().orEmpty()
+
+                        if ((cloudPairing.isNotEmpty() && cleanCode == cloudPairing) ||
+                            (cloudSupCode.isNotEmpty() && (cleanCode == cloudSupCode || cleanCode == cloudSupCode.removePrefix("SUP-"))) ||
+                            (cloudManagerCode.isNotEmpty() && cleanCode == cloudManagerCode)) {
+                            isCodeValid = true
+                        }
+                    } catch (e: Exception) {
+                        // Ignore cloud check failure
+                    }
+                }
+
+                if (!isCodeValid) {
+                    onResult(false, "رمز مدير المدرسة أو مسؤول الإشراف غير صحيح! تعذر تفعيل وضع الإدارة وسحب الأسماء ❌")
+                    return@launch
+                }
+
                 secureKeyStorage.saveSupervisorCode(cleanCode)
                 configDao.saveConfig(current.copy(
                     role = "supervisor",
                     syncSealToken = if (current.syncSealToken.isNullOrEmpty()) "__supervisor__" else current.syncSealToken
                 ))
-                // سحب كافة شعب وصفوف المدرسة فورياً
+                // سحب كافة شعب وصفوف المدرسة فورياً بعد التحقق التام من صحة الرمز
                 if (current.schoolId.isNotEmpty() && current.schoolId != "school_01") {
                     try {
                         syncRepository.downloadRoster(
@@ -278,7 +324,7 @@ class SettingsViewModel @Inject constructor(
                         )
                     } catch (_: Exception) {}
                 }
-                onResult(true, "تم تفعيل وضع الإدارة والإشراف وسحب كافة شعب المدرسة بنجاح 🛡️")
+                onResult(true, "تم التحقق من الرمز وتفعيل وضع الإدارة والإشراف بنجاح 🛡️")
             } else {
                 configDao.saveConfig(current.copy(role = "teacher"))
                 onResult(true, "تم العودة إلى وضع الأستاذ التدريسي 👨‍🏫")
@@ -480,7 +526,8 @@ fun SettingsScreen(
             teacherEmail = it.userEmail
             geminiApiKeyInput = it.geminiApiKey
             isAiEnabled = it.isAiActivated
-            isSupervisorMode = (it.role == "supervisor")
+            val activeRole = com.school.system.utils.RoleManager.getSelectedRole(context)
+            isSupervisorMode = (it.role == "supervisor" && activeRole == com.school.system.utils.AppRole.PRINCIPAL)
         }
     }
 
@@ -838,23 +885,19 @@ fun SettingsScreen(
                 }
             }
 
-            // CARD 4: وضع المشرف التربوي (Supervisor Mode)
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                shadowElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
+            // CARD 3: مخصص حسب الصفة (للمدير: أدوات الإشراف المختصرة | للأستاذ: كارت الاقتراح الدعائي)
+            if (isSupervisorMode) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
-                                color = if (isSupervisorMode) Color(0xFFF59E0B).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.12f),
+                                color = Color(0xFFF59E0B).copy(alpha = 0.15f),
                                 shape = CircleShape,
                                 modifier = Modifier.size(36.dp)
                             ) {
@@ -862,97 +905,38 @@ fun SettingsScreen(
                                     Icon(
                                         Icons.Default.AdminPanelSettings,
                                         contentDescription = null,
-                                        tint = if (isSupervisorMode) Color(0xFFD97706) else Color(0xFF475569),
+                                        tint = Color(0xFFD97706),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text("وضع الإدارة والإشراف 🛡️", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                Text("بوابة الإدارة المدرسية المباشرة 👑", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
                                 Text(
-                                    text = if (isSupervisorMode) "الوضع: إشرافي وإداري شامل (صلاحيات كاملة)" else "الوضع: أستاذ مادة (صلاحيات اعتيادية)",
+                                    text = "الوضع الحالي: إشراف وإدارة كاملة للمدرسة",
                                     fontSize = 11.sp,
-                                    color = if (isSupervisorMode) Color(0xFFD97706) else Color(0xFF64748B),
+                                    color = Color(0xFFD97706),
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
 
-                        Switch(
-                            checked = isSupervisorMode,
-                            onCheckedChange = { enable ->
-                                viewModel.setSupervisorMode(enable, supervisorCodeInput) { success, msg ->
-                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        )
-                    }
-
-                    Surface(
-                        color = if (isSupervisorMode) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(
-                            0.5.dp, 
-                            if (isSupervisorMode) Color(0xFFFDE68A) else Color(0xFFCBD5E1)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = if (isSupervisorMode) 
-                                "🛡️ وضع الإدارة والإشراف مفعّل: تملك صلاحية إدارية وإشرافية كاملة لتفقد وتدقيق وتعديل كافة السجلات والصفوف وتجاوز القفل السحابي." 
-                            else 
-                                "💡 عند إدخال رمز مدير المدرسة أو مسؤول الإشراف وتفعيل هذا الوضع، ستتاح لك صلاحيات الإدارة والإشراف للاطلاع على كافة الشعب والمواد الخاصة بالمدرسة.",
-                            color = if (isSupervisorMode) Color(0xFF92400E) else Color(0xFF475569),
-                            fontSize = 10.5.sp,
-                            lineHeight = 15.sp,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = supervisorCodeInput,
-                        onValueChange = { supervisorCodeInput = it },
-                        label = { Text("رمز مدير المدرسة أو مسؤول الإشراف") },
-                        placeholder = { Text("أدخل رمز مدير المدرسة أو مسؤول الإشراف...") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    Button(
-                        onClick = {
-                            viewModel.setSupervisorMode(!isSupervisorMode, supervisorCodeInput) { success, msg ->
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .defaultMinSize(minHeight = 48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isSupervisorMode) Color(0xFFDC2626) else Color(0xFFD97706)
-                        )
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (isSupervisorMode) Icons.Default.Close else Icons.Default.Security,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
+                        Surface(
+                            color = Color(0xFFFEF3C7),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFDE68A)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Text(
-                                text = if (isSupervisorMode) "إلغاء وضع الإدارة والإشراف والعودة لوضع الأستاذ ✕" else "تفعيل وضع الإدارة والإشراف 🛡️",
-                                fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1
+                                text = "🛡️ بصفتك مديراً/مشرفاً: يمكنك سحب كافة بيانات المدرسة والصفوف ومتابعة السجلات فورياً.",
+                                color = Color(0xFF92400E),
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(10.dp)
                             )
                         }
-                    }
 
-                    if (isSupervisorMode) {
                         OutlinedButton(
                             onClick = {
                                 viewModel.syncAllSchoolClassesForSupervisor { success, msg ->
@@ -970,6 +954,108 @@ fun SettingsScreen(
                                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(6.dp))
                                 Text("سحب وتحديث كافة شعب وصفوف المدرسة 🏫🔄", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // للأستاذ: كارت الاقتراح الدعائي لإدارة المدرسة (The Principal على PC)
+                val desktopDownloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.White,
+                    shadowElevation = 2.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                color = Color(0xFF6366F1).copy(alpha = 0.12f),
+                                shape = CircleShape,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Share,
+                                        contentDescription = null,
+                                        tint = Color(0xFF4F46E5),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column {
+                                Text("📢 اقترح المنظومة على إدارتك المدرسية", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                Text(
+                                    text = "تطبيق The Principal المعتمد للحاسوب (Windows 10/11)",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF6366F1),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "هل أعجبك النظام؟ اقترح على مدير مدرستك تنزيل منظومة الإدارة المركزية على كمبيوتر المدرسة لربط كادر المعلمين وتوليد الجداول السحابية فورياً.",
+                            fontSize = 11.5.sp,
+                            color = Color(0xFF475569),
+                            lineHeight = 17.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    try {
+                                        val sendIntent = android.content.Intent().apply {
+                                            action = android.content.Intent.ACTION_SEND
+                                            putExtra(
+                                                android.content.Intent.EXTRA_TEXT,
+                                                "حضرة مدير المدرسة المحترم،\nنقترح عليكم تجربة منظومة (The Principal) لإدارة الجداول السحابية وسجلات الدرجات.\nرابط التنزيل المباشر من متجر مايكروسوفت الرسمي:\n$desktopDownloadUrl"
+                                            )
+                                            type = "text/plain"
+                                        }
+                                        val shareIntent = android.content.Intent.createChooser(sendIntent, "مشاركة رابط المنظومة للإدارة")
+                                        shareIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(shareIntent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "تعذر مشاركة الرابط", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("مشاركة الرابط 📲", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("رابط مايكروسوفت", desktopDownloadUrl)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "تم نسخ رابط برنامج الحاسوب بنجاح ✓", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB))
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(15.dp), tint = Color(0xFF2563EB))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("نسخ الرابط 📋", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
+                                }
                             }
                         }
                     }

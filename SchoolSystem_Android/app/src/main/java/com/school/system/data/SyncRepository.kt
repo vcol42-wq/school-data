@@ -573,12 +573,47 @@ class SyncRepository @Inject constructor(
             val allResponse = api.getSchools(apiKey = key, auth = "Bearer $key")
             if (allResponse.isSuccessful && !allResponse.body().isNullOrEmpty()) {
                 return allResponse.body()!!.firstOrNull { s ->
-                    s.pairing_code.equals(clean, ignoreCase = true) || s.id.equals(clean, ignoreCase = true)
+                    s.pairing_code.equals(clean, ignoreCase = true) || 
+                    s.id.equals(clean, ignoreCase = true) ||
+                    s.config?.get("principal_pairing_code")?.toString()?.equals(clean, ignoreCase = true) == true ||
+                    s.config?.get("student_pairing_code")?.toString()?.equals(clean, ignoreCase = true) == true
                 }
             }
             null
         } catch (e: Exception) {
             Log.e("SyncRepository", "verifySchoolByPairingCode error: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun verifyPrincipalSchoolByCode(code: String): SupabaseSchoolDto? {
+        return try {
+            val clean = code.trim()
+            if (clean.isBlank() || clean == "112233" || clean == "223344" || clean == "334455" || clean.all { it.isDigit() }) {
+                return null
+            }
+            val (url, key) = resolveCredentials(null, null)
+            val api = getApi(url)
+
+            val allResponse = api.getSchools(apiKey = key, auth = "Bearer $key")
+            if (allResponse.isSuccessful && !allResponse.body().isNullOrEmpty()) {
+                return allResponse.body()!!.firstOrNull { s ->
+                    val cfg = s.config
+                    val pCode = cfg?.get("principal_pairing_code")?.toString()?.trim()
+                    val pCodeCamel = cfg?.get("principalPairingCode")?.toString()?.trim()
+                    val supCode = cfg?.get("supervisor_code")?.toString()?.trim()
+                    val mgrCode = cfg?.get("manager_code")?.toString()?.trim()
+
+                    (pCode != null && pCode.isNotBlank() && pCode.equals(clean, ignoreCase = true)) ||
+                    (pCodeCamel != null && pCodeCamel.isNotBlank() && pCodeCamel.equals(clean, ignoreCase = true)) ||
+                    (supCode != null && supCode.isNotBlank() && (supCode.equals(clean, ignoreCase = true) || supCode.removePrefix("SUP-").equals(clean, ignoreCase = true))) ||
+                    (mgrCode != null && mgrCode.isNotBlank() && mgrCode.equals(clean, ignoreCase = true)) ||
+                    (s.pairing_code.contains("-") && s.pairing_code.length >= 8 && s.pairing_code.equals(clean, ignoreCase = true))
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Log.e("SyncRepository", "verifyPrincipalSchoolByCode error: ${e.message}")
             null
         }
     }
@@ -1221,7 +1256,7 @@ class SyncRepository @Inject constructor(
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
 
-            val isSupervisor = teacherId == "__supervisor__" || teacherId == "__all__" || teacherId == "__school_paired__"
+            val isSupervisor = teacherId == "__supervisor__" || teacherId == "__all__"
 
             // 0. Resolve teacher name & ID for robust matching
             val allTeachers = try { 
@@ -1243,7 +1278,7 @@ class SyncRepository @Inject constructor(
                 assignmentsResponse.body() ?: emptyList()
             } else emptyList()
 
-            // Fallback: If filtered query returned empty, try fetching all assignments and match locally by ID or Name
+            // Fallback: If filtered query returned empty, try fetching all assignments and match strictly by ID or Name
             if (assignments.isEmpty() && !isSupervisor) {
                 val allAssignRes = try {
                     api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
@@ -1251,13 +1286,12 @@ class SyncRepository @Inject constructor(
 
                 if (allAssignRes?.isSuccessful == true && !allAssignRes.body().isNullOrEmpty()) {
                     val allList = allAssignRes.body()!!
-                    val filtered = allList.filter { 
+                    assignments = allList.filter { 
                         it.teacher_id == teacherId || 
                         it.teacher_id == matchedT?.id ||
                         normalizeArabic(it.teacher_id) == normalizeArabic(teacherName) ||
                         normalizeArabic(it.teacher_id) == normalizeArabic(teacherId)
                     }
-                    assignments = if (filtered.isNotEmpty()) filtered else allList
                 }
             }
 
@@ -1950,7 +1984,10 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val cleanCode = pairingCode.trim().ifEmpty { "112233" }
+            val cleanCode = pairingCode.trim()
+            if (cleanCode.isBlank()) {
+                return PairingResult(false, warning = true, message = "يرجى إدخال رمز اقتران صالح ومصرح به")
+            }
 
             // 1. Try search by pairing_code
             var matchedSchool: SupabaseSchoolDto? = null
@@ -2055,10 +2092,12 @@ class SyncRepository @Inject constructor(
         section: String
     ): List<SupabaseStudentDto> {
         return try {
+            val cleanSchoolId = schoolId.trim()
+            if (cleanSchoolId.isEmpty() || cleanSchoolId == "school_01") return emptyList()
+
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-9359" }
             val stdGrade = standardizeGradeName(grade)
             val stdSection = standardizeSectionName(section)
 
@@ -2075,7 +2114,7 @@ class SyncRepository @Inject constructor(
                 if (response.isSuccessful && !response.body().isNullOrEmpty()) response.body()!! else emptyList()
             } catch (e: Exception) { emptyList() }
 
-            // Stage 2: If empty, fetch all students for school_id and match locally with flexible grade & section
+            // Stage 2: If empty, fetch all students for this specific school_id and match locally
             if (list.isEmpty()) {
                 list = try {
                     val allResponse = api.getStudents(
@@ -2086,24 +2125,6 @@ class SyncRepository @Inject constructor(
                     )
                     if (allResponse.isSuccessful && !allResponse.body().isNullOrEmpty()) {
                         allResponse.body()!!.filter {
-                            matchGradeFlexible(it.current_grade, grade) &&
-                            matchSectionFlexible(it.section, section)
-                        }
-                    } else emptyList()
-                } catch (e: Exception) { emptyList() }
-            }
-
-            // Stage 3: Robust Fallback - fetch all school students without strict school_id constraint and match locally
-            if (list.isEmpty()) {
-                list = try {
-                    val fallbackRes = api.getStudents(
-                        apiKey = apiKey,
-                        auth = authHeader,
-                        schoolId = cleanSchoolId,
-                        schoolFilter = "neq.__none__"
-                    )
-                    if (fallbackRes.isSuccessful && !fallbackRes.body().isNullOrEmpty()) {
-                        fallbackRes.body()!!.filter {
                             matchGradeFlexible(it.current_grade, grade) &&
                             matchSectionFlexible(it.section, section)
                         }
@@ -2127,9 +2148,13 @@ class SyncRepository @Inject constructor(
 
     suspend fun downloadSchedule(context: android.content.Context, schoolId: String): Boolean {
         return try {
+            val cleanSchoolId = schoolId.trim()
+            if (cleanSchoolId.isBlank() || cleanSchoolId == "school_01") {
+                Log.w("SyncRepository", "downloadSchedule aborted: invalid schoolId ($schoolId)")
+                return false
+            }
             val (url, apiKey) = resolveCredentials(null, null)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = schoolId.trim().ifEmpty { "SCH-KAB2-9359" }
 
             val isLocal = url.contains("localhost") || url.contains("192.168.") || !url.contains("supabase")
             val scheduleJson = if (isLocal) {
@@ -2154,14 +2179,7 @@ class SyncRepository @Inject constructor(
                     val gson = com.google.gson.Gson()
                     gson.toJson(matched.schedule_map)
                 } else {
-                    val resp2 = api.getSchedules(apiKey, authHeader, cleanSchoolId, idFilter = "eq.SCH-8158")
-                    if (resp2.isSuccessful && !resp2.body().isNullOrEmpty()) {
-                        val matched = resp2.body()!!.first()
-                        val gson = com.google.gson.Gson()
-                        gson.toJson(matched.schedule_map)
-                    } else {
-                        null
-                    }
+                    null
                 }
             }
 
@@ -2233,8 +2251,16 @@ class SyncRepository @Inject constructor(
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
-            val cleanSchoolId = assignment.school_id.trim().ifEmpty { "SCH-KAB2-9359" }
-            val cleanTeacherId = assignment.teacher_id.trim().ifEmpty { "teacher_01" }
+            val cleanSchoolId = assignment.school_id.trim()
+            if (cleanSchoolId.isBlank() || cleanSchoolId == "school_01") {
+                Log.w("SyncRepository", "publishDailyAssignment aborted: invalid schoolId ($cleanSchoolId)")
+                return false
+            }
+            val cleanTeacherId = assignment.teacher_id.trim()
+            if (cleanTeacherId.isBlank()) {
+                Log.w("SyncRepository", "publishDailyAssignment aborted: teacherId is blank")
+                return false
+            }
 
             val cleanAssignment = assignment.copy(
                 school_id = cleanSchoolId,
@@ -2445,7 +2471,10 @@ class SyncRepository @Inject constructor(
         return try {
             val conf = configDao.getConfig().first()
                 ?: return Result.failure(Exception("لم يتم العثور على إعدادات المدرسة"))
-            val schoolId = conf.schoolId.ifBlank { "school_01" }
+            val schoolId = conf.schoolId.trim()
+            if (schoolId.isBlank() || schoolId == "school_01" || !conf.isVerified) {
+                return Result.failure(Exception("يجب ربط المدرسة وتأكيد هويتها السحابية قبل الرفع"))
+            }
             val (url, apiKey) = resolveCredentials(conf.cloudUrl, conf.cloudKey)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
@@ -2541,7 +2570,10 @@ class SyncRepository @Inject constructor(
     suspend fun getOrGenerateSchoolPairingCode(forceNew: Boolean = false): Result<String> {
         return try {
             val conf = configDao.getConfig().first() ?: return Result.failure(Exception("لم يتم العثور على الإعدادات"))
-            val schoolId = conf.schoolId.ifBlank { "school_01" }
+            val schoolId = conf.schoolId.trim()
+            if (schoolId.isBlank() || schoolId == "school_01") {
+                return Result.failure(Exception("المدرسة غير مقترنة بعد"))
+            }
             val (url, apiKey) = resolveCredentials(conf.cloudUrl, conf.cloudKey)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
@@ -2610,10 +2642,13 @@ class SyncRepository @Inject constructor(
     suspend fun getSchoolPairingQrData(forceNew: Boolean = false): Result<SchoolPairingQrData> {
         return try {
             val conf = configDao.getConfig().first() ?: return Result.failure(Exception("لم يتم العثور على الإعدادات"))
-            val schoolId = conf.schoolId.ifBlank { "school_01" }
+            val schoolId = conf.schoolId.trim()
+            if (schoolId.isBlank() || schoolId == "school_01") {
+                return Result.failure(Exception("المدرسة غير مقترنة بعد"))
+            }
             val (url, apiKey) = resolveCredentials(conf.cloudUrl, conf.cloudKey)
             val codeResult = getOrGenerateSchoolPairingCode(forceNew)
-            val pairingCode = codeResult.getOrNull() ?: conf.pairingCode.ifBlank { "112233" }
+            val pairingCode = codeResult.getOrNull() ?: conf.pairingCode.trim()
 
             val payloadJson = org.json.JSONObject().apply {
                 put("url", url)

@@ -1,8 +1,8 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "6.2.0",
-  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v6.2.0 Super Edition",
+  "version": "6.3.0",
+  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v6.3.0 Super Edition",
   "author": "School Management System",
   "type": "module",
   "main": "electron-main.js",
@@ -47,7 +47,7 @@
   },
   "build": {
     "appId": "com.school.management",
-    "productName": "The Principal v6.0 Super Edition",
+    "productName": "The Principal v6.3 Super Edition",
     "icon": "public/logo.png",
     "directories": {
       "output": "dist_electron"

@@ -76,6 +76,12 @@ fun JoinRequestScreen(
         }
     }
 
+    LaunchedEffect(viewModel.error.value) {
+        viewModel.error.value?.let { err ->
+            android.widget.Toast.makeText(context, err, android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(

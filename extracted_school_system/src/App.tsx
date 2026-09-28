@@ -57,7 +57,15 @@ import { sanitizeStudents } from './utils/syncEngine';
 
 export default function App() {
   // Navigation & Theme
-  const [activeView, setActiveView] = useState<ActiveView>('launcher');
+  const [activeView, setActiveView] = useState<ActiveView>(() => {
+    try {
+      const hash = window.location.hash.replace('#', '') as ActiveView;
+      if (hash && ['launcher', 'students', 'student_grades', 'attendance', 'schedule', 'smart_schedule', 'staff', 'stats', 'print', 'settings', 'sync_center', 'teacher_authority'].includes(hash)) {
+        return hash;
+      }
+    } catch {}
+    return 'launcher';
+  });
   const [theme, setTheme] = useState<AppTheme>(() => {
     const savedTheme = localStorage.getItem('diyala_school_theme');
     const supportedThemes: AppTheme[] = ['cream', 'burgundy', 'sky', 'emerald', 'night', 'moon'];

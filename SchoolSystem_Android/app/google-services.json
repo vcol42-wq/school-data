@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "1009565234497",
-    "project_id": "theprinciple",
-    "storage_bucket": "theprinciple.firebasestorage.app"
+    "project_number": "979515925623",
+    "project_id": "school-2e900",
+    "storage_bucket": "school-2e900.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1009565234497:android:b11dac5f54c6b5c1789dc0",
+        "mobilesdk_app_id": "1:979515925623:android:b9068eb9f9977a0dcf1272",
         "android_client_info": {
           "package_name": "com.theprincipal.student"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyA92sLsbAsl9HXjEQb2fsADFeOTsvi6aGQ"
+          "current_key": "AIzaSyAMzZ0hK9kIQYkpHWFAtLYq2m8WPZXLCmA"
         }
       ],
       "services": {

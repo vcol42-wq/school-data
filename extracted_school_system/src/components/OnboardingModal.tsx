@@ -129,9 +129,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
       // 2. Generate clean unique IDs and 3-role pairing codes
       const emailPrefix = email.trim().split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'SCH';
       const generatedId = `SCH-${emailPrefix}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const generatedTeacherCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const generatedStudentCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const generatedPrincipalCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const randSuffix = Math.random().toString(36).substring(2, 4).toUpperCase();
+      const generatedPrincipalCode = `ADM-${Math.floor(1000 + Math.random() * 9000)}-${randSuffix}`;
+      const generatedTeacherCode = `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
+      const generatedStudentCode = Math.floor(1000 + Math.random() * 9000).toString();
 
       // 3. Register School directly in Supabase
       const client = getSupabase(generatedId);

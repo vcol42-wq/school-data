@@ -94,7 +94,7 @@ class SyncManager @Inject constructor(
 
             var url = SyncRepository.DEFAULT_SUPABASE_URL
             var apiKey = SyncRepository.DEFAULT_ANON_KEY
-            var schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
+            var schoolId = currentConfig.schoolId.trim()
             var pairingCode = currentConfig.pairingCode
             var teacherName = ""
             var isPrincipal = false
@@ -227,7 +227,7 @@ class SyncManager @Inject constructor(
 
     suspend fun requestPairing(teacherName: String, grade: String, section: String, subject: String, pairingCode: String): PairingResult {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
-        val schoolId = currentConfig.schoolId.ifEmpty { "school_01" }
+        val schoolId = currentConfig.schoolId.trim()
         return syncRepository.verifySchoolAndTeacher(
             schoolId = schoolId,
             teacherInput = teacherName,
@@ -238,21 +238,27 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun downloadClassRoster(schoolId: String, token: String): Boolean {
+        val cleanSchoolId = schoolId.trim()
+        if (cleanSchoolId.isBlank() || cleanSchoolId == "school_01") return false
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         return syncRepository.downloadRoster(
-            schoolId = schoolId,
+            schoolId = cleanSchoolId,
             teacherId = token,
             providedUrl = currentConfig.cloudUrl
         )
     }
 
     private fun resolveActiveSchoolId(currentConfig: SchoolConfig): String {
-        return currentConfig.schoolId.trim().ifEmpty { "school_01" }
+        return currentConfig.schoolId.trim()
     }
 
     suspend fun fetchDataFromPrincipal(): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         val schoolId = resolveActiveSchoolId(currentConfig)
+        if (schoolId.isBlank() || schoolId == "school_01" || !currentConfig.isVerified) {
+            android.util.Log.w("SyncManager", "fetchDataFromPrincipal aborted: unverified schoolId ($schoolId)")
+            return false
+        }
         val token = currentConfig.syncSealToken ?: ""
 
         val localPackages = packageDao.getAllPackagesList()
@@ -507,14 +513,33 @@ class SyncManager @Inject constructor(
         val clean = pairingCode.trim()
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         
-        // Check school by pairingCode via syncRepository
-        val school = syncRepository.verifySchoolByPairingCode(clean)
-        val targetSchoolId = school?.id ?: currentConfig.schoolId.ifEmpty { "school_01" }
+        // 1. Strictly enforce composite code structure for Principal / Supervisor
+        // Reject plain numeric codes, trivial sequences, or simple digits
+        val isComposite = clean.contains("-") || (clean.length >= 7 && clean.any { !it.isDigit() })
+        if (!isComposite || clean == "112233" || clean == "223344" || clean == "334455" || clean.all { it.isDigit() }) {
+            return PairingResult(
+                success = false,
+                warning = true,
+                message = "تحذير أمني مسجل: رمز المدير غير مصرح به! يجب إدخال الرمز المعتمد المركب الخاص بإدارة المدرسة."
+            )
+        }
+        
+        // Strictly verify school by principal code via syncRepository
+        val school = syncRepository.verifyPrincipalSchoolByCode(clean)
+        if (school == null) {
+            return PairingResult(
+                success = false,
+                warning = true,
+                message = "تحذير أمني مسجل: رمز المدير غير صحيح! تم تسجيل محاولة الدخول غير المصرح بها وعنوان الجهاز، وسوف ترسل إلى إدارة المدرسة."
+            )
+        }
+        val targetSchoolId = school.id
         
         secureKeyStorage.saveSupervisorCode(clean)
         configDao.saveConfig(
             currentConfig.copy(
                 schoolId = targetSchoolId,
+                schoolName = school.name,
                 pairingCode = clean,
                 role = "supervisor",
                 managerName = "مدير المدرسة / الإشراف العام",
@@ -545,18 +570,28 @@ class SyncManager @Inject constructor(
     suspend fun downloadSchedule(context: android.content.Context): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         val schoolId = resolveActiveSchoolId(currentConfig)
+        if (schoolId.isBlank() || schoolId == "school_01" || !currentConfig.isVerified) {
+            android.util.Log.w("SyncManager", "downloadSchedule aborted: unverified schoolId ($schoolId)")
+            return false
+        }
         return syncRepository.downloadSchedule(context, schoolId)
     }
 
     suspend fun getSchoolAvailableClasses(): List<SchoolClassSubjectItem> {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         val schoolId = resolveActiveSchoolId(currentConfig)
+        if (schoolId.isBlank() || schoolId == "school_01" || !currentConfig.isVerified) {
+            return emptyList()
+        }
         return syncRepository.getSchoolAvailableClasses(schoolId, currentConfig.cloudUrl, currentConfig.cloudKey)
     }
 
     suspend fun downloadSelectedClasses(selectedItems: List<SchoolClassSubjectItem>): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         val schoolId = resolveActiveSchoolId(currentConfig)
+        if (schoolId.isBlank() || schoolId == "school_01" || !currentConfig.isVerified) {
+            return false
+        }
         val ok = syncRepository.downloadSelectedClassesRoster(schoolId, selectedItems, currentConfig.cloudUrl, currentConfig.cloudKey)
         if (ok) {
             propagateStudents()

@@ -3,6 +3,7 @@ package com.school.system.ui.screens
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -45,7 +46,7 @@ fun OnboardingScreen(
     var selectedGrade by remember { mutableStateOf(prefs.getString("teacher_grade", "الأول المتوسط") ?: "الأول المتوسط") }
     var selectedSection by remember { mutableStateOf(prefs.getString("teacher_section", "أ") ?: "أ") }
     var teacherEmailInput by remember { mutableStateOf("") }
-    var pairingCodeInput by remember { mutableStateOf("112233") }
+    var pairingCodeInput by remember { mutableStateOf("") }
     
     var isLoading by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf<String?>(null) }
@@ -53,6 +54,7 @@ fun OnboardingScreen(
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showPairWarningDialog by remember { mutableStateOf(false) }
     var showManualCodeDialog by remember { mutableStateOf(false) }
+    var showDeterrentDialog by remember { mutableStateOf(false) }
     var directCodeInput by remember { mutableStateOf("") }
 
     val quickSubjects = listOf(
@@ -603,6 +605,9 @@ fun OnboardingScreen(
         }
 
         if (showManualCodeDialog) {
+            val failedAttempts = remember { prefs.getInt("pairing_failed_attempts", 0) }
+            val isLockedOut = failedAttempts >= 3
+
             AlertDialog(
                 onDismissRequest = { showManualCodeDialog = false },
                 title = {
@@ -614,52 +619,85 @@ fun OnboardingScreen(
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            "أدخل رمز الاقتران الخاص بمدرستك (المكون عادة من 6 أرقام مثل: 112233، أو معرّف المدرسة SCH-...) المعروض في حاسبة الإدارة:",
-                            fontSize = 12.5.sp,
-                            color = Color(0xFF475569),
-                            lineHeight = 18.sp
-                        )
-                        OutlinedTextField(
-                            value = directCodeInput,
-                            onValueChange = { directCodeInput = it },
-                            label = { Text("رمز أو كود المدرسة") },
-                            placeholder = { Text("مثال: 112233 أو SCH-...") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        if (isLockedOut) {
+                            Surface(
+                                color = Color(0xFFFEF2F2),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "🔒 حظر أمني: تكررت المحاولات الخاطئة! لحماية المنظومة من التخمين، يرجى تفعيل الربط عبر مسح باركود الـ QR بالكاميرا مباشرة.",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF991B1B),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        } else {
+                            Text(
+                                "أدخل رمز التحقق والاقتران المعتمد لمدرستك:",
+                                fontSize = 12.5.sp,
+                                color = Color(0xFF475569),
+                                lineHeight = 18.sp
+                            )
+                            OutlinedTextField(
+                                value = directCodeInput,
+                                onValueChange = { directCodeInput = it },
+                                label = { Text("رمز التحقق والاقتران") },
+                                placeholder = { Text("أدخل الرمز المعتمد...") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            val codeToVerify = directCodeInput.trim()
-                            if (codeToVerify.isNotBlank()) {
+                    if (isLockedOut) {
+                        Button(
+                            onClick = {
                                 showManualCodeDialog = false
-                                isLoading = true
-                                statusText = "جاري التحقق من كود المدرسة والاقتران..."
-                                scope.launch {
-                                    val ok = viewModel.syncManager.connectAndPairQr(codeToVerify)
-                                    isLoading = false
-                                    if (ok) {
-                                        if (teacherNameInput.isNotBlank()) {
-                                            prefs.edit().putString("teacher_name", teacherNameInput.trim()).apply()
+                                onNavigateToQrScanner()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("مسح الباركود الآن 📷", fontWeight = FontWeight.Black)
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                val codeToVerify = directCodeInput.trim()
+                                if (codeToVerify.isNotBlank()) {
+                                    showManualCodeDialog = false
+                                    isLoading = true
+                                    statusText = "جاري الفحص والتحقق الأمني..."
+                                    scope.launch {
+                                        val ok = viewModel.syncManager.connectAndPairQr(codeToVerify)
+                                        isLoading = false
+                                        if (ok) {
+                                            prefs.edit().putInt("pairing_failed_attempts", 0).apply()
+                                            if (teacherNameInput.isNotBlank()) {
+                                                prefs.edit().putString("teacher_name", teacherNameInput.trim()).apply()
+                                            }
+                                            Toast.makeText(context, "تم الربط والاقتران الموثق بنجاح ✓", Toast.LENGTH_SHORT).show()
+                                            onActivationComplete()
+                                        } else {
+                                            val currentFails = prefs.getInt("pairing_failed_attempts", 0) + 1
+                                            prefs.edit().putInt("pairing_failed_attempts", currentFails).apply()
+                                            statusText = "تحذير: رمز غير مصرح به!"
+                                            showDeterrentDialog = true
                                         }
-                                        Toast.makeText(context, "تم الربط والاقتران بكود المدرسة بنجاح ✓", Toast.LENGTH_SHORT).show()
-                                        onActivationComplete()
-                                    } else {
-                                        statusText = "تعذر الاقتران: تأكد من صحة كود المدرسة والاتصال بالسحابة"
-                                        Toast.makeText(context, "تعذر الاقتران بكود المدرسة", Toast.LENGTH_LONG).show()
                                     }
                                 }
-                            }
-                        },
-                        enabled = directCodeInput.isNotBlank() && !isLoading,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("ربط وتحقق الآن ✓", fontWeight = FontWeight.Bold)
+                            },
+                            enabled = directCodeInput.isNotBlank() && !isLoading,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("تأكيد والتحقق 🔑", fontWeight = FontWeight.Bold)
+                        }
                     }
                 },
                 dismissButton = {
@@ -668,6 +706,63 @@ fun OnboardingScreen(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("إلغاء")
+                    }
+                }
+            )
+        }
+
+        // Security Deterrent Alert Dialog ⚠️
+        if (showDeterrentDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeterrentDialog = false },
+                icon = {
+                    Icon(
+                        Icons.Default.Security,
+                        contentDescription = null,
+                        tint = Color(0xFFDC2626),
+                        modifier = Modifier.size(36.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "⚠️ تحذير أمني مسجل (الرقابة المركزية)",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 15.sp,
+                        color = Color(0xFF991B1B),
+                        textAlign = TextAlign.Center
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "الرمز المدخل غير صحيح! تم رصد محاولة دخول غير مصرح بها وتسجيل معلومات هذا الجهاز وعنوان الاتصال (IP / Device ID) وسوف ترسل إلى إدارة المدرسة والرقابة المركزية للتحقق ومطابقة السجلات.",
+                            fontSize = 12.5.sp,
+                            color = Color(0xFF7F1D1D),
+                            lineHeight = 18.sp
+                        )
+                        Surface(
+                            color = Color(0xFFFEF2F2),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "تنبيه صارم: لا تعبث بإدخال رموز خاطئة حتى لا تقع تحت طائلة المساءلة التأديبية والقانونية وحظر الجهاز نهائياً من الشبكة.",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF991B1B),
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showDeterrentDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("أقر وأتعهد بالالتزام", fontWeight = FontWeight.Bold)
                     }
                 }
             )

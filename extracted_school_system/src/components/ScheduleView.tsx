@@ -147,7 +147,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     await new Promise(resolve => setTimeout(resolve, 60));
 
     try {
-      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-VCOL-6072';
+      const activeSchoolId = config.schoolId || localStorage.getItem('diyala_school_id') || '';
+      if (!activeSchoolId) {
+        throw new Error('يرجى تحديد أو ربط المدرسة أولاً قبل توليد وحفظ الجدول');
+      }
 
       // 1. Gather sections from existing saved smart sections, or discover dynamically from students/schedule
       let candidateSections: SmartScheduleSection[] = [];

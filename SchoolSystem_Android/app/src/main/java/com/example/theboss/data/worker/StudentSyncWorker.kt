@@ -28,7 +28,7 @@ class StudentSyncWorker(
             )
             val repository = entryPoint.studentRepository()
             val schoolId = repository.getSchoolId()
-            if (!schoolId.isNullOrBlank()) {
+            if (!schoolId.isNullOrBlank() && repository.isSchoolConfigured()) {
                 repository.syncDailyAssignments(schoolId)
                 repository.syncDirectives(schoolId)
                 repository.syncTimetableAndInstructions(schoolId)

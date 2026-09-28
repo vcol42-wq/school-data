@@ -179,12 +179,10 @@ class GradesRepository @Inject constructor(
                 val localSupervisorCode = normalizeArabicDigits(secureKeyStorage.getSupervisorCode()?.trim() ?: "")
 
                 // التحقق من كود الاقتران الرئيسي أو كود المشرف
-                val knownSchoolCodes = setOf("762261", "112233", "792413", "922769", "317323", "475290")
                 if ((localPairingCode.isNotEmpty() && cleanSecret == localPairingCode) ||
                     (cloudPairing.isNotEmpty() && cleanSecret == cloudPairing) ||
                     (supervisorCode.isNotEmpty() && (cleanSecret == supervisorCode || cleanSecret == supervisorCode.removePrefix("SUP-"))) ||
-                    (localSupervisorCode.isNotEmpty() && (cleanSecret == localSupervisorCode || cleanSecret == localSupervisorCode.removePrefix("SUP-"))) ||
-                    knownSchoolCodes.contains(cleanSecret)) {
+                    (localSupervisorCode.isNotEmpty() && (cleanSecret == localSupervisorCode || cleanSecret == localSupervisorCode.removePrefix("SUP-")))) {
                     isAuthorized = true
                 }
 

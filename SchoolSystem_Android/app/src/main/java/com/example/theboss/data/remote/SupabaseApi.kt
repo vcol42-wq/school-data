@@ -58,14 +58,6 @@ interface SupabaseApi {
         @Query("select") select: String = "*"
     ): Response<List<ScheduleDto>>
 
-    // جلب أحدث جدول للمدرسة كخيار احتياطي عند اختلاف كود المدرسة
-    @GET("schedules")
-    suspend fun getLatestSchedule(
-        @Query("order") order: String = "updated_at.desc",
-        @Query("limit") limit: Int = 10,
-        @Query("select") select: String = "*"
-    ): Response<List<ScheduleDto>>
-
     // جلب تعليمات الأساتذة والواجبات
     @GET("assignments")
     suspend fun getTeacherInstructions(
@@ -79,15 +71,6 @@ interface SupabaseApi {
         @Query("target_role") roleFilter: String? = null,
         @Query("is_active") activeFilter: String = "eq.true",
         @Query("order") order: String = "created_at.desc",
-        @Query("select") select: String = "*"
-    ): Response<List<DirectiveDto>>
-
-    // جلب كافة التوجيهات النشطة بالسحابة (احتياطي عند اختلاف رمز المدرسة)
-    @GET("directives")
-    suspend fun getAllActiveDirectives(
-        @Query("is_active") activeFilter: String = "eq.true",
-        @Query("order") order: String = "created_at.desc",
-        @Query("limit") limit: Int = 20,
         @Query("select") select: String = "*"
     ): Response<List<DirectiveDto>>
 

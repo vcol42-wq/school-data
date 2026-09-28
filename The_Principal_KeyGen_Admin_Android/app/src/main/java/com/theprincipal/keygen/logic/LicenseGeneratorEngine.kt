@@ -29,6 +29,29 @@ object LicenseGeneratorEngine {
         return "$base-$checksum"
     }
 
+    fun generateCodeForProduct(product: com.theprincipal.keygen.model.ProductType): String {
+        return when (product) {
+            com.theprincipal.keygen.model.ProductType.THE_PRINCIPAL_DESKTOP -> {
+                generateUnifiedLicense("BOSS", "L1")
+            }
+            com.theprincipal.keygen.model.ProductType.PRINCIPAL_COMPOSITE_CODE -> {
+                val p1 = (1000..9999).random()
+                val suffix = ('A'..'Z').random().toString() + (1..9).random()
+                "ADM-$p1-$suffix"
+            }
+            com.theprincipal.keygen.model.ProductType.TEACHER_PAIRING_CODE -> {
+                val p1 = (1000..9999).random()
+                "TCH-$p1"
+            }
+            com.theprincipal.keygen.model.ProductType.STUDENT_PAIRING_CODE -> {
+                (1000..9999).random().toString()
+            }
+            else -> {
+                generateUnifiedLicense(product.code, product.defaultTier)
+            }
+        }
+    }
+
     /**
      * Verify whether a given key conforms to the unified algorithm.
      */
