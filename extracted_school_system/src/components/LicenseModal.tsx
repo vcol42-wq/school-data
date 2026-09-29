@@ -92,8 +92,9 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-slate-900 border-2 border-slate-700 rounded-3xl shadow-2xl overflow-hidden text-white flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 overflow-y-auto p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-200">
+      <div className="min-h-full flex items-center justify-center py-6">
+        <div className="relative w-full max-w-2xl bg-slate-900 border-2 border-slate-700 rounded-3xl shadow-2xl overflow-hidden text-white flex flex-col my-auto max-h-[92vh]">
         
         {/* Header */}
         <div className="relative bg-gradient-to-r from-indigo-700 via-blue-800 to-indigo-950 p-6 flex items-center justify-between border-b border-amber-400/40">
@@ -289,6 +290,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
           )}
         </div>
 
+      </div>
       </div>
     </div>
   );

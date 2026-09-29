@@ -196,42 +196,44 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
 
   if (onboardMode === 'selection') {
     return (
-      <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 dir-rtl text-right font-sans">
-        <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full p-8 md:p-10 space-y-8 border border-slate-200">
-          <div className="text-center space-y-3">
-            <div className="w-20 h-20 bg-indigo-600 rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-indigo-200">
-               <Building2 className="w-10 h-10 text-white" />
+      <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm overflow-y-auto p-4 dir-rtl text-right font-sans">
+        <div className="min-h-full flex items-center justify-center py-6">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full p-6 sm:p-8 md:p-10 space-y-6 sm:space-y-8 border border-slate-200 my-auto">
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-indigo-600 rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-indigo-200">
+                 <Building2 className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+              </div>
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900">مرحباً بك في منصة The Principal</h2>
+              <p className="text-slate-500 font-bold text-xs sm:text-sm">اختر طريقة البدء المناسبة لبيئة عملك:</p>
             </div>
-            <h2 className="text-2xl md:text-3xl font-black text-slate-900">مرحباً بك في منصة The Principal</h2>
-            <p className="text-slate-500 font-bold text-sm">اختر طريقة البدء المناسبة لبيئة عملك:</p>
-          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <button
-              onClick={() => { setDuplicateFound(null); setOnboardMode('new'); }}
-              className="p-6 md:p-8 bg-slate-50 border-2 border-indigo-500 hover:border-indigo-600 rounded-[2rem] hover:bg-indigo-50/50 transition-all group flex flex-col items-center text-center gap-3 cursor-pointer shadow-sm hover:shadow-md"
-            >
-              <div className="p-4 bg-indigo-100 rounded-2xl group-hover:scale-110 transition-transform">
-                <Sparkles className="w-8 h-8 text-indigo-600" />
-              </div>
-              <div>
-                <span className="block font-black text-lg text-slate-900">تأسيس مدرسة جديدة</span>
-                <span className="text-xs text-slate-500 font-semibold mt-1">تسجيل مدرسة لأول مرة بنظام حماية ضد التكرار</span>
-              </div>
-            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+              <button
+                onClick={() => { setDuplicateFound(null); setOnboardMode('new'); }}
+                className="p-5 sm:p-6 md:p-8 bg-slate-50 border-2 border-indigo-500 hover:border-indigo-600 rounded-[2rem] hover:bg-indigo-50/50 transition-all group flex flex-col items-center text-center gap-3 cursor-pointer shadow-sm hover:shadow-md"
+              >
+                <div className="p-3 sm:p-4 bg-indigo-100 rounded-2xl group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-indigo-600" />
+                </div>
+                <div>
+                  <span className="block font-black text-base sm:text-lg text-slate-900">تأسيس مدرسة جديدة</span>
+                  <span className="text-xs text-slate-500 font-semibold mt-1">تسجيل مدرسة لأول مرة بنظام حماية ضد التكرار</span>
+                </div>
+              </button>
 
-            <button
-              onClick={() => { setDuplicateFound(null); setOnboardMode('existing'); }}
-              className="p-6 md:p-8 bg-slate-50 border-2 border-emerald-500 hover:border-emerald-600 rounded-[2rem] hover:bg-emerald-50/50 transition-all group flex flex-col items-center text-center gap-3 cursor-pointer shadow-sm hover:shadow-md"
-            >
-              <div className="p-4 bg-emerald-100 rounded-2xl group-hover:scale-110 transition-transform">
-                <Cloud className="w-8 h-8 text-emerald-600" />
-              </div>
-              <div>
-                <span className="block font-black text-lg text-slate-900">استعادة مدرسة من السحابة</span>
-                <span className="text-xs text-slate-500 font-semibold mt-1">البحث بالاسم أو الإيميل أو رمز الاقتران</span>
-              </div>
-            </button>
+              <button
+                onClick={() => { setDuplicateFound(null); setOnboardMode('existing'); }}
+                className="p-5 sm:p-6 md:p-8 bg-slate-50 border-2 border-emerald-500 hover:border-emerald-600 rounded-[2rem] hover:bg-emerald-50/50 transition-all group flex flex-col items-center text-center gap-3 cursor-pointer shadow-sm hover:shadow-md"
+              >
+                <div className="p-3 sm:p-4 bg-emerald-100 rounded-2xl group-hover:scale-110 transition-transform">
+                  <Cloud className="w-7 h-7 sm:w-8 sm:h-8 text-emerald-600" />
+                </div>
+                <div>
+                  <span className="block font-black text-base sm:text-lg text-slate-900">استعادة مدرسة من السحابة</span>
+                  <span className="text-xs text-slate-500 font-semibold mt-1">البحث بالاسم أو الإيميل أو رمز الاقتران</span>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -239,8 +241,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto dir-rtl text-right font-sans">
-      <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 my-8">
+    <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm overflow-y-auto p-4 dir-rtl text-right font-sans">
+      <div className="min-h-full flex items-center justify-center py-6">
+        <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 my-auto">
 
         {/* Modal Header */}
         <div className="bg-slate-50 px-6 py-5 text-slate-900 flex items-center justify-between border-b border-slate-200">
@@ -465,6 +468,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
           </div>
         ) : null}
 
+      </div>
       </div>
     </div>
   );

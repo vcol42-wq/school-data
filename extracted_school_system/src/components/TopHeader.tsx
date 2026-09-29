@@ -335,8 +335,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
 
       {/* Quick QR & Simple Code Pairing Modal */}
       {showPairingModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 dir-rtl">
-          <div className="bg-white border-4 border-indigo-600 rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl relative text-right flex flex-col items-center">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md overflow-y-auto p-4 dir-rtl">
+          <div className="min-h-full flex items-center justify-center py-6">
+            <div className="bg-white border-4 border-indigo-600 rounded-[2.5rem] p-6 sm:p-8 max-w-md w-full shadow-2xl relative text-right flex flex-col items-center my-auto">
             <button 
               onClick={() => setShowPairingModal(false)}
               className="absolute left-6 top-6 p-2 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 cursor-pointer"
@@ -514,6 +515,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             >
               <span>إغلاق والعودة للرئيسية ✕</span>
             </button>
+          </div>
           </div>
         </div>
       )}

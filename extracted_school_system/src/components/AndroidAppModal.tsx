@@ -51,8 +51,9 @@ export const AndroidAppModal: React.FC<AndroidAppModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 dir-rtl">
-      <div className="relative w-full max-w-2xl bg-white border-4 border-indigo-600 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 overflow-y-auto p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 dir-rtl">
+      <div className="min-h-full flex items-center justify-center py-6">
+        <div className="relative w-full max-w-2xl bg-white border-4 border-indigo-600 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]">
         
         {/* Header */}
         <div className="relative bg-gradient-to-r from-indigo-800 via-blue-800 to-indigo-950 p-6 text-white flex items-center justify-between border-b-4 border-amber-400">
@@ -205,6 +206,7 @@ export const AndroidAppModal: React.FC<AndroidAppModalProps> = ({
           </button>
         </div>
 
+      </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, screen } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -11,6 +11,7 @@ if (app.isPackaged) {
 app.commandLine.appendSwitch('allow-file-access-from-files');
 app.commandLine.appendSwitch('disable-web-security');
 app.commandLine.appendSwitch('disable-site-isolation-trials');
+app.commandLine.appendSwitch('high-dpi-support', '1');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,15 +33,27 @@ function createWindow() {
   const iconPath = fs.existsSync(appIconPath) ? appIconPath : fallbackIconPath;
   const preloadPath = path.join(__dirname, 'preload.cjs');
 
+  // Obtain primary display work area to support all Windows scaling factors (100%, 125%, 150%, 175%, 200%, 250%)
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: workAreaWidth, height: workAreaHeight } = primaryDisplay.workAreaSize;
+
+  // Responsive default dimensions bounded safely within current work area
+  const idealWidth = 1280;
+  const idealHeight = 820;
+
+  const initialWidth = Math.min(idealWidth, Math.max(768, Math.floor(workAreaWidth * 0.96)));
+  const initialHeight = Math.min(idealHeight, Math.max(520, Math.floor(workAreaHeight * 0.94)));
+
   const win = new BrowserWindow({
-    width: 1320,
-    height: 860,
-    minWidth: 1024,
-    minHeight: 700,
-    title: 'نظام الإدارة المدرسية المتكامل - The Principal v6.0 Super Edition',
+    width: initialWidth,
+    height: initialHeight,
+    minWidth: 720,
+    minHeight: 480,
+    center: true,
+    title: 'نظام الإدارة المدرسية المتكامل - The Principal v6.3 Super Edition',
     icon: iconPath,
     backgroundColor: '#f8fafc',
-    show: true,
+    show: false,
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
@@ -49,6 +62,16 @@ function createWindow() {
       allowRunningInsecureContent: true,
       preload: fs.existsSync(preloadPath) ? preloadPath : undefined
     }
+  });
+
+  // Automatically maximize on compact or high-DPI scaled displays (e.g. 2560x1600 at 200% scale = 1280x800 logical viewport)
+  // so that all UI elements, modals, and buttons are fully visible and comfortable
+  if (workAreaWidth <= 1366 || workAreaHeight <= 840) {
+    win.maximize();
+  }
+
+  win.once('ready-to-show', () => {
+    win.show();
   });
 
   if (fs.existsSync(iconPath)) {

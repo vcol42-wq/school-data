@@ -72,11 +72,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "The Principal v6.2",
-      "artifactName": "The_Principal_Setup_v6.2.0.exe"
+      "shortcutName": "The Principal v6.3",
+      "artifactName": "The_Principal_Setup_v6.3.0.exe"
     },
     "portable": {
-      "artifactName": "The_Principal_Portable_v6.2.0.exe"
+      "artifactName": "The_Principal_Portable_v6.3.0.exe"
     },
     "appx": {
       "identityName": "waleedal-hasson.ThePrincipal-",
@@ -89,7 +89,7 @@
         "ar",
         "en-US"
       ],
-      "artifactName": "The_Principal_v6.2.0_MicrosoftStore.appx"
+      "artifactName": "The_Principal_v6.3.0_MicrosoftStore.appx"
     }
   }
 }

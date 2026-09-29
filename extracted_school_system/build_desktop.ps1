@@ -20,8 +20,9 @@ Copy-Item -Path "package.json" -Destination "app_staging\package.json" -Force
 Copy-Item -Path "dist\server.cjs" -Destination "app_staging\server.cjs" -Force
 
 Write-Host "[4/5] Preparing Binaries & Packing ASAR Archive (Synchronous)..."
-New-Item -ItemType Directory -Path "dist_electron\win-unpacked\resources" -Force | Out-Null
 Copy-Item -Path ".\node_modules\electron\dist\*" -Destination "dist_electron\win-unpacked\" -Recurse -Force -Exclude "default_app.asar"
+Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.3.exe" -Force
+Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.3 Super Edition.exe" -Force
 Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.0.exe" -Force
 Copy-Item -Path ".\node_modules\electron\dist\electron.exe" -Destination "dist_electron\win-unpacked\The Principal v6.0 Super Edition.exe" -Force
 cmd.exe /c "set ELECTRON_RUN_AS_NODE=1 && .\node_modules\electron\dist\electron.exe .\node_modules\@electron\asar\bin\asar.js pack .\app_staging .\dist_electron\win-unpacked\resources\app.asar"
