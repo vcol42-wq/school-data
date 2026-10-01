@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,7 +43,6 @@ fun RoleSelectionScreen(
 ) {
     val context = LocalContext.current
     var visible by remember { mutableStateOf(false) }
-    var pendingRoleToConfirm by remember { mutableStateOf<AppRole?>(null) }
 
     LaunchedEffect(Unit) {
         visible = true
@@ -101,7 +99,7 @@ fun RoleSelectionScreen(
 
                     Text(
                         text = "المنظومة المدرسية الذكية",
-                        fontSize = 19.sp,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         color = Color.White,
                         textAlign = TextAlign.Center
@@ -110,8 +108,8 @@ fun RoleSelectionScreen(
                     Spacer(modifier = Modifier.height(2.dp))
 
                     Text(
-                        text = "اختر بوابتك المخصصة للدخول الفوري",
-                        fontSize = 11.5.sp,
+                        text = "اختر بوابتك المخصصة للدخول المباشر",
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF94A3B8),
                         textAlign = TextAlign.Center
@@ -119,58 +117,63 @@ fun RoleSelectionScreen(
                 }
             }
 
-            // 2. Compact Role Cards
+            // 2. Role Cards in the exact order requested: Student first, then Teacher, then Principal
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Teacher Card
+                // Card 1: STUDENT (طالب) - First as requested
                 AnimatedVisibility(
                     visible = visible,
                     enter = fadeIn(tween(600)) + slideInVertically(tween(600)) { 30 }
                 ) {
                     CompactRoleCard(
-                        title = "بوابة الأستاذ / المعلم",
-                        badge = "👨‍🏫 كادر المدرسة والمشرفين",
-                        subtitle = "سجل الدرجات التفاعلي، جدول الحصص، والغيابات",
-                        tags = listOf("سجل الدرجات", "الجدول", "الغيابات", "الإشراف"),
-                        primaryColor = Color(0xFF4F46E5),
-                        secondaryColor = Color(0xFF6366F1),
-                        accentBorder = Color(0xFF818CF8),
+                        roleWord = "طالب",
+                        ctaText = "أنت طالب؟ اضغط هنا 👈",
+                        badge = "🎓 الطلبة وأولياء الأمور",
+                        subtitle = "الجدول الأسبوعي المباشر، الواجبات اليومية، والنتائج",
+                        tags = listOf("جدول الحصص", "الواجبات", "الحضور", "التقوية"),
+                        primaryColor = Color(0xFF059669),
+                        secondaryColor = Color(0xFF10B981),
+                        accentBorder = Color(0xFF34D399),
                         onClick = {
-                            pendingRoleToConfirm = AppRole.TEACHER
+                            RoleManager.setSelectedRole(context, AppRole.STUDENT)
+                            onSelectStudent()
                         }
                     )
                 }
 
-                // Student Card
+                // Card 2: TEACHER (أستاذ)
                 AnimatedVisibility(
                     visible = visible,
                     enter = fadeIn(tween(700)) + slideInVertically(tween(700)) { 40 }
                 ) {
                     CompactRoleCard(
-                        title = "بوابة الطالب / ولي الأمر",
-                        badge = "🎓 الطلبة وأولياء الأمور",
-                        subtitle = "الجدول الأسبوعي المباشر، الواجبات، والنتائج",
-                        tags = listOf("جدول الدروس", "الواجبات", "الحضور", "التقوية"),
-                        primaryColor = Color(0xFF059669),
-                        secondaryColor = Color(0xFF10B981),
-                        accentBorder = Color(0xFF34D399),
+                        roleWord = "أستاذ",
+                        ctaText = "أنت أستاذ؟ اضغط هنا 👈",
+                        badge = "👨‍🏫 كادر المدرسة والمعلمين",
+                        subtitle = "سجل الدرجات التفاعلي، جدول الحصص، والغيابات",
+                        tags = listOf("سجل الدرجات", "جدول الحصص", "الغيابات", "الإشراف"),
+                        primaryColor = Color(0xFF4F46E5),
+                        secondaryColor = Color(0xFF6366F1),
+                        accentBorder = Color(0xFF818CF8),
                         onClick = {
-                            pendingRoleToConfirm = AppRole.STUDENT
+                            RoleManager.setSelectedRole(context, AppRole.TEACHER)
+                            onSelectTeacher()
                         }
                     )
                 }
 
-                // Principal Card
+                // Card 3: PRINCIPAL (مدير)
                 AnimatedVisibility(
                     visible = visible,
                     enter = fadeIn(tween(800)) + slideInVertically(tween(800)) { 50 }
                 ) {
                     CompactRoleCard(
-                        title = "بوابة المدير / الإدارة العامة",
+                        roleWord = "مدير",
+                        ctaText = "أنت مدير؟ اضغط هنا 👈",
                         badge = "👑 الإدارة المدرسية والمشرفين",
                         subtitle = "لوحة القيادة المباشرة، بث التوجيهات، والرقابة الشاملة",
                         tags = listOf("لوحة القيادة", "بث التوجيهات", "متابعة الحصص", "كافة الصفوف"),
@@ -178,13 +181,14 @@ fun RoleSelectionScreen(
                         secondaryColor = Color(0xFFF59E0B),
                         accentBorder = Color(0xFFFBBF24),
                         onClick = {
-                            pendingRoleToConfirm = AppRole.PRINCIPAL
+                            RoleManager.setSelectedRole(context, AppRole.PRINCIPAL)
+                            onSelectPrincipal()
                         }
                     )
                 }
             }
 
-            // 3. Compact Bottom Guarantee Note - Fully visible & scrollable
+            // 3. Compact Bottom Guarantee Note
             AnimatedVisibility(
                 visible = visible,
                 enter = fadeIn(tween(900))
@@ -209,101 +213,22 @@ fun RoleSelectionScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "عزل تام: يتم تذكر اختيارك، ويمكنك دائماً تغيير البوابة من شاشة الإعدادات.",
-                            fontSize = 10.5.sp,
+                            text = "🔒 القفل بعد الربط: يمكنك الرجوع وتغيير البوابة قبل إدخال البيانات، وبمجرد الربط الفعلي بالمدرسة يتم قفل الجهاز نهائياً.",
+                            fontSize = 11.sp,
                             color = Color(0xFFCBD5E1),
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
         }
     }
-
-    // Role Selection Confirmation Dialog (تأكيد الاختيار لمنع الخطأ)
-    pendingRoleToConfirm?.let { role ->
-        val isTeacher = role == AppRole.TEACHER
-        val isStudent = role == AppRole.STUDENT
-        val isPrincipal = role == AppRole.PRINCIPAL
-        AlertDialog(
-            onDismissRequest = { pendingRoleToConfirm = null },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = when {
-                            isTeacher -> Icons.Default.School
-                            isStudent -> Icons.Default.School
-                            else -> Icons.Default.Security
-                        },
-                        contentDescription = null,
-                        tint = when {
-                            isTeacher -> Color(0xFF6366F1)
-                            isStudent -> Color(0xFF10B981)
-                            else -> Color(0xFFF59E0B)
-                        }
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = when {
-                            isTeacher -> "تأكيد الدخول كـ (أستاذ) 👨‍🏫"
-                            isStudent -> "تأكيد الدخول كـ (طالب) 🎓"
-                            else -> "تأكيد الدخول كـ (مدير / إدارة المدرسة) 👑"
-                        },
-                        fontWeight = FontWeight.Black,
-                        fontSize = 15.sp
-                    )
-                }
-            },
-            text = {
-                Text(
-                    text = when {
-                        isTeacher ->
-                            "أنت على وشك الدخول إلى بوابة الأستاذ والمشرف (سجل الدرجات والجداول).\n\nسيتم تثبيت هذا الخيار لفتح واجهتك مباشرة في كل مرة، كما يمكنك دائماً تغيير البوابة أو إعادة الاختيار من شاشة الإعدادات في أي وقت.\n\nهل تود المتابعة؟"
-                        isStudent ->
-                            "أنت على وشك الدخول إلى بوابة الطالب وولي الأمر (الجدول والواجبات).\n\nسيتم تثبيت هذا الخيار لفتح واجهتك مباشرة في كل مرة، كما يمكنك دائماً تغيير البوابة أو إعادة الاختيار من شاشة الإعدادات في أي وقت.\n\nهل تود المتابعة؟"
-                        else ->
-                            "أنت على وشك الدخول إلى بوابة المدير والإدارة المدرسية (لوحة القيادة، بث التوجيهات، ومتابعة كافة الصفوف والأساتذة).\n\nسيتم تثبيت هذا الخيار لفتح واجهتك مباشرة في كل مرة، كما يمكنك دائماً تغيير البوابة من شاشة الإعدادات.\n\nهل تود المتابعة؟"
-                    },
-                    fontSize = 12.5.sp,
-                    color = Color(0xFF334155),
-                    lineHeight = 19.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        RoleManager.setSelectedRole(context, role)
-                        when (role) {
-                            AppRole.TEACHER -> onSelectTeacher()
-                            AppRole.STUDENT -> onSelectStudent()
-                            AppRole.PRINCIPAL -> onSelectPrincipal()
-                        }
-                        pendingRoleToConfirm = null
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = when {
-                            isTeacher -> Color(0xFF4F46E5)
-                            isStudent -> Color(0xFF059669)
-                            else -> Color(0xFFD97706)
-                        }
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("نعم، تأكيد وتثبيت", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingRoleToConfirm = null }) {
-                    Text("تراجع", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
 }
 
 @Composable
 fun CompactRoleCard(
-    title: String,
+    roleWord: String,
+    ctaText: String,
     badge: String,
     subtitle: String,
     tags: List<String>,
@@ -321,7 +246,7 @@ fun CompactRoleCard(
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF1E293B)
         ),
-        border = BorderStroke(1.5.dp, accentBorder.copy(alpha = 0.6f)),
+        border = BorderStroke(1.8.dp, accentBorder),
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(
@@ -330,97 +255,102 @@ fun CompactRoleCard(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            primaryColor.copy(alpha = 0.22f),
+                            primaryColor.copy(alpha = 0.28f),
                             Color(0xFF1E293B)
                         )
                     )
                 )
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
         ) {
-            // Top Row: Badge & Enter Button Indicator
+            // Header Row: Badge & Big Role Word
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    color = primaryColor.copy(alpha = 0.18f),
+                    color = primaryColor.copy(alpha = 0.25f),
                     shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, accentBorder.copy(alpha = 0.35f))
+                    border = BorderStroke(1.dp, accentBorder.copy(alpha = 0.5f))
                 ) {
                     Text(
                         text = badge,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = accentBorder,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(primaryColor)
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = "دخول",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(13.dp)
+                        color = accentBorder,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
+
+                Text(
+                    text = roleWord,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Title
-            Text(
-                text = title,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Black,
-                color = Color.White
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Subtitle
             Text(
                 text = subtitle,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Normal,
-                color = Color(0xFF94A3B8),
-                maxLines = 1
+                color = Color(0xFFCBD5E1)
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Tags row (mini pill chips)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 tags.take(4).forEach { tag ->
                     Surface(
-                        color = Color(0xFF334155).copy(alpha = 0.7f),
+                        color = Color(0xFF334155).copy(alpha = 0.8f),
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
                             text = tag,
-                            fontSize = 9.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFE2E8F0),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            color = Color(0xFFF1F5F9),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
                         )
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // VERY PROMINENT CTA BUTTON (أنت طالب؟ اضغط هنا / أنت أستاذ؟ اضغط هنا / أنت مدير؟ اضغط هنا)
+            Surface(
+                onClick = onClick,
+                color = primaryColor,
+                shape = RoundedCornerShape(12.dp),
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = ctaText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }

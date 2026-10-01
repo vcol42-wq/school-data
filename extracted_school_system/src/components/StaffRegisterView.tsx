@@ -1313,10 +1313,10 @@ export const StaffRegisterView: React.FC<StaffRegisterViewProps> = ({
           </div>
         </div>
 
-        {/* Scrollable Container with sticky headers and pinned scrollbar */}
+        {/* Full Table Container - No height clipping so all staff members are visible */}
         <div 
           id="staff-table-scroll-container" 
-          className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-280px)] scrollbar-thin scrollbar-thumb-sky-500"
+          className="overflow-x-auto scrollbar-thin scrollbar-thumb-sky-500"
         >
           <table className="data-grid w-full text-center border-collapse min-w-[1250px] text-xs">
             <thead className="sticky top-0 z-20 shadow-md">

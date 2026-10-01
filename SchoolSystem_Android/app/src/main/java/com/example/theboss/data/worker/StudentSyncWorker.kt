@@ -32,9 +32,9 @@ class StudentSyncWorker(
                 repository.syncDailyAssignments(schoolId)
                 repository.syncDirectives(schoolId)
                 repository.syncTimetableAndInstructions(schoolId)
-                repository.syncDirectMessages()
-                val deviceId = repository.getDeviceId()
-                repository.syncAttendance(schoolId, deviceId)
+                val recordNumber = repository.getStudentRecordNumber()
+                repository.syncStudentGrades(schoolId, recordNumber)
+                repository.syncAttendance(schoolId, recordNumber)
             }
             Result.success()
         } catch (e: Exception) {

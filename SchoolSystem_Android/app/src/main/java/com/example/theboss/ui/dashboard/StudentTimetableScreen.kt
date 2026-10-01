@@ -191,6 +191,7 @@ fun StudentTimetableScreen(
 
     val assignments by viewModel.assignments.collectAsState()
     val attendance by viewModel.attendance.collectAsState()
+    val allGrades by viewModel.grades.collectAsState()
     val directives by viewModel.directives.collectAsState()
     val syncedScheduleJson by viewModel.syncedSchedule.collectAsState()
     val isRefreshing by viewModel.isRefreshing.collectAsState()
@@ -218,11 +219,14 @@ fun StudentTimetableScreen(
                 ?: "أ"
         )
     }
+    val sessionManager = remember { com.example.theboss.data.local.SessionManager(context) }
+
     var schoolName by remember {
         mutableStateOf(
-            prefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
+            sessionManager.getSchoolName()?.takeIf { it.isNotBlank() }
+                ?: prefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
                 ?: diyalaPrefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
-                ?: "ثانوية كعب بن مالك المسائية"
+                ?: "المدرسة الذكية"
         )
     }
     var rawScheduleJson by remember {
@@ -932,6 +936,15 @@ fun StudentTimetableScreen(
         }
     }
 
+    fun getGradesForSubject(subj: String): List<com.example.theboss.data.local.GradeEntity> {
+        if (subj.isBlank() || subj == "شاغر") return emptyList()
+        val sNorm = norm(subj)
+        return allGrades.filter { grade: com.example.theboss.data.local.GradeEntity ->
+            val gNorm = norm(grade.subjectId)
+            gNorm.contains(sNorm) || sNorm.contains(gNorm)
+        }
+    }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         if (isLandscape) {
             // ----------------------------------------------------
@@ -1555,6 +1568,7 @@ fun StudentTimetableScreen(
             val prep = findPrepForSubject(slot.subject)
             val directive = findDirectiveForSubject(slot.subject)
             val subjectAbsences = getAttendanceForSubject(slot.subject)
+            val subjectGrades = getGradesForSubject(slot.subject)
 
             val alarmKey = "alarm_period_${day}_${periodNum}"
             var isAlarmEnabled by remember { mutableStateOf(prefs.getBoolean(alarmKey, false)) }
@@ -1884,6 +1898,83 @@ fun StudentTimetableScreen(
                                 }
                             }
 
+                            // Section 4: Grades & Results
+                            Card(
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            Icons.Default.Assessment,
+                                            contentDescription = null,
+                                            tint = Color(0xFF2563EB),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("الدرجات والنتائج في هذه المادة 📊", fontWeight = FontWeight.Black, fontSize = 15.5.sp, color = Color(0xFF0F172A))
+                                    }
+                                    HorizontalDivider(color = Color(0xFFE2E8F0))
+
+                                    if (subjectGrades.isNotEmpty()) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            subjectGrades.forEach { gradeRecord ->
+                                                val isSuccess = gradeRecord.score >= 50.0
+                                                Surface(
+                                                    color = if (isSuccess) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    border = BorderStroke(1.dp, if (isSuccess) Color(0xFFBBF7D0) else Color(0xFFFECACA)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(12.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = gradeRecord.type,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 13.5.sp,
+                                                            color = Color(0xFF1E293B)
+                                                        )
+                                                        Surface(
+                                                            color = if (isSuccess) Color(0xFFDCFCE7) else Color(0xFFFEE2E2),
+                                                            shape = RoundedCornerShape(8.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "${gradeRecord.score.toInt()} / ${gradeRecord.maxScore.toInt()}",
+                                                                fontWeight = FontWeight.Black,
+                                                                fontSize = 14.sp,
+                                                                color = if (isSuccess) Color(0xFF166534) else Color(0xFF991B1B),
+                                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Surface(
+                                            color = Color(0xFFF8FAFC),
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(14.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(20.dp))
+                                                Spacer(Modifier.width(8.dp))
+                                                Text("لم يتم رصد درجات لهذه المادة بعد من قبل الأستاذ 📝", color = Color(0xFF64748B), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                             Spacer(Modifier.height(8.dp))
 
                             OutlinedButton(
@@ -1905,7 +1996,7 @@ fun StudentTimetableScreen(
         if (showStudentInfoDialog) {
             val currentSchoolCode = prefs.getString("school_code", null)
                 ?: diyalaPrefs.getString("school_code", null)
-                ?: "762261"
+                ?: ""
             StudentInfoEditDialog(
                 initialName = studentName,
                 initialGrade = studentGrade,
@@ -3122,7 +3213,7 @@ fun StudentInfoEditDialog(
     var name by remember { mutableStateOf(initialName) }
     var grade by remember { mutableStateOf(initialGrade) }
     var section by remember { mutableStateOf(initialSection) }
-    var schoolCode by remember { mutableStateOf(initialSchoolCode.ifEmpty { "762261" }) }
+    var schoolCode by remember { mutableStateOf(initialSchoolCode) }
 
     val commonGrades = listOf(
         "الصف الأول المتوسط",

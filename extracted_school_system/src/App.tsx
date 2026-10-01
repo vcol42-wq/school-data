@@ -50,12 +50,17 @@ import { ManagementTipsView } from './components/ManagementTipsView';
 import { CloudScheduleView } from './components/CloudScheduleView';
 import { MobilePrincipalDashboard } from './components/MobilePrincipalDashboard';
 import { TeacherAuthorityHub } from './components/TeacherAuthorityHub';
+import { LicenseModal } from './components/LicenseModal';
 import { Sparkles } from 'lucide-react';
 import { exportSchoolData } from './utils/syncService';
 import { sanitizeStudents } from './utils/syncEngine';
+import { isDesktopActivated } from './utils/licenseService';
 
 
 export default function App() {
+  // Activation State (Enforces commercial desktop license key)
+  const [isActivated, setIsActivated] = useState<boolean>(() => isDesktopActivated());
+
   // Navigation & Theme
   const [activeView, setActiveView] = useState<ActiveView>(() => {
     try {
@@ -186,9 +191,13 @@ export default function App() {
     if (config.adminEmail) localStorage.setItem('diyala_admin_email', config.adminEmail);
   }, [config.schoolName, config.schoolId, config.pairingCode, config.studentPairingCode, config.principalPairingCode, config.adminEmail]);
 
-  // Automatic Background Cloud Sync for School, Students, Staff, and Classes
+  // Automatic Background Cloud Sync for School, Students, Staff, and Classes (Only for activated licenses)
   useEffect(() => {
     if (!config.schoolId || !config.schoolName || config.schoolName === 'مدرستي النموذجية') return;
+    if (!isDesktopActivated()) {
+      // Strictly prevent background cloud sync if license is not activated
+      return;
+    }
 
     const activeSchoolId = config.schoolId;
     const activeSchoolName = config.schoolName;
@@ -320,19 +329,20 @@ export default function App() {
       <div className="flex-1 overflow-y-auto custom-scrollbar relative">
         <main className="pb-24 max-w-7xl mx-auto w-full">
           {!config.schoolId ? (
-          <div className="flex-1 flex items-center justify-center p-4">
-             <OnboardingModal
-                onComplete={(data) => {
-                  const { restoredStudents, restoredTeachers, restoredSchedule, ...onboardConfig } = data;
-                  setConfig(prev => ({ ...prev, ...onboardConfig }));
-                  if (restoredStudents) setStudents(restoredStudents);
-                  if (restoredTeachers) setStaffList(restoredTeachers);
-                  if (restoredSchedule) setScheduleMap(restoredSchedule);
-                }}
-              />
-          </div>
-        ) : (
-          <>
+            <div className="flex-1 flex items-center justify-center p-4">
+               <OnboardingModal
+                  onComplete={(data) => {
+                    const { restoredStudents, restoredTeachers, restoredSchedule, ...onboardConfig } = data;
+                    setConfig(prev => ({ ...prev, ...onboardConfig }));
+                    if (restoredStudents) setStudents(restoredStudents);
+                    if (restoredTeachers) setStaffList(restoredTeachers);
+                    if (restoredSchedule) setScheduleMap(restoredSchedule);
+                    setIsActivated(isDesktopActivated());
+                  }}
+                />
+            </div>
+          ) : (
+            <>
             {activeView === 'launcher' && (
               <MainLauncher
                 setActiveView={setActiveView}

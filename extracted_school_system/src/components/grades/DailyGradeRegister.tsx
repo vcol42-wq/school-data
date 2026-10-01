@@ -12,16 +12,21 @@ import {
   ChevronRight,
   ChevronLeft,
   Calendar,
-  Maximize2
+  Maximize2,
+  Printer
 } from 'lucide-react';
 import { normalizeArabic } from '../../utils/syncService';
 import { isOralAndWrittenSubject, calculateMonthScore, calculateExamScore } from '../../utils/gradeCalculations';
+import { GradeRegisterCoverPage } from './GradeRegisterCoverPage';
 
 interface DailyGradeRegisterProps {
   students: Student[];
   onUpdateStudentMark: (studentId: string, subject: string, updater: (prevMark: StudentMark) => StudentMark) => void;
   onSelectStudent: (student: Student) => void;
   subjectsList: string[];
+  selectedGrade?: string;
+  selectedSection?: string;
+  schoolName?: string;
 }
 
 export type SubStage = 'm1' | 'm2' | 'midterm' | 'm3' | 'm4' | 'final';
@@ -30,10 +35,34 @@ export const DailyGradeRegister: React.FC<DailyGradeRegisterProps> = ({
   students,
   onUpdateStudentMark,
   onSelectStudent,
-  subjectsList
+  subjectsList,
+  selectedGrade,
+  selectedSection,
+  schoolName
 }) => {
   const [selectedSubject, setSelectedSubject] = useState<string>(() => subjectsList[0] || 'اللغة العربية');
   const [subStage, setSubStage] = useState<SubStage>('m1');
+
+  // استخراج أستاذ المادة تلقائياً من جدول الحصص الأسبوعي
+  const teacherName = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem('the_principal_v6_schedule_map') || localStorage.getItem('school_schedule');
+      if (raw) {
+        const sched = JSON.parse(raw);
+        for (const day of Object.keys(sched)) {
+          const rows = sched[day] || [];
+          for (const r of rows) {
+            if (r.subject === selectedSubject || (r.subject && r.subject.includes(selectedSubject))) {
+              if (r.teacherName && r.teacherName !== '-') {
+                return r.teacherName;
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+    return 'مدرس المادة';
+  }, [selectedSubject]);
   
   // طريقة حساب اليومي لكل مادة (تخزن في localStorage أو بحالة المكون)
   const [calcModes, setCalcModes] = useState<{ [subject: string]: 'sum' | 'average' }>(() => {
@@ -316,8 +345,30 @@ export const DailyGradeRegister: React.FC<DailyGradeRegisterProps> = ({
               ➕ الجمع المباشر
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="px-3.5 py-1.5 mr-auto bg-amber-700 hover:bg-amber-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="طباعة سجل اليومي والنشاط كـ A4"
+          >
+            <Printer className="w-3.5 h-3.5 text-amber-200" />
+            <span>طباعة سجل اليومي A4</span>
+          </button>
         </div>
 
+      </div>
+
+      {/* 2.5. صفحة الغلاف الرسمية المنفردة لسجل اليومي */}
+      <div className="hidden print:block">
+        <GradeRegisterCoverPage
+          registerTitle="سِجِلّ اليَوْمِي وَالأَنْشِطَةِ الصَّفِّيَّة"
+          subject={selectedSubject}
+          grade={selectedGrade && selectedGrade !== 'الكل' ? selectedGrade : students[0]?.currentGrade || 'الصف الدراسي'}
+          section={selectedSection && selectedSection !== 'الكل' ? selectedSection : students[0]?.section || 'أ'}
+          teacherName={teacherName}
+          schoolName={schoolName}
+        />
       </div>
 
       {/* 3. جدول الرصد والإدخال اليومي */}

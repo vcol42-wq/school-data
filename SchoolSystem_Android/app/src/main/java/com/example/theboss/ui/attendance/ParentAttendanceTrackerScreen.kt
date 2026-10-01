@@ -47,10 +47,10 @@ class ParentAttendanceViewModel @Inject constructor(
 
     fun refresh() {
         val schoolId = repository.getSchoolId() ?: return
-        val deviceId = repository.getDeviceId()
+        val recordNumber = repository.getStudentRecordNumber()
         viewModelScope.launch {
             _isRefreshing.value = true
-            repository.syncAttendance(schoolId, deviceId)
+            repository.syncAttendance(schoolId, recordNumber)
             _isRefreshing.value = false
         }
     }

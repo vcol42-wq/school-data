@@ -138,13 +138,13 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
             </div>
           )}
 
-          {/* Freemium clarification banner */}
+          {/* Official License Activation Banner */}
           <div className="p-3.5 bg-indigo-950/70 border border-indigo-400/40 rounded-2xl text-xs font-bold text-indigo-200 flex items-center gap-3">
-            <span className="p-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-lg shrink-0 font-black text-[10px]">
-              مجاني 100%
+            <span className="p-1.5 bg-amber-500/20 text-amber-300 border border-amber-400/30 rounded-lg shrink-0 font-black text-[10px]">
+              ترخيص رسمي
             </span>
             <p className="leading-relaxed">
-              كافة ميزات سطح المكتب (شيتات الإكسل، الشيت الإلكتروني، توليد الجدول المدرسي، الطباعة) متاحة ومجانية بالكامل. هذا التفعيل يفتح الربط السحابي ومزامنة هواتف الأساتذة والطلبة.
+              تتطلب منظومة The Principal المكتبية كود تفعيل معتمد لربط رخصة المدرسة مع هذا الحاسوب وتشفير قاعدة البيانات والربط السحابي مع هواتف الكادر والطلبة.
             </p>
           </div>
 

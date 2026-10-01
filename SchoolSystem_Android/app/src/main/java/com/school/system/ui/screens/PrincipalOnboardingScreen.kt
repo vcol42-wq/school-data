@@ -153,32 +153,7 @@ fun PrincipalOnboardingScreen(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
-
-                TextButton(
-                    onClick = {
-                        RoleManager.clearSelectedRole(context)
-                        onNavigateToRoleSelection()
-                    }
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.SwapHoriz,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "تبديل الصفة ⇄",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
-                }
             }
-
-            // Header Content
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier

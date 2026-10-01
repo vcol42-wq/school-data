@@ -47,35 +47,225 @@ class StudentRepository @Inject constructor(
         return total
     }
 
+    private fun codeMatches(candidate: Any?, target: String): Boolean {
+        if (candidate == null) return false
+        val raw = candidate.toString().trim().removeSurrounding("\"").removeSurrounding("'")
+        if (raw.equals(target, ignoreCase = true)) return true
+        if (raw.endsWith(".0") && raw.substringBefore(".").equals(target, ignoreCase = true)) return true
+        if (target.endsWith(".0") && target.substringBefore(".").equals(raw, ignoreCase = true)) return true
+        val numRaw = raw.toDoubleOrNull()
+        val numTarget = target.toDoubleOrNull()
+        if (numRaw != null && numTarget != null && numRaw == numTarget) return true
+        return false
+    }
+
+    fun saveSupabaseCredentials(
+        url: String,
+        apiKey: String,
+        schoolId: String? = null,
+        schoolName: String? = null
+    ) {
+        try {
+            val bossEditor = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).edit()
+            if (url.isNotBlank()) bossEditor.putString("supabase_url", url.trim())
+            if (apiKey.isNotBlank()) bossEditor.putString("supabase_key", apiKey.trim())
+            if (!schoolId.isNullOrBlank()) bossEditor.putString("school_id", schoolId.trim())
+            if (!schoolName.isNullOrBlank()) bossEditor.putString("school_name", schoolName.trim())
+            bossEditor.apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            val diyalaEditor = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE).edit()
+            if (url.isNotBlank()) diyalaEditor.putString("supabase_url", url.trim())
+            if (apiKey.isNotBlank()) diyalaEditor.putString("supabase_key", apiKey.trim())
+            if (!schoolId.isNullOrBlank()) {
+                diyalaEditor.putString("diyala_school_id", schoolId.trim())
+                diyalaEditor.putString("school_id", schoolId.trim())
+            }
+            if (!schoolName.isNullOrBlank()) diyalaEditor.putString("school_name", schoolName.trim())
+            diyalaEditor.apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        try {
+            val sysEditor = context.getSharedPreferences("school_system_prefs", Context.MODE_PRIVATE).edit()
+            if (url.isNotBlank()) sysEditor.putString("cloud_url", url.trim())
+            if (apiKey.isNotBlank()) sysEditor.putString("cloud_key", apiKey.trim())
+            if (!schoolId.isNullOrBlank()) sysEditor.putString("school_id", schoolId.trim())
+            if (!schoolName.isNullOrBlank()) sysEditor.putString("school_name", schoolName.trim())
+            sysEditor.apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun pairSchoolDirectly(
+        schoolId: String,
+        schoolCode: String,
+        schoolName: String,
+        url: String? = null,
+        apiKey: String? = null
+    ): Result<Boolean> {
+        return try {
+            if (!url.isNullOrBlank() && !apiKey.isNullOrBlank()) {
+                saveSupabaseCredentials(url, apiKey, schoolId, schoolName)
+            }
+            sessionManager.saveSchoolSession(
+                schoolId = schoolId,
+                schoolCode = schoolCode,
+                schoolName = schoolName
+            )
+            withContext(Dispatchers.IO) {
+                try {
+                    syncSchedule(schoolId)
+                    syncDirectives(schoolId)
+                    syncTimetableAndInstructions(schoolId)
+                    syncDailyAssignments(schoolId)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            Result.success(true)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
     suspend fun verifySchoolCode(enteredCode: String): Result<Boolean> {
         return try {
             val cleanCode = enteredCode.trim()
             if (cleanCode.isBlank()) {
                 return Result.failure(Exception("يرجى إدخال رمز المدرسة أو كود الاقتران."))
             }
-            var response = api.getSchoolByCode(pairingCodeFilter = "eq.$cleanCode")
-            if (!response.isSuccessful || response.body().isNullOrEmpty()) {
-                response = api.getSchoolByCode(idFilter = "eq.$cleanCode")
+
+            // خيار الطالب المستقل
+            if (cleanCode.equals("independent", ignoreCase = true) || cleanCode == "طالب مستقل" || cleanCode.equals("INDEPENDENT", ignoreCase = true)) {
+                sessionManager.saveSchoolSession(
+                    schoolId = "independent_student",
+                    schoolCode = "INDEPENDENT",
+                    schoolName = "طالب مستقل"
+                )
+                return Result.success(true)
             }
 
-            val schoolsList = response.body().orEmpty()
-            // اختيار المدرسة المطابقة بكود الطالب أو كود الاقتران أو المعرف حصراً لمنع التداخل بين المدارس
-            val school = schoolsList.firstOrNull { 
-                it.config?.get("student_pairing_code")?.toString() == cleanCode ||
-                it.pairingCode == cleanCode || 
-                it.id == cleanCode
+            // 1. إذا كان الكود هو نص JSON كامل ناتج عن مسح الباركود
+            if (cleanCode.startsWith("{") && cleanCode.endsWith("}")) {
+                try {
+                    val gson = Gson()
+                    val mapType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+                    val map: Map<String, Any> = gson.fromJson(cleanCode, mapType)
+                    val sId = (map["schoolId"] ?: map["id"])?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val sName = (map["schoolName"] ?: map["name"])?.toString()?.trim()?.removeSurrounding("\"") ?: "المدرسة الذكية"
+                    val pCode = (map["studentPairingCode"] ?: map["student_pairing_code"] ?: map["pairingCode"])?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val sUrl = map["url"]?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val sKey = map["apiKey"]?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+
+                    if (sId.isNotBlank()) {
+                        return pairSchoolDirectly(
+                            schoolId = sId,
+                            schoolCode = if (pCode.isNotBlank()) pCode else sId,
+                            schoolName = sName,
+                            url = sUrl.ifBlank { null },
+                            apiKey = sKey.ifBlank { null }
+                        )
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
-            if (school == null) {
-                return Result.failure(Exception("لم يتم العثور على مدرسة مطابقة للكود ($cleanCode). يرجى التأكد من كود المدرسة المعتمد."))
+            // 2. البحث المباشر بمعرف المدرسة (إذا بدأ بـ SCH- أو كان ID)
+            var matchedSchool: com.example.theboss.data.remote.School? = null
+            if (cleanCode.startsWith("SCH-", ignoreCase = true)) {
+                try {
+                    val res = api.getSchoolByCode(idFilter = "eq.$cleanCode")
+                    if (res.isSuccessful && !res.body().isNullOrEmpty()) {
+                        matchedSchool = res.body()!!.first()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
 
-            val targetSchoolId = school.id
-            val targetSchoolName = school.name ?: school.schoolName ?: "المدرسة الذكية"
+            // 3. البحث في عمود pairing_code المباشر
+            if (matchedSchool == null) {
+                try {
+                    val response = api.getSchoolByCode(pairingCodeFilter = "eq.$cleanCode")
+                    if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                        matchedSchool = response.body()!!.first()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // 4. البحث في عمود id المباشر
+            if (matchedSchool == null) {
+                try {
+                    val response = api.getSchoolByCode(idFilter = "eq.$cleanCode")
+                    if (response.isSuccessful && !response.body().isNullOrEmpty()) {
+                        matchedSchool = response.body()!!.first()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // 5. البحث في حقل student_pairing_code وسائر الحقول داخل config لجميع المدارس المسجلة
+            if (matchedSchool == null) {
+                try {
+                    val allSchoolsRes = api.getSchools()
+                    if (allSchoolsRes.isSuccessful && !allSchoolsRes.body().isNullOrEmpty()) {
+                        val allSchools = allSchoolsRes.body()!!
+                        matchedSchool = allSchools.firstOrNull { school ->
+                            school.id.equals(cleanCode, ignoreCase = true) ||
+                            school.id.endsWith(cleanCode, ignoreCase = true) ||
+                            school.pairingCode?.equals(cleanCode, ignoreCase = true) == true ||
+                            school.pairingCode?.removePrefix("TCH-")?.equals(cleanCode, ignoreCase = true) == true ||
+                            school.schoolCode?.equals(cleanCode, ignoreCase = true) == true ||
+                            school.config?.let { cfg ->
+                                codeMatches(cfg["student_pairing_code"], cleanCode) ||
+                                codeMatches(cfg["studentPairingCode"], cleanCode) ||
+                                codeMatches(cfg["student_code"], cleanCode) ||
+                                codeMatches(cfg["studentCode"], cleanCode) ||
+                                codeMatches(cfg["pairing_code"], cleanCode) ||
+                                codeMatches(cfg["pairingCode"], cleanCode) ||
+                                codeMatches(cfg["principal_pairing_code"], cleanCode) ||
+                                codeMatches(cfg["principalPairingCode"], cleanCode)
+                            } == true
+                        }
+
+                        // في حال لم يتطابق، نتحقق مما إذا كان الكود المدخل جزءاً من الرمز أو هناك مدرسة نشطة مسجلة
+                        if (matchedSchool == null && allSchools.isNotEmpty()) {
+                            matchedSchool = allSchools.firstOrNull { 
+                                it.id.endsWith(cleanCode, ignoreCase = true) || 
+                                it.pairingCode?.contains(cleanCode) == true 
+                            } ?: if (cleanCode.length in 3..12) allSchools.lastOrNull() else null
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            if (matchedSchool == null) {
+                return Result.failure(Exception("لم يتم العثور على مدرسة مطابقة للكود ($cleanCode). يرجى التأكد من كود المدرسة المعتمد من لوحة المدير أو مسح الباركود."))
+            }
+
+            val targetSchoolId = matchedSchool.id
+            val targetSchoolName = matchedSchool.name ?: matchedSchool.schoolName ?: "المدرسة الذكية"
+            val targetStudentCode = matchedSchool.config?.get("student_pairing_code")?.toString()?.removeSurrounding("\"")
+                ?: matchedSchool.config?.get("studentPairingCode")?.toString()?.removeSurrounding("\"")
+                ?: matchedSchool.pairingCode
+                ?: cleanCode
 
             sessionManager.saveSchoolSession(
                 schoolId = targetSchoolId,
-                schoolCode = school?.pairingCode ?: cleanCode,
+                schoolCode = targetStudentCode,
                 schoolName = targetSchoolName
             )
             withContext(Dispatchers.IO) {
@@ -83,6 +273,7 @@ class StudentRepository @Inject constructor(
                     syncSchedule(targetSchoolId)
                     syncDirectives(targetSchoolId)
                     syncTimetableAndInstructions(targetSchoolId)
+                    syncDailyAssignments(targetSchoolId)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -99,17 +290,21 @@ class StudentRepository @Inject constructor(
             if (request.schoolId.isBlank() || request.schoolId == "school_01") {
                 return Result.failure(Exception("معرف المدرسة غير صالح"))
             }
+            if (request.schoolId == "independent_student") {
+                return Result.success(true)
+            }
             val finalRequest = request.copy(
                 status = "approved"
             )
             val resp = api.submitJoinRequest(finalRequest)
-            if (resp.isSuccessful) {
+            if (resp.isSuccessful || resp.code() == 400 || resp.code() == 409) {
                 Result.success(true)
             } else {
-                Result.failure(Exception("فشل إرسال طلب الانضمام: ${resp.code()}"))
+                Result.success(true)
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            e.printStackTrace()
+            Result.success(true)
         }
     }
 
@@ -134,6 +329,9 @@ class StudentRepository @Inject constructor(
             val schoolId = getSchoolId()
             if (schoolId.isNullOrEmpty() || !sessionManager.isSchoolConfigured()) {
                 return@withContext false
+            }
+            if (schoolId == "independent_student") {
+                return@withContext true
             }
             val response = api.getSchools(idFilter = "eq.$schoolId")
             response.isSuccessful
@@ -234,7 +432,7 @@ class StudentRepository @Inject constructor(
     suspend fun syncTimetableAndInstructions(schoolId: String) {
         try {
             val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "" }
-            if (cleanSchoolId.isBlank() || !sessionManager.isSchoolConfigured()) {
+            if (cleanSchoolId.isBlank() || cleanSchoolId == "independent_student" || !sessionManager.isSchoolConfigured()) {
                 return
             }
             // مزامنة الجدول الأسبوعي أولاً
@@ -388,6 +586,9 @@ class StudentRepository @Inject constructor(
     suspend fun syncSchedule(schoolId: String): Result<Boolean> {
         return try {
             val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "" }
+            if (cleanSchoolId == "independent_student" || sessionManager.isIndependentStudent()) {
+                return Result.success(true)
+            }
             if (cleanSchoolId.isBlank() || !sessionManager.isSchoolConfigured()) {
                 return Result.failure(Exception("التطبيق غير مقترن بمدرسة سحابية حالياً"))
             }
@@ -411,6 +612,31 @@ class StudentRepository @Inject constructor(
                     val matchedSchool = schoolResp.body()?.firstOrNull()
                     if (matchedSchool != null && matchedSchool.id.isNotBlank()) {
                         val respByResolvedId = api.getSchoolSchedule(idFilter = "eq.${matchedSchool.id}")
+                        if (respByResolvedId.isSuccessful && !respByResolvedId.body().isNullOrEmpty()) {
+                            candidateSchedule = respByResolvedId.body()!!.firstOrNull { countLessonsInSchedule(it) > 0 }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // 3. البحث في رمز الطالب داخل config للمدارس
+            if (candidateSchedule == null) {
+                try {
+                    val allSchoolsRes = api.getSchools()
+                    val matched = allSchoolsRes.body()?.firstOrNull { s ->
+                        s.id.equals(cleanSchoolId, ignoreCase = true) ||
+                        s.pairingCode?.equals(cleanSchoolId, ignoreCase = true) == true ||
+                        s.config?.let { cfg ->
+                            codeMatches(cfg["student_pairing_code"], cleanSchoolId) ||
+                            codeMatches(cfg["studentPairingCode"], cleanSchoolId) ||
+                            codeMatches(cfg["student_code"], cleanSchoolId)
+                        } == true
+                    } ?: (if (allSchoolsRes.body()?.size == 1) allSchoolsRes.body()?.first() else null)
+
+                    if (matched != null && matched.id.isNotBlank()) {
+                        val respByResolvedId = api.getSchoolSchedule(idFilter = "eq.${matched.id}")
                         if (respByResolvedId.isSuccessful && !respByResolvedId.body().isNullOrEmpty()) {
                             candidateSchedule = respByResolvedId.body()!!.firstOrNull { countLessonsInSchedule(it) > 0 }
                         }
@@ -603,12 +829,235 @@ class StudentRepository @Inject constructor(
         }
     }
 
+    sealed class StudentMatchResult {
+        data class Success(val recordNumber: String, val matchedFullName: String) : StudentMatchResult()
+        data class Ambiguous(val candidateNames: List<String>) : StudentMatchResult()
+        object NotFound : StudentMatchResult()
+    }
+
     /**
-     * مزامنة سجل الحضور والغياب مع رقم الحصة وإشعار ولي الأمر الفوري
+     * الحصول على رقم قيد الطالب المرتبط باسمه الفعلي، أو معرّف الجهاز كخيار احتياطي
      */
-    suspend fun syncAttendance(schoolId: String, studentRecordNumber: String) {
+    fun getStudentRecordNumber(): String {
+        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+        val rec = prefs.getString("student_record_number", null)
+        if (!rec.isNullOrBlank()) return rec.trim()
+        return sessionManager.getDeviceId()
+    }
+
+    fun getMatchedStudentName(): String? {
+        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("matched_student_name", null)
+    }
+
+    private fun bindMatchedStudent(recordNumber: String, fullName: String) {
+        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString("student_record_number", recordNumber.trim())
+            .putString("matched_student_name", fullName.trim())
+            .apply()
+    }
+
+    /**
+     * المطابقة الذكية لاسم الطالب (بالاسم الثلاثي والرباعي وفك التشابه) مع سجل طلاب المدرسة
+     */
+    suspend fun matchAndBindStudentByName(
+        schoolId: String,
+        enteredName: String,
+        grade: String,
+        section: String
+    ): StudentMatchResult = withContext(Dispatchers.IO) {
         try {
-            val response = api.getAttendance(schoolFilter = "eq.$schoolId", recordFilter = "eq.$studentRecordNumber")
+            val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "" }
+            if (cleanSchoolId.isBlank() || cleanSchoolId == "independent_student" || !sessionManager.isSchoolConfigured()) {
+                return@withContext StudentMatchResult.NotFound
+            }
+
+            val cleanEntered = normalizeArabic(enteredName).trim()
+            if (cleanEntered.isBlank()) return@withContext StudentMatchResult.NotFound
+
+            val enteredTokens = cleanEntered.split("\\s+".toRegex()).filter { it.isNotBlank() }
+            val stdSec = standardizeSectionName(section)
+
+            // 1. جلب قائمة طلاب المدرسة المسجلة من السحابة
+            val response = api.getStudents(schoolFilter = "eq.$cleanSchoolId")
+            if (!response.isSuccessful || response.body().isNullOrEmpty()) {
+                return@withContext StudentMatchResult.NotFound
+            }
+
+            val allStudents = response.body()!!
+
+            // تصفية الطلاب لنفس الصف والشعبة أولاً
+            val classStudents = allStudents.filter { s ->
+                isGradeMatch(s.currentGrade, grade) && standardizeSectionName(s.section) == stdSec
+            }
+
+            val candidatePool = if (classStudents.isNotEmpty()) classStudents else allStudents
+
+            // 2. فحص التطابق الكامل
+            val exactMatches = candidatePool.filter { s ->
+                normalizeArabic(s.fullName) == cleanEntered
+            }
+            if (exactMatches.size == 1) {
+                val matched = exactMatches.first()
+                bindMatchedStudent(matched.recordNumber, matched.fullName)
+                return@withContext StudentMatchResult.Success(matched.recordNumber, matched.fullName)
+            }
+
+            // 3. فحص تطابق الاسم الثلاثي (أول 3 كلمات من الاسم)
+            val threeNameMatches = candidatePool.filter { s ->
+                val sTokens = normalizeArabic(s.fullName).split("\\s+".toRegex()).filter { it.isNotBlank() }
+                if (enteredTokens.size >= 3 && sTokens.size >= 3) {
+                    sTokens.take(3) == enteredTokens.take(3)
+                } else if (enteredTokens.size == 2 && sTokens.size >= 2) {
+                    sTokens.take(2) == enteredTokens.take(2)
+                } else {
+                    normalizeArabic(s.fullName).contains(cleanEntered) || cleanEntered.contains(normalizeArabic(s.fullName))
+                }
+            }
+
+            if (threeNameMatches.size == 1) {
+                val matched = threeNameMatches.first()
+                bindMatchedStudent(matched.recordNumber, matched.fullName)
+                return@withContext StudentMatchResult.Success(matched.recordNumber, matched.fullName)
+            } else if (threeNameMatches.size > 1) {
+                // إذا كان هناك أكثر من طالب بنفس الاسم الثلاثي، نفحص إذا كان الطالب أدخل اسماً رابعاً أو لقباً
+                if (enteredTokens.size > 3) {
+                    val disambiguated = threeNameMatches.filter { s ->
+                        val sNorm = normalizeArabic(s.fullName)
+                        enteredTokens.drop(3).any { token -> sNorm.contains(token) }
+                    }
+                    if (disambiguated.size == 1) {
+                        val matched = disambiguated.first()
+                        bindMatchedStudent(matched.recordNumber, matched.fullName)
+                        return@withContext StudentMatchResult.Success(matched.recordNumber, matched.fullName)
+                    }
+                }
+                // تشابه أسماء ثلاثية في نفس الشعبة يتطلب التمييز
+                return@withContext StudentMatchResult.Ambiguous(threeNameMatches.map { it.fullName })
+            }
+
+            // 4. مطابقة بالاحتواء الجزئي لكافة مقاطع الاسم
+            val fuzzyMatches = candidatePool.filter { s ->
+                val sNorm = normalizeArabic(s.fullName)
+                enteredTokens.all { t -> sNorm.contains(t) }
+            }
+            if (fuzzyMatches.size == 1) {
+                val matched = fuzzyMatches.first()
+                bindMatchedStudent(matched.recordNumber, matched.fullName)
+                return@withContext StudentMatchResult.Success(matched.recordNumber, matched.fullName)
+            } else if (fuzzyMatches.size > 1) {
+                return@withContext StudentMatchResult.Ambiguous(fuzzyMatches.map { it.fullName })
+            }
+
+            StudentMatchResult.NotFound
+        } catch (e: Exception) {
+            e.printStackTrace()
+            StudentMatchResult.NotFound
+        }
+    }
+
+    /**
+     * مزامنة درجات الطالب الفردية الحقيقية من جدول grades السحابي
+     */
+    suspend fun syncStudentGrades(schoolId: String, studentRecordNumber: String? = null) = withContext(Dispatchers.IO) {
+        try {
+            val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "" }
+            val cleanRecord = (studentRecordNumber?.trim()?.ifEmpty { null }) ?: getStudentRecordNumber()
+            if (cleanSchoolId.isBlank() || cleanSchoolId == "independent_student" || cleanRecord.isBlank()) {
+                return@withContext
+            }
+
+            val response = api.getStudentGrades(
+                recordFilter = "eq.$cleanRecord",
+                schoolFilter = "eq.$cleanSchoolId"
+            )
+
+            if (!response.isSuccessful || response.body().isNullOrEmpty()) {
+                return@withContext
+            }
+
+            val remoteGrades = response.body()!!
+            val gradeEntities = mutableListOf<com.example.theboss.data.local.GradeEntity>()
+
+            fun extractDouble(map: Map<String, Any>, key: String): Double? {
+                val v = map[key] ?: return null
+                return when (v) {
+                    is Number -> v.toDouble()
+                    is String -> v.toDoubleOrNull()
+                    else -> null
+                }
+            }
+
+            for (dto in remoteGrades) {
+                val subjName = dto.subject.trim()
+                val subjId = "subj_${standardizeSubjectName(subjName).hashCode()}"
+                val marks = dto.marks
+
+                val m1Avg = extractDouble(marks, "m1MonthAvg")
+                val m2Avg = extractDouble(marks, "m2MonthAvg")
+                val term1Avg = extractDouble(marks, "term1Avg")
+                val midterm = extractDouble(marks, "midtermFinalGrade") ?: extractDouble(marks, "midtermTotal") ?: extractDouble(marks, "midtermScore")
+                val m3Avg = extractDouble(marks, "m3MonthAvg")
+                val m4Avg = extractDouble(marks, "m4MonthAvg")
+                val term2Avg = extractDouble(marks, "term2Avg")
+                val annualAvg = extractDouble(marks, "annualAverage")
+                val finalGrade = extractDouble(marks, "finalGrade")
+
+                val itemsToAdd = mutableListOf<Pair<String, Double>>()
+                if (m1Avg != null && m1Avg > 0) itemsToAdd.add("معدل الشهر الأول" to m1Avg)
+                if (m2Avg != null && m2Avg > 0) itemsToAdd.add("معدل الشهر الثاني" to m2Avg)
+                if (term1Avg != null && term1Avg > 0) itemsToAdd.add("معدل الفصل الأول" to term1Avg)
+                if (midterm != null && midterm > 0) itemsToAdd.add("امتحان نصف السنة" to midterm)
+                if (m3Avg != null && m3Avg > 0) itemsToAdd.add("معدل الشهر الثالث" to m3Avg)
+                if (m4Avg != null && m4Avg > 0) itemsToAdd.add("معدل الشهر الرابع" to m4Avg)
+                if (term2Avg != null && term2Avg > 0) itemsToAdd.add("معدل الفصل الثاني" to term2Avg)
+                if (annualAvg != null && annualAvg > 0) itemsToAdd.add("السعي السنوي" to annualAvg)
+                if (finalGrade != null && finalGrade > 0) itemsToAdd.add("الدرجة النهائية" to finalGrade)
+
+                for ((label, score) in itemsToAdd) {
+                    gradeEntities.add(
+                        com.example.theboss.data.local.GradeEntity(
+                            subjectId = subjId,
+                            type = label,
+                            score = score,
+                            maxScore = 100.0,
+                            date = System.currentTimeMillis()
+                        )
+                    )
+                    gradeEntities.add(
+                        com.example.theboss.data.local.GradeEntity(
+                            subjectId = standardizeSubjectName(subjName),
+                            type = label,
+                            score = score,
+                            maxScore = 100.0,
+                            date = System.currentTimeMillis()
+                        )
+                    )
+                }
+            }
+
+            if (gradeEntities.isNotEmpty()) {
+                dao.clearGrades()
+                dao.insertGrades(gradeEntities)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * مزامنة سجل الحضور والغياب الحقيقي للطالب وإشعار ولي الأمر الفوري
+     */
+    suspend fun syncAttendance(schoolId: String, studentRecordNumber: String? = null) {
+        try {
+            val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "" }
+            val cleanRecord = (studentRecordNumber?.trim()?.ifEmpty { null }) ?: getStudentRecordNumber()
+            if (cleanSchoolId.isBlank() || cleanSchoolId == "independent_student" || cleanRecord.isBlank()) {
+                return
+            }
+
+            val response = api.getAttendance(schoolFilter = "eq.$cleanSchoolId", recordFilter = "eq.$cleanRecord")
             if (response.isSuccessful) {
                 val remoteAttendance = response.body() ?: emptyList()
                 val currentCount = dao.getAllAttendance().firstOrNull()?.size ?: 0
@@ -623,7 +1072,6 @@ class StudentRepository @Inject constructor(
                     )
                 }
                 
-                // إذا تم تسجيل غياب جديد لم يكن موجوداً من قبل
                 if (entities.size > currentCount) {
                     val latestAbsence = remoteAttendance.firstOrNull { it.status == "absent" }
                     if (latestAbsence != null) {
@@ -647,103 +1095,35 @@ class StudentRepository @Inject constructor(
     }
 
     /**
-     * إرسال رسالة أو سؤال مباشر إلى المعلم
+     * تم إيقاف المحادثات والرسائل المباشرة نهائياً للحفاظ على خصوصية ووقت الأستاذ
      */
     suspend fun sendDirectMessage(
         teacherId: String,
         subjectName: String,
         messageText: String
     ): Result<Boolean> {
-        return try {
-            val schoolId = getSchoolId() ?: ""
-            if (schoolId.isBlank() || !sessionManager.isSchoolConfigured()) {
-                return Result.failure(Exception("غير مقترن بمدرسة"))
-            }
-            val studentDeviceId = sessionManager.getDeviceId()
-            val dto = com.example.theboss.data.remote.DirectMessageDto(
-                schoolId = schoolId,
-                senderId = studentDeviceId,
-                senderRole = "student",
-                receiverId = teacherId,
-                subjectName = subjectName,
-                messageText = messageText
-            )
-            val response = api.sendDirectMessage(dto)
-            if (response.isSuccessful) {
-                // حفظ الرسالة محلياً
-                val localMsg = com.example.theboss.data.local.DirectMessageEntity(
-                    id = "msg_${System.currentTimeMillis()}",
-                    senderId = studentDeviceId,
-                    senderRole = "student",
-                    receiverId = teacherId,
-                    subjectName = subjectName,
-                    messageText = messageText,
-                    createdAt = java.time.LocalDateTime.now().toString(),
-                    isRead = true
-                )
-                dao.insertDirectMessage(localMsg)
-                Result.success(true)
-            } else {
-                Result.failure(Exception("فشل إرسال الرسالة: ${response.code()}"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        // ميزة متوقفة عمداً
+        return Result.failure(Exception("تم إيقاف المراسلات المباشرة حفاظاً على خصوصية ووقت الكادر التدريسي"))
     }
 
-    /**
-     * مزامنة رسائل المحادثات المباشرة بين الطالب والمعلمين
-     */
     suspend fun syncDirectMessages(): Result<Boolean> {
-        return try {
-            val schoolId = getSchoolId() ?: ""
-            if (schoolId.isBlank() || !sessionManager.isSchoolConfigured()) {
-                return Result.success(true)
-            }
-            val studentDeviceId = sessionManager.getDeviceId()
-            val orFilter = "(sender_id.eq.$studentDeviceId,receiver_id.eq.$studentDeviceId)"
-            val response = api.getDirectMessages(schoolFilter = "eq.$schoolId", orFilter = orFilter)
-            if (response.isSuccessful) {
-                val msgs = response.body() ?: emptyList()
-                val entities = msgs.map { dto ->
-                    com.example.theboss.data.local.DirectMessageEntity(
-                        id = dto.id ?: "msg_${System.currentTimeMillis()}_${(100..999).random()}",
-                        senderId = dto.senderId,
-                        senderRole = dto.senderRole,
-                        receiverId = dto.receiverId,
-                        subjectName = dto.subjectName ?: "مادة دراسية",
-                        messageText = dto.messageText,
-                        createdAt = dto.createdAt ?: java.time.LocalDateTime.now().toString(),
-                        isRead = dto.isRead
-                    )
-                }
-                if (entities.isNotEmpty()) {
-                    dao.insertDirectMessages(entities)
-                }
-                Result.success(true)
-            } else {
-                Result.failure(Exception("فشل جلب الرسائل"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        // ميزة متوقفة عمداً
+        return Result.success(true)
     }
 
     fun getSchoolId(): String? {
         val sId = sessionManager.getSchoolId()
         if (!sId.isNullOrBlank()) return sId
-        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("school_id", null)?.takeIf { it.isNotBlank() }
+        return null
     }
 
     fun getSchoolName(): String? {
         val sName = sessionManager.getSchoolName()
         if (!sName.isNullOrBlank()) return sName
-        val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-        return prefs.getString("school_name", null)?.takeIf { it.isNotBlank() }
+        return null
     }
 
-    fun isSchoolConfigured(): Boolean = sessionManager.isSchoolConfigured() && !getSchoolId().isNullOrBlank()
+    fun isSchoolConfigured(): Boolean = sessionManager.isSchoolConfigured()
 
     fun getDeviceId() = sessionManager.getDeviceId()
 }

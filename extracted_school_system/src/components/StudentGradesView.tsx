@@ -467,6 +467,9 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
           subjectsList={subjectList}
           onUpdateStudentMark={handleUpdateStudentMark}
           onSelectStudent={std => setSelectedStudentForProfile(std)}
+          selectedGrade={selectedGrade}
+          selectedSection={selectedSection}
+          schoolName={config.schoolName}
         />
       )}
 
@@ -476,6 +479,9 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
           subjectsList={subjectList}
           onUpdateStudentMark={handleUpdateStudentMark}
           onSelectStudent={std => setSelectedStudentForProfile(std)}
+          selectedGrade={selectedGrade}
+          selectedSection={selectedSection}
+          schoolName={config.schoolName}
         />
       )}
 
@@ -486,6 +492,7 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
           onSelectStudent={std => setSelectedStudentForProfile(std)}
           selectedGrade={selectedGrade}
           selectedSection={selectedSection}
+          schoolName={config.schoolName}
         />
       )}
 

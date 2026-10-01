@@ -12,23 +12,51 @@ import {
 } from 'lucide-react';
 import { normalizeArabic } from '../../utils/syncService';
 import { calculateTermAverage, calculateYearlyEffort, calculateFinalGradeScore } from '../../utils/gradeCalculations';
+import { GradeRegisterCoverPage } from './GradeRegisterCoverPage';
 
 interface TeacherGraduatedRegisterProps {
   students: Student[];
   onUpdateStudentMark: (studentId: string, subject: string, updater: (prevMark: StudentMark) => StudentMark) => void;
   onSelectStudent: (student: Student) => void;
   subjectsList: string[];
+  selectedGrade?: string;
+  selectedSection?: string;
+  schoolName?: string;
 }
 
 export const TeacherGraduatedRegister: React.FC<TeacherGraduatedRegisterProps> = ({
   students,
   onUpdateStudentMark,
   onSelectStudent,
-  subjectsList
+  subjectsList,
+  selectedGrade,
+  selectedSection,
+  schoolName
 }) => {
   const [selectedSubject, setSelectedSubject] = useState<string>(() => subjectsList[0] || 'الرياضيات');
   const [showThirdMonthTerm1, setShowThirdMonthTerm1] = useState<boolean>(false);
   const [showThirdMonthTerm2, setShowThirdMonthTerm2] = useState<boolean>(false);
+
+  // استخراج أستاذ المادة تلقائياً من جدول الحصص الأسبوعي
+  const teacherName = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem('the_principal_v6_schedule_map') || localStorage.getItem('school_schedule');
+      if (raw) {
+        const sched = JSON.parse(raw);
+        for (const day of Object.keys(sched)) {
+          const rows = sched[day] || [];
+          for (const r of rows) {
+            if (r.subject === selectedSubject || (r.subject && r.subject.includes(selectedSubject))) {
+              if (r.teacherName && r.teacherName !== '-') {
+                return r.teacherName;
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+    return 'مدرس المادة';
+  }, [selectedSubject]);
 
   const getStudentMark = (std: Student, subject: string): StudentMark => {
     const norm = normalizeArabic(subject);
@@ -128,8 +156,30 @@ export const TeacherGraduatedRegister: React.FC<TeacherGraduatedRegisterProps> =
             />
             <span className="font-black text-[11px]">+ شهر ثالث اختياري (الفصل الثاني)</span>
           </label>
+
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="طباعة سجل درجات المدرس الرسمي كـ A4"
+          >
+            <Printer className="w-3.5 h-3.5 text-amber-300" />
+            <span>طباعة سجل المدرج A4</span>
+          </button>
         </div>
 
+      </div>
+
+      {/* 1.5. صفحة الغلاف الرسمية المنفردة لسجل المدرج */}
+      <div className="hidden print:block">
+        <GradeRegisterCoverPage
+          registerTitle="سِجِلّ دَرَجَاتِ المُدَرِّس (المُدْرَج التَّفْصِيلِي)"
+          subject={selectedSubject}
+          grade={selectedGrade && selectedGrade !== 'الكل' ? selectedGrade : students[0]?.currentGrade || 'الصف الدراسي'}
+          section={selectedSection && selectedSection !== 'الكل' ? selectedSection : students[0]?.section || 'أ'}
+          teacherName={teacherName}
+          schoolName={schoolName}
+        />
       </div>
 
       {/* 2. جدول سجل المدرج الرسمي المعتمد */}

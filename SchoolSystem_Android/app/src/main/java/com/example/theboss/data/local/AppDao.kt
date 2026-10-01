@@ -17,8 +17,14 @@ interface AppDao {
     @Query("SELECT * FROM grades WHERE subjectId = :subjectId")
     fun getGradesForSubject(subjectId: String): Flow<List<GradeEntity>>
 
+    @Query("SELECT * FROM grades")
+    fun getAllGrades(): Flow<List<GradeEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGrades(grades: List<GradeEntity>): List<Long>
+
+    @Query("DELETE FROM grades")
+    suspend fun clearGrades(): Int
 
     @Query("SELECT * FROM assignments WHERE subjectId = :subjectId")
     fun getAssignmentsForSubject(subjectId: String): Flow<List<AssignmentEntity>>

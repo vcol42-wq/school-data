@@ -29,6 +29,27 @@ class JoinRequestViewModel @Inject constructor(
     private val _isSuccess = mutableStateOf(false)
     val isSuccess: State<Boolean> = _isSuccess
 
+    fun pairDirectlyFromQr(
+        schoolId: String,
+        schoolCode: String,
+        schoolName: String,
+        url: String,
+        apiKey: String
+    ) {
+        viewModelScope.launch {
+            repository.pairSchoolDirectly(
+                schoolId = schoolId,
+                schoolCode = schoolCode,
+                schoolName = schoolName,
+                url = url.ifBlank { null },
+                apiKey = apiKey.ifBlank { null }
+            )
+            if (schoolId.isNotBlank() && schoolId != "independent_student" && schoolId != "school_01") {
+                com.school.system.utils.RoleManager.lockRole(context, com.school.system.utils.AppRole.STUDENT)
+            }
+        }
+    }
+
     @SuppressLint("HardwareIds")
     fun sendRequest(
         name: String,
@@ -44,15 +65,23 @@ class JoinRequestViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             
-            // 1. Verify School Code first
-            val verifyResult = repository.verifySchoolCode(schoolCode)
-            if (verifyResult.isFailure) {
-                _error.value = verifyResult.exceptionOrNull()?.message ?: "كود المدرسة غير صحيح"
+            // 1. التحقق من كود المدرسة أو الاعتماد على الجلسة المقترنة بالباركود
+            var schoolId = repository.getSchoolId()
+            if (schoolId.isNullOrBlank() || schoolId == "school_01" || schoolCode.isNotBlank()) {
+                val verifyResult = repository.verifySchoolCode(schoolCode)
+                if (verifyResult.isFailure && (schoolId.isNullOrBlank() || schoolId == "school_01")) {
+                    _error.value = verifyResult.exceptionOrNull()?.message ?: "كود المدرسة غير صحيح"
+                    _isLoading.value = false
+                    return@launch
+                }
+                schoolId = repository.getSchoolId() ?: ""
+            }
+
+            if (schoolId.isBlank() || schoolId == "school_01") {
+                _error.value = "يرجى مسح باركود المدرسة أو إدخال كود مدرسة صالح"
                 _isLoading.value = false
                 return@launch
             }
-
-            val schoolId = repository.getSchoolId() ?: ""
 
             // 2. Submit Join Request
             val request = JoinRequest(
@@ -63,28 +92,68 @@ class JoinRequestViewModel @Inject constructor(
                 sectionName = section
             )
             
-            val result = repository.submitJoinRequest(request)
-            if (result.isSuccess) {
-                val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
-                val targetGrade = grade.trim().ifEmpty { stage.trim() }.ifEmpty { "الأول المتوسط" }
-                val targetSec = section.trim().ifEmpty { "أ" }
-                prefs.edit()
-                    .putString("student_name", name.trim())
-                    .putString("student_email", email.trim())
-                    .putString("student_grade", targetGrade)
-                    .putString("student_section", targetSec)
-                    .apply()
-
-                try {
-                    repository.syncTimetableAndInstructions(schoolId)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-                _isSuccess.value = true
-            } else {
-                _error.value = result.exceptionOrNull()?.message ?: "فشل إرسال طلب الانضمام"
+            try {
+                repository.submitJoinRequest(request)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
+
+            val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+            val targetGrade = grade.trim().ifEmpty { stage.trim() }.ifEmpty { "الأول المتوسط" }
+            val targetSec = section.trim().ifEmpty { "أ" }
+            prefs.edit()
+                .putString("student_name", name.trim())
+                .putString("student_email", email.trim())
+                .putString("student_grade", targetGrade)
+                .putString("student_section", targetSec)
+                .putBoolean("independent_mode", false)
+                .apply()
+
+            try {
+                // مطابقة ذكية بالاسم الثلاثي وربط القيد والدرجات والغياب فورياً
+                repository.matchAndBindStudentByName(
+                    schoolId = schoolId,
+                    enteredName = name.trim(),
+                    grade = targetGrade,
+                    section = targetSec
+                )
+                val boundRecord = repository.getStudentRecordNumber()
+                repository.syncStudentGrades(schoolId, boundRecord)
+                repository.syncAttendance(schoolId, boundRecord)
+                repository.syncTimetableAndInstructions(schoolId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            if (schoolId.isNotBlank() && schoolId != "independent_student" && schoolId != "school_01") {
+                com.school.system.utils.RoleManager.lockRole(context, com.school.system.utils.AppRole.STUDENT)
+            }
+
+            _isSuccess.value = true
+            _isLoading.value = false
+        }
+    }
+
+    fun continueAsIndependentStudent(
+        name: String = "",
+        grade: String = "",
+        section: String = ""
+    ) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            repository.verifySchoolCode("independent")
+            val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+            val finalName = name.trim().ifEmpty { "طالب مستقل" }
+            val targetGrade = grade.trim().ifEmpty { "الأول المتوسط" }
+            val targetSec = section.trim().ifEmpty { "أ" }
+            prefs.edit()
+                .putString("student_name", finalName)
+                .putString("student_grade", targetGrade)
+                .putString("student_section", targetSec)
+                .putBoolean("independent_mode", true)
+                .apply()
+            _isSuccess.value = true
             _isLoading.value = false
         }
     }

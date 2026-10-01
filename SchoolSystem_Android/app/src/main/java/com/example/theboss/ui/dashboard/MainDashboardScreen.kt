@@ -35,6 +35,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.theboss.data.local.AppDao
 import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.local.AttendanceEntity
+import com.example.theboss.data.local.GradeEntity
 import com.example.theboss.data.local.SubjectEntity
 import com.example.theboss.data.repository.StudentRepository
 import android.content.Context
@@ -65,6 +66,9 @@ class DashboardViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val attendance: StateFlow<List<AttendanceEntity>> = dao.getAllAttendance()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val grades: StateFlow<List<GradeEntity>> = dao.getAllGrades()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val directives: StateFlow<List<DirectiveDto>> = repository.directives
@@ -104,14 +108,14 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             _isRefreshing.value = true
             try {
-                // مزامنة الجدول والتعاميم بالدرجة الأولى لتحديث واجهة الطالب فوراً
+                // مزامنة الجدول والتعاميم والواجبات والدرجات والغياب الفعلي
                 repository.syncSchedule(schoolId)
                 repository.syncDirectives(schoolId)
                 repository.syncDailyAssignments(schoolId)
                 repository.syncTimetableAndInstructions(schoolId)
-                repository.syncDirectMessages()
-                val deviceId = repository.getDeviceId()
-                repository.syncAttendance(schoolId, deviceId)
+                val recordNumber = repository.getStudentRecordNumber()
+                repository.syncStudentGrades(schoolId, recordNumber)
+                repository.syncAttendance(schoolId, recordNumber)
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -138,9 +142,13 @@ class DashboardViewModel @Inject constructor(
                 if (verified) {
                     val finalSchoolId = repository.getSchoolId()
                     if (!finalSchoolId.isNullOrBlank() && repository.isSchoolConfigured()) {
+                        repository.matchAndBindStudentByName(finalSchoolId, name, grade, section)
+                        val boundRecord = repository.getStudentRecordNumber()
                         repository.syncSchedule(finalSchoolId)
                         repository.syncDirectives(finalSchoolId)
                         repository.syncDailyAssignments(finalSchoolId)
+                        repository.syncStudentGrades(finalSchoolId, boundRecord)
+                        repository.syncAttendance(finalSchoolId, boundRecord)
                     }
                     onComplete(true)
                 } else {

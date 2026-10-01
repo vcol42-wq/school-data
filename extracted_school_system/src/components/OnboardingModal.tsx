@@ -13,7 +13,12 @@ import {
   AlertTriangle,
   Loader2,
   RefreshCw,
-  School
+  School,
+  Copy,
+  Check,
+  MessageCircle,
+  ShieldCheck,
+  ExternalLink
 } from 'lucide-react';
 import { refreshSupabaseClient, getSupabase } from '../utils/supabaseClient';
 import { 
@@ -22,6 +27,11 @@ import {
   checkDuplicateSchool,
   CloudSchoolSummary 
 } from '../utils/syncService';
+import { 
+  getMachineFingerprint, 
+  activateDesktopLicense, 
+  isDesktopActivated 
+} from '../utils/licenseService';
 import { defaultAppConfig } from '../data/initialData';
 
 interface OnboardingModalProps {
@@ -31,6 +41,12 @@ interface OnboardingModalProps {
 export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) => {
   const [onboardMode, setOnboardMode] = useState<'selection' | 'new' | 'existing'>('selection');
   
+  // License Activation State
+  const [licenseKeyInput, setLicenseKeyInput] = useState('');
+  const [isMachineActivated, setIsMachineActivated] = useState(() => isDesktopActivated());
+  const [copiedFp, setCopiedFp] = useState(false);
+  const fingerprint = getMachineFingerprint();
+
   // New School Fields
   const [schoolName, setSchoolName] = useState('');
   const [email, setEmail] = useState('');
@@ -48,6 +64,20 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
   // States
   const [isLoading, setIsLoading] = useState(false);
   const [duplicateFound, setDuplicateFound] = useState<CloudSchoolSummary | null>(null);
+
+  const copyFingerprint = () => {
+    navigator.clipboard.writeText(fingerprint);
+    setCopiedFp(true);
+    setTimeout(() => setCopiedFp(false), 2500);
+  };
+
+  const openWhatsAppForLicense = () => {
+    const school = schoolName.trim() || 'مدرستنا الكريمة';
+    const text = encodeURIComponent(
+      `السلام عليكم، أرغب في تفعيل ترخيص منظومة The Principal المكتبية.\nمعرّف الحاسوب الخاص بنا (Hardware ID): ${fingerprint}\nاسم المدرسة: ${school}`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+  };
 
   // Search Schools in Cloud by Name, Email, or Pairing Code
   const handleSearch = async (e?: React.FormEvent) => {
@@ -69,6 +99,30 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
 
   // Restore Existing School
   const handleRestoreSchool = async (school: CloudSchoolSummary) => {
+    // 0. Enforce activation check before restoration
+    if (!isDesktopActivated()) {
+      let keyToVerify = licenseKeyInput.trim();
+      if (!keyToVerify) {
+        const inputKey = prompt(
+          `⚠️ تنبيه أمني: يتطلب تشغيل واستعادة المدرسة (${school.name}) على هذا الحاسوب إدخال كود التفعيل المعتمد.\nمعرّف هذا الحاسوب (Hardware ID): ${fingerprint}\n\nأدخل كود تفعيل المنظومة (License Key):`
+        );
+        if (!inputKey || !inputKey.trim()) {
+          alert('تم إلغاء عملية الاستعادة: يلزم إدخال كود ترخيص وتفعيل معتمد للمنظومة.');
+          return;
+        }
+        keyToVerify = inputKey.trim().toUpperCase();
+      }
+
+      setIsLoading(true);
+      const licRes = await activateDesktopLicense(keyToVerify, school.name);
+      if (!licRes.success) {
+        setIsLoading(false);
+        alert(`❌ فشل التفعيل: ${licRes.message}\nيرجى التواصل مع الدعم الفني للحصول على كود ترخيص صالح لهذا الحاسوب.`);
+        return;
+      }
+      setIsMachineActivated(true);
+    }
+
     setIsLoading(true);
     try {
       const restoreResult = await restoreSchoolData(school.id);
@@ -112,54 +166,77 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
     }
   };
 
-  // Handle Create New School with strict deduplication check
+  // Handle Create New School (Supports full local operation + optional cloud registration if licensed)
   const handleCreateNew = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // 1. Check if a school already exists with this Name or Email
-      const dup = await checkDuplicateSchool(schoolName, email);
-      if (dup) {
-        setDuplicateFound(dup);
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. Generate clean unique IDs and 3-role pairing codes
-      const emailPrefix = email.trim().split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'SCH';
-      const generatedId = `SCH-${emailPrefix}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const randSuffix = Math.random().toString(36).substring(2, 4).toUpperCase();
-      const generatedPrincipalCode = `ADM-${Math.floor(1000 + Math.random() * 9000)}-${randSuffix}`;
-      const generatedTeacherCode = `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
-      const generatedStudentCode = Math.floor(1000 + Math.random() * 9000).toString();
-
-      // 3. Register School directly in Supabase
-      const client = getSupabase(generatedId);
-      const { error: regError } = await client.from('schools').insert([{
-        id: generatedId,
-        name: schoolName.trim(),
-        pairing_code: generatedTeacherCode,
-        admin_email: email.trim().toLowerCase(),
-        config: {
-          managerName,
-          directorateName,
-          sectionName,
-          schoolStage,
-          passcode,
-          schoolStartHour: '08:00',
-          lessonDurationMinutes: 45,
-          breakDurationMinutes: 10,
-          studentPairingCode: generatedStudentCode,
-          principalPairingCode: generatedPrincipalCode
+      // 0. Check if user provided a license key or is already activated
+      let isLicenseValid = isMachineActivated;
+      if (!isLicenseValid && licenseKeyInput.trim()) {
+        const licRes = await activateDesktopLicense(licenseKeyInput.trim().toUpperCase(), schoolName.trim());
+        if (licRes.success) {
+          isLicenseValid = true;
+          setIsMachineActivated(true);
+        } else {
+          alert(`❌ تنبيه: كود الترخيص المدخل غير صحيح: ${licRes.message}\nسيتم إكمال التأسيس في وضع العمل المحلي.`);
         }
-      }]);
-
-      if (regError) {
-        console.warn('School register warning:', regError.message);
       }
 
-      // 4. Save to localStorage
+      // 1. Check if a school already exists with this Name or Email (only if attempting cloud registration)
+      if (isLicenseValid) {
+        const dup = await checkDuplicateSchool(schoolName, email);
+        if (dup) {
+          setDuplicateFound(dup);
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // 2. Generate clean IDs and pairing codes
+      const emailPrefix = email.trim().split('@')[0].toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) || 'SCH';
+      const randNum = Math.floor(1000 + Math.random() * 9000);
+      const generatedId = isLicenseValid ? `SCH-${emailPrefix}-${randNum}` : `SCH-LOCAL-${randNum}`;
+      
+      let generatedPrincipalCode = '';
+      let generatedTeacherCode = '';
+      let generatedStudentCode = '';
+
+      if (isLicenseValid) {
+        // ONLY generate and register cloud codes if licensed!
+        const randSuffix = Math.random().toString(36).substring(2, 4).toUpperCase();
+        generatedPrincipalCode = `ADM-${Math.floor(1000 + Math.random() * 9000)}-${randSuffix}`;
+        generatedTeacherCode = `TCH-${Math.floor(1000 + Math.random() * 9000)}`;
+        generatedStudentCode = Math.floor(1000 + Math.random() * 9000).toString();
+
+        // Register School directly in Supabase Cloud
+        const client = getSupabase(generatedId);
+        const { error: regError } = await client.from('schools').insert([{
+          id: generatedId,
+          name: schoolName.trim(),
+          pairing_code: generatedTeacherCode,
+          admin_email: email.trim().toLowerCase(),
+          config: {
+            managerName,
+            directorateName,
+            sectionName,
+            schoolStage,
+            passcode,
+            schoolStartHour: '08:00',
+            lessonDurationMinutes: 45,
+            breakDurationMinutes: 10,
+            studentPairingCode: generatedStudentCode,
+            principalPairingCode: generatedPrincipalCode
+          }
+        }]);
+
+        if (regError) {
+          console.warn('School register warning:', regError.message);
+        }
+      }
+
+      // 3. Save to localStorage
       localStorage.setItem('diyala_school_id', generatedId);
       localStorage.setItem('diyala_school_pairing_code', generatedTeacherCode);
       localStorage.setItem('diyala_pairing_code', generatedTeacherCode);
@@ -168,7 +245,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
       localStorage.setItem('diyala_admin_email', email.trim().toLowerCase());
       localStorage.setItem('diyala_school_name', schoolName.trim());
 
-      refreshSupabaseClient(generatedId);
+      if (isLicenseValid) {
+        refreshSupabaseClient(generatedId);
+      }
 
       onComplete({
         ...defaultAppConfig,
@@ -185,7 +264,11 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
         adminEmail: email.trim().toLowerCase()
       });
 
-      alert(`🎉 مبروك! تم تأسيس المدرسة بنجاح بدون أي تكرار.\nرمز المدرس: ${generatedTeacherCode}\nرمز الطالب: ${generatedStudentCode}\nرمز المدير: ${generatedPrincipalCode}`);
+      if (isLicenseValid) {
+        alert(`🎉 مبروك! تم تأسيس المدرسة بنجاح وتفعيل الربط السحابي.\nرمز المدرس: ${generatedTeacherCode}\nرمز الطالب: ${generatedStudentCode}\nرمز المدير: ${generatedPrincipalCode}`);
+      } else {
+        alert(`🎉 مرحباً بك! تم تأسيس المدرسة بنجاح.\nالنظام يعمل الآن محلياً بكامل طاقته ومميزاته (إدارة الطلاب، الكادر، الجدول المدرسي، سجلات الدرجات، الطباعة).\n\n💡 ملاحظة: الربط والمزامنة السحابية مع هواتف الأساتذة والطلبة تتطلب تفعيل ترخيص المنظومة بأي وقت.`);
+      }
     } catch (err: any) {
       console.error(err);
       alert('خطأ أثناء إنشاء المدرسة: ' + (err.message || ''));
@@ -372,20 +455,140 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
                </div>
             </div>
 
+            {/* License Activation Section */}
+            {isMachineActivated ? (
+              <div className="p-3.5 bg-emerald-50 border-2 border-emerald-400 rounded-2xl flex items-center justify-between text-xs font-black text-emerald-900">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                  <span>✓ هذا الحاسوب مفعل ومرخص رسمياً بمنظومة The Principal</span>
+                </div>
+                <span className="font-mono text-[11px] text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                  {fingerprint}
+                </span>
+              </div>
+            ) : (
+              <div className="p-4 bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 border-2 border-amber-400/80 rounded-2xl text-white space-y-3.5 shadow-lg">
+                <div className="flex items-center justify-between border-b border-amber-400/30 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-400/20 text-amber-300 rounded-lg">
+                      <Key className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-amber-300">ترخيص الربط السحابي (اختياري للعمل المحلي)</h4>
+                      <p className="text-[10px] text-slate-300">البرنامج يعمل محلياً بكامل طاقته - أدخل الكود فقط إذا كنت ترغب بالربط السحابي الآن</p>
+                    </div>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-black">
+                    اختياري الآن
+                  </span>
+                </div>
+
+                {/* Hardware ID Display */}
+                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-bold">معرّف هذا الحاسوب (Hardware ID):</span>
+                    <span className="font-mono text-amber-300 font-black tracking-wider text-xs">{fingerprint}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={copyFingerprint}
+                      className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg text-[10px] font-black text-slate-200 flex items-center gap-1 cursor-pointer transition-colors"
+                      title="نسخ معرّف الحاسوب"
+                    >
+                      {copiedFp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-300" />}
+                      <span>{copiedFp ? 'تم النسخ' : 'نسخ المعرّف'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openWhatsAppForLicense}
+                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-black flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                      title="طلب كود التفعيل عبر الواتساب"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>طلب كود التفعيل 💬</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* License Key Input */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black text-amber-200 block">
+                    كود تفعيل الربط السحابي (اتركه فارغاً للبدء محلياً فوراً):
+                  </label>
+                  <input
+                    type="text"
+                    value={licenseKeyInput}
+                    onChange={e => setLicenseKeyInput(e.target.value.toUpperCase())}
+                    placeholder="BOSS-L1-XXXX-XXXX-XX (اختياري للعمل المحلي)"
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border-2 border-amber-400/60 focus:border-amber-400 rounded-xl font-mono text-center text-sm font-black text-amber-300 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    ملاحظة: يمكنك إكمال التأسيس بدون كود والعمل محلياً بكامل الميزات، وتفعيل الربط السحابي لاحقاً بأي وقت.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <button 
               type="submit" 
               disabled={isLoading} 
               className="w-full mt-4 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-base shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2"
             >
               {isLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-              <span>التحقق والتأسيس السحابي 🚀</span>
+              <span>تأسيس المدرسة والبدء بالعمل 🚀</span>
             </button>
             <p className="text-center text-[11px] text-slate-400 font-bold">
-              سيتم التحقق التلقائي لمنع أي تكرار وتوليد أكواد الاقتران الثلاثية المعتمدة فوراً
+              يعمل البرنامج محلياً بكامل طاقته ومميزاته، مع إمكانية تفعيل الربط السحابي لاحقاً
             </p>
           </form>
         ) : onboardMode === 'existing' ? (
           <div className="p-6 md:p-8 space-y-6">
+            {/* If machine not activated, display activation helper */}
+            {!isMachineActivated && (
+              <div className="p-3.5 bg-gradient-to-r from-slate-900 to-indigo-950 border-2 border-amber-400/80 rounded-2xl text-white space-y-2.5 text-xs shadow-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-amber-300" />
+                    <span className="font-black text-amber-300">ترخيص وتفعيل المنظومة (إلزامي للاستعادة):</span>
+                  </div>
+                  <span className="font-mono text-amber-200 text-[11px] bg-slate-800 px-2.5 py-0.5 rounded border border-slate-700">
+                    {fingerprint}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 font-bold leading-relaxed">
+                  أدخل كود تفعيل المنظومة هنا لتثبيته تلقائياً عند استعادة بيانات المدرسة:
+                </p>
+                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  <input
+                    type="text"
+                    value={licenseKeyInput}
+                    onChange={e => setLicenseKeyInput(e.target.value.toUpperCase())}
+                    placeholder="BOSS-L1-XXXX-XXXX-XX"
+                    className="w-full sm:flex-1 px-3 py-2 bg-black/60 border border-amber-400 rounded-xl font-mono text-amber-300 text-xs placeholder:text-slate-500 focus:outline-none"
+                  />
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={copyFingerprint}
+                      className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[10px] font-black flex items-center gap-1 cursor-pointer border border-slate-700"
+                    >
+                      {copiedFp ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-300" />}
+                      <span>{copiedFp ? 'تم' : 'نسخ ID'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openWhatsAppForLicense}
+                      className="px-2.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black flex items-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" />
+                      <span>طلب الكود 💬</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSearch} className="space-y-3">
               <label className="text-xs font-black text-slate-700">
                 ابحث باسم المدرسة، البريد الإلكتروني، أو رمز الاقتران (المدرس/الطالب/المدير):

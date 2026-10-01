@@ -50,7 +50,12 @@ class SessionManager @Inject constructor(@ApplicationContext private val context
     fun getSchoolCode(): String? = sharedPreferences.getString("KEY_SCHOOL_CODE", null)
     fun getSchoolName(): String? = sharedPreferences.getString("KEY_SCHOOL_NAME", null)
 
-    fun isSchoolConfigured(): Boolean = getSchoolId() != null
+    fun isSchoolConfigured(): Boolean {
+        val id = getSchoolId()
+        return !id.isNullOrBlank() && id != "school_01"
+    }
+
+    fun isIndependentStudent(): Boolean = getSchoolId() == "independent_student"
 
     fun getDeviceId(): String {
         var id = sharedPreferences.getString("KEY_DEVICE_ID", null)
@@ -62,6 +67,35 @@ class SessionManager @Inject constructor(@ApplicationContext private val context
     }
 
     fun clearSchoolSession() {
+        val deviceId = sharedPreferences.getString("KEY_DEVICE_ID", null)
         sharedPreferences.edit().clear().apply()
+        if (deviceId != null) {
+            sharedPreferences.edit().putString("KEY_DEVICE_ID", deviceId).apply()
+        }
+
+        try {
+            context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).edit()
+                .remove("school_id")
+                .remove("school_code")
+                .remove("school_name")
+                .remove("last_saved_school_code")
+                .remove("synced_schedule")
+                .remove("independent_mode")
+                .apply()
+
+            context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE).edit()
+                .remove("diyala_school_id")
+                .remove("school_id")
+                .remove("school_name")
+                .remove("synced_schedule")
+                .apply()
+
+            context.getSharedPreferences("school_system_prefs", Context.MODE_PRIVATE).edit()
+                .remove("school_id")
+                .remove("school_name")
+                .apply()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

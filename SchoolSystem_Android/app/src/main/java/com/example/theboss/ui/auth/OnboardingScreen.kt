@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,24 +46,34 @@ fun OnboardingScreen(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            // Top Bar Switch Role Button
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 16.dp, end = 16.dp),
-                contentAlignment = Alignment.TopEnd
-            ) {
-                TextButton(
-                    onClick = {
-                        RoleManager.clearSelectedRole(context)
-                        onNavigateToRoleSelection()
-                    }
+            if (!RoleManager.isRoleLocked(context)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopStart)
+                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("تبديل الصفة ⇄", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    IconButton(
+                        onClick = {
+                            RoleManager.resetRoleBeforeLock(context)
+                            onNavigateToRoleSelection()
+                        },
+                        colors = IconButtonDefaults.iconButtonColors(containerColor = Color.White.copy(alpha = 0.2f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "رجوع لاختيار البوابات",
+                            tint = Color.White
+                        )
                     }
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "تغيير البوابة ↩️",
+                        color = Color(0xFFC7D2FE),
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
             Column(
@@ -167,10 +178,17 @@ fun OnboardingScreen(
                 // 3. Standalone Mode
                 TextButton(
                     onClick = {
+                        val sessionMgr = com.example.theboss.data.local.SessionManager(context)
+                        sessionMgr.saveSchoolSession(
+                            schoolId = "independent_student",
+                            schoolCode = "INDEPENDENT",
+                            schoolName = "طالب مستقل"
+                        )
                         val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
                         prefs.edit()
                             .putBoolean("onboarding_shown", true)
                             .putBoolean("independent_mode", true)
+                            .putString("student_name", "طالب مستقل")
                             .apply()
                         onNavigateToDashboard()
                     }

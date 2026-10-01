@@ -27,6 +27,8 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -1634,6 +1636,51 @@ private fun isSpecialSubject(subject: String): Boolean {
            s.contains("لغة") || s.contains("لغات")
 }
 
+fun resolveTeacherName(
+    context: Context,
+    grade: String,
+    section: String,
+    subject: String,
+    config: SchoolConfig?
+): String {
+    try {
+        val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+        val rawSchedule = prefs.getString("synced_schedule", null)
+            ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("synced_schedule", null)
+
+        if (!rawSchedule.isNullOrBlank()) {
+            val type = object : TypeToken<Map<String, Any>>() {}.type
+            val rootObj = Gson().fromJson<Map<String, Any>>(rawSchedule, type)
+            val daysList = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
+            for (day in daysList) {
+                val dayData = rootObj[day] as? List<*> ?: continue
+                for (row in dayData) {
+                    val r = row as? Map<*, *> ?: continue
+                    val g = r["grade"]?.toString().orEmpty()
+                    val s = r["subject"]?.toString().orEmpty()
+                    val t = r["teacherName"]?.toString().orEmpty()
+
+                    val gradeMatches = g.contains(grade) && (section.isBlank() || g.contains(section) || g.contains("($section)"))
+                    val subjectMatches = s.isNotBlank() && (s.contains(subject) || subject.contains(s))
+                    if (gradeMatches && subjectMatches && t.isNotBlank() && t != "-") {
+                        return t.trim()
+                    }
+                }
+            }
+        }
+
+        val prefTeacher = prefs.getString("teacher_name", "")?.trim()
+        if (!prefTeacher.isNullOrBlank()) return prefTeacher
+
+        val bossTeacher = prefs.getString("user_name", "")?.trim()
+        if (!bossTeacher.isNullOrBlank()) return bossTeacher
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+
+    return config?.managerName?.takeIf { it.isNotBlank() } ?: "مدرس المادة"
+}
+
 fun printRegister(
     context: Context,
     grade: String,
@@ -1642,12 +1689,14 @@ fun printRegister(
     tabIndex: Int,
     students: List<Student>,
     absences: List<AbsenceRecord>,
-    config: SchoolConfig?
+    config: SchoolConfig?,
+    explicitTeacherName: String? = null
 ) {
     (context as? Activity)?.runOnUiThread {
         try {
+            val teacher = explicitTeacherName ?: resolveTeacherName(context, grade, section, subject, config)
             val webView = WebView(context)
-            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config)
+            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config, teacher)
             webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -1674,10 +1723,10 @@ fun shareRegister(
     tabIndex: Int,
     students: List<com.school.system.data.model.Student>,
     absences: List<com.school.system.data.model.AbsenceRecord>,
-    config: com.school.system.data.model.SchoolConfig?
+    config: com.school.system.data.model.SchoolConfig?,
+    explicitTeacherName: String? = null
 ) {
-    // Share exact official formatted PDF document using 100% Android Native PDF engine
-    exportAndSharePdfWithNativePdf(context, grade, section, subject, tabIndex, students, absences, config)
+    exportAndSharePdfWithNativePdf(context, grade, section, subject, tabIndex, students, absences, config, explicitTeacherName)
 }
 
 fun exportAndSharePdfWithNativePdf(
@@ -1688,27 +1737,44 @@ fun exportAndSharePdfWithNativePdf(
     tabIndex: Int,
     students: List<Student>,
     absences: List<AbsenceRecord>,
-    config: SchoolConfig?
+    config: SchoolConfig?,
+    explicitTeacherName: String? = null
 ) {
     (context as? Activity)?.runOnUiThread {
         try {
-            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config)
+            val teacher = explicitTeacherName ?: resolveTeacherName(context, grade, section, subject, config)
+            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config, teacher)
             val webView = WebView(context)
-            webView.layout(0, 0, if (tabIndex == 0) 1200 else 800, if (tabIndex == 0) 800 else 1200)
+            val isLandscape = (tabIndex == 0)
+            val pageWidth = if (isLandscape) 1120 else 792
+            val pageHeight = if (isLandscape) 792 else 1120
+
+            webView.layout(0, 0, pageWidth, pageHeight)
             webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     try {
                         val pdfFile = File(context.cacheDir, "Official_Grade_Register_${System.currentTimeMillis()}.pdf")
+                        
+                        // Measure content height to generate multiple pages
+                        webView.measure(
+                            android.view.View.MeasureSpec.makeMeasureSpec(pageWidth, android.view.View.MeasureSpec.EXACTLY),
+                            android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)
+                        )
+                        val contentH = webView.measuredHeight.coerceAtLeast(pageHeight * 2)
+                        val numPages = Math.ceil(contentH.toDouble() / pageHeight).toInt().coerceAtLeast(2)
+
                         val pdfDocument = PdfDocument()
-                        val pageInfo = PdfDocument.PageInfo.Builder(
-                            if (tabIndex == 0) 1200 else 800,
-                            if (tabIndex == 0) 800 else 1200,
-                            1
-                        ).create()
-                        val page = pdfDocument.startPage(pageInfo)
-                        webView.draw(page.canvas)
-                        pdfDocument.finishPage(page)
+                        for (i in 0 until numPages) {
+                            val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, i + 1).create()
+                            val page = pdfDocument.startPage(pageInfo)
+                            val canvas = page.canvas
+                            canvas.save()
+                            canvas.translate(0f, (-i * pageHeight).toFloat())
+                            webView.draw(canvas)
+                            canvas.restore()
+                            pdfDocument.finishPage(page)
+                        }
 
                         pdfFile.outputStream().use { out ->
                             pdfDocument.writeTo(out)
@@ -1718,15 +1784,17 @@ fun exportAndSharePdfWithNativePdf(
                         shareFile(context, pdfFile, subject, grade, section)
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        Toast.makeText(context, "تعذر إنشاء ملف PDF: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
-            android.widget.Toast.makeText(context, "تعذر إنشاء ملف PDF: ${e.localizedMessage}", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "تعذر إنشاء ملف PDF: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 }
+
 
 fun shareFile(context: Context, pdfFile: File, subject: String, grade: String, section: String) {
     try {
@@ -1754,16 +1822,19 @@ fun generateGradesHtml(
     tabIndex: Int,
     students: List<com.school.system.data.model.Student>,
     absences: List<com.school.system.data.model.AbsenceRecord>,
-    config: com.school.system.data.model.SchoolConfig?
+    config: com.school.system.data.model.SchoolConfig?,
+    explicitTeacherName: String? = null
 ): String {
-    val schoolName = config?.schoolName ?: "مدرسة التميز"
-    val directorate = config?.directorateName ?: "مديرية التربية"
-    val teacherName = config?.managerName ?: "مدرس المادة"
+    val schoolName = config?.schoolName?.takeIf { it.isNotBlank() } ?: "مدرسة التميز للبنين"
+    val directorate = config?.directorateName?.takeIf { it.isNotBlank() } ?: "المديرية العامة للتربية"
+    val teacherName = explicitTeacherName?.takeIf { it.isNotBlank() }
+        ?: config?.managerName?.takeIf { it.isNotBlank() }
+        ?: "مدرس المادة"
     val tabName = when (tabIndex) {
-        0 -> "السجل اليومي والنشاط"
-        1 -> "سجل المدرس التفصيلي"
-        2 -> "سجل الإدارة الختامي"
-        else -> "سجل حضور وغيابات الطلاب"
+        0 -> "سِجِلّ اليَوْمِي وَالأَنْشِطَةِ الصَّفِّيَّة"
+        1 -> "سِجِلّ دَرَجَاتِ المُدَرِّس (المُدْرَج التَّفْصِيلِي)"
+        2 -> "سِجِلّ الإِدَارَةِ العَام وَشِيتِ النَّتَائِج المَرْكَزِي"
+        else -> "سِجِلّ حُضُورِ وَغِيَابَاتِ الطُّلاب"
     }
 
     val isSpecial = isSpecialSubject(subject)
@@ -1892,8 +1963,11 @@ fun generateGradesHtml(
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@400;700;900&display=swap');
                 @page {
-                    size: A4 portrait;
+                    size: ${if (tabIndex == 0) "A4 landscape" else "A4 portrait"};
                     margin: 6mm 6mm;
+                }
+                * {
+                    box-sizing: border-box;
                 }
                 body {
                     font-family: 'Tajawal', 'Amiri', 'Segoe UI', Tahoma, sans-serif;
@@ -1902,92 +1976,217 @@ fun generateGradesHtml(
                     background: #ffffff;
                     color: #0f172a;
                     direction: rtl;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
+
+                /* Page 1: Official Front Cover Page */
                 .cover-page {
                     page-break-after: always;
-                    height: 265mm;
+                    break-after: page;
+                    width: 100%;
+                    height: ${if (tabIndex == 0) "192mm" else "275mm"};
                     display: flex;
                     justify-content: center;
                     align-items: center;
                     box-sizing: border-box;
-                    padding: 6mm;
+                    padding: 2mm;
                 }
-                .border-frame {
-                    border: 8px double #1e3a8a;
-                    border-radius: 16px;
+                .outer-frame {
                     width: 100%;
                     height: 100%;
-                    padding: 12mm 10mm;
+                    border: 4px double #1e3a8a;
+                    border-radius: 16px;
+                    padding: 4px;
+                    box-sizing: border-box;
+                    background: #fafaf9;
+                }
+                .inner-frame {
+                    width: 100%;
+                    height: 100%;
+                    border: 2px solid #b45309;
+                    border-radius: 12px;
+                    padding: ${if (tabIndex == 0) "10px 24px" else "24px 20px"};
                     box-sizing: border-box;
                     display: flex;
                     flex-direction: column;
-                    justify-content: space-around;
+                    justify-content: space-between;
                     align-items: center;
                     text-align: center;
                     position: relative;
-                    background-color: #fafaf9;
+                    background: radial-gradient(circle at center, #ffffff 65%, #f8fafc 100%);
                 }
                 .corner {
                     position: absolute;
-                    font-size: 22px;
-                    color: #d97706;
+                    font-size: 24px;
+                    color: #b45309;
+                    line-height: 1;
                     font-weight: bold;
                 }
-                .c-tr { top: 12px; right: 16px; }
-                .c-tl { top: 12px; left: 16px; }
-                .c-br { bottom: 12px; right: 16px; }
-                .c-bl { bottom: 12px; left: 16px; }
-                
-                .school-title {
-                    font-size: 22px;
+                .c-tr { top: 8px; right: 10px; }
+                .c-tl { top: 8px; left: 10px; }
+                .c-br { bottom: 8px; right: 10px; }
+                .c-bl { bottom: 8px; left: 10px; }
+
+                .header-box {
+                    width: 100%;
+                }
+                .country-title {
+                    font-size: ${if (tabIndex == 0) "18px" else "22px"};
                     font-weight: 900;
                     color: #1e3a8a;
                     margin: 0;
+                    letter-spacing: 0.5px;
                 }
                 .ministry-title {
-                    font-size: 15px;
+                    font-size: ${if (tabIndex == 0) "12.5px" else "14px"};
                     font-weight: bold;
                     color: #475569;
+                    margin: 2px 0 0 0;
+                }
+                .school-title {
+                    font-size: ${if (tabIndex == 0) "15px" else "18px"};
+                    font-weight: 900;
+                    color: #0f172a;
                     margin: 4px 0 0 0;
                 }
-                .divider {
-                    width: 60%;
-                    border: 0;
-                    height: 2px;
-                    background-image: linear-gradient(to right, rgba(0,0,0,0), #d97706, rgba(0,0,0,0));
-                    margin: 12px auto;
+
+                .ornate-line {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    width: 75%;
+                    margin: ${if (tabIndex == 0) "4px auto" else "10px auto"};
                 }
-                .main-title {
-                    font-size: 18px;
-                    color: #475569;
-                    font-weight: bold;
-                    margin: 0;
+                .line-segment {
+                    flex: 1;
+                    height: 1.5px;
+                    background: linear-gradient(to right, transparent, #b45309, transparent);
                 }
-                .subject-name {
-                    font-size: 36px;
-                    font-weight: 900;
-                    color: #d97706;
-                    margin: 8px 0;
-                }
-                .class-section {
-                    font-size: 20px;
-                    font-weight: bold;
-                    color: #1e3a8a;
-                    margin: 4px 0;
-                }
-                .teacher-title {
-                    font-size: 18px;
-                    font-weight: bold;
-                    color: #0f172a;
-                    margin: 0;
-                }
-                .footer-text {
+                .line-emblem {
+                    padding: 0 10px;
+                    color: #b45309;
                     font-size: 13px;
-                    color: #64748b;
+                    font-weight: bold;
                 }
-                
+
+                .main-title-box {
+                    width: 100%;
+                    margin: ${if (tabIndex == 0) "2px 0" else "6px 0"};
+                }
+                .register-badge {
+                    display: inline-block;
+                    background: #1e3a8a;
+                    color: #ffffff;
+                    font-size: ${if (tabIndex == 0) "11.5px" else "13px"};
+                    font-weight: bold;
+                    padding: 3px 18px;
+                    border-radius: 20px;
+                    margin-bottom: 4px;
+                    box-shadow: 0 2px 4px rgba(30, 58, 138, 0.18);
+                }
+                .register-title {
+                    font-size: ${if (tabIndex == 0) "24px" else "30px"};
+                    font-weight: 900;
+                    color: #1e3a8a;
+                    margin: 2px 0;
+                    font-family: 'Amiri', 'Tajawal', serif;
+                    text-shadow: 0 1px 1px rgba(0,0,0,0.05);
+                }
+                .academic-year {
+                    font-size: ${if (tabIndex == 0) "13px" else "15px"};
+                    font-weight: bold;
+                    color: #b45309;
+                    margin: 2px 0 0 0;
+                }
+
+                .info-cards-grid {
+                    display: grid;
+                    grid-template-columns: repeat(3, 1fr);
+                    gap: ${if (tabIndex == 0) "10px" else "14px"};
+                    width: 94%;
+                    margin: ${if (tabIndex == 0) "6px auto" else "14px auto"};
+                }
+                .info-card {
+                    background: #ffffff;
+                    border: 1.5px solid #cbd5e1;
+                    border-top: 4px solid #1e3a8a;
+                    border-radius: 12px;
+                    padding: ${if (tabIndex == 0) "8px 6px" else "12px 10px"};
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .card-label {
+                    font-size: ${if (tabIndex == 0) "10.5px" else "12px"};
+                    font-weight: bold;
+                    color: #64748b;
+                    margin-bottom: 4px;
+                }
+                .card-val {
+                    font-size: ${if (tabIndex == 0) "15px" else "17px"};
+                    font-weight: 900;
+                    color: #0f172a;
+                }
+                .val-subject {
+                    color: #b45309;
+                    font-size: ${if (tabIndex == 0) "17px" else "20px"};
+                }
+                .val-teacher {
+                    color: #1e3a8a;
+                    font-size: ${if (tabIndex == 0) "14px" else "16px"};
+                }
+
+                .cover-bottom {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-end;
+                    width: 90%;
+                    margin-top: ${if (tabIndex == 0) "2px" else "8px"};
+                    padding-top: ${if (tabIndex == 0) "2px" else "8px"};
+                }
+                .sig-col {
+                    text-align: center;
+                    width: 28%;
+                }
+                .sig-title {
+                    font-size: 11.5px;
+                    font-weight: bold;
+                    color: #475569;
+                    margin-bottom: 3px;
+                }
+                .sig-name {
+                    font-size: 12.5px;
+                    font-weight: 900;
+                    color: #0f172a;
+                    margin-bottom: 6px;
+                }
+                .sig-dots {
+                    color: #94a3b8;
+                    font-size: 11px;
+                    letter-spacing: 2px;
+                }
+                .seal-circle {
+                    width: ${if (tabIndex == 0) "60px" else "75px"};
+                    height: ${if (tabIndex == 0) "60px" else "75px"};
+                    border: 2px dashed #b45309;
+                    border-radius: 50%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    color: #b45309;
+                    font-size: 10.5px;
+                    font-weight: bold;
+                    background: #fffbeb;
+                }
+
+                /* Page 2+: Grades Table Page */
                 .table-page {
                     page-break-before: always;
+                    break-before: page;
                     padding-top: 2mm;
                 }
                 table {
@@ -2048,39 +2247,71 @@ fun generateGradesHtml(
             </style>
         </head>
         <body>
-            <!-- Page 1: Cover Page -->
+            <!-- Page 1: Official Front Cover Page (ورقة الواجهة المنفردة) -->
             <div class="cover-page">
-                <div class="border-frame">
-                    <div class="corner c-tr">❖</div>
-                    <div class="corner c-tl">❖</div>
-                    <div class="corner c-br">❖</div>
-                    <div class="corner c-bl">❖</div>
-                    
-                    <div>
-                        <h1 class="school-title">جمهورية العراق</h1>
-                        <h2 class="ministry-title">وزارة التربية / ${directorate}</h2>
+                <div class="outer-frame">
+                    <div class="inner-frame">
+                        <div class="corner c-tr">❖</div>
+                        <div class="corner c-tl">❖</div>
+                        <div class="corner c-br">❖</div>
+                        <div class="corner c-bl">❖</div>
+
+                        <div class="header-box">
+                            <h1 class="country-title">جمهورية العراق</h1>
+                            <h2 class="ministry-title">وزارة التربية • ${directorate}</h2>
+                            <h3 class="school-title">${schoolName}</h3>
+                        </div>
+
+                        <div class="ornate-line">
+                            <span class="line-segment"></span>
+                            <span class="line-emblem">✦ ❖ ✦</span>
+                            <span class="line-segment"></span>
+                        </div>
+
+                        <div class="main-title-box">
+                            <span class="register-badge">وثيقة وسجل درجات رسمي</span>
+                            <h1 class="register-title">${tabName}</h1>
+                            <div class="academic-year">للعام الدراسي ( 2025 – 2026 م )</div>
+                        </div>
+
+                        <div class="info-cards-grid">
+                            <div class="info-card">
+                                <span class="card-label">المادة الدراسية</span>
+                                <span class="card-val val-subject">${subject}</span>
+                            </div>
+                            <div class="info-card">
+                                <span class="card-label">الصف والشعبة</span>
+                                <span class="card-val">${grade} - (${section})</span>
+                            </div>
+                            <div class="info-card">
+                                <span class="card-label">مدرس المادة المحترم</span>
+                                <span class="card-val val-teacher">${teacherName}</span>
+                            </div>
+                        </div>
+
+                        <div class="cover-bottom">
+                            <div class="sig-col">
+                                <div class="sig-title">أستاذ المادة</div>
+                                <div class="sig-name">${teacherName}</div>
+                                <div class="sig-dots">التوقيع: ...................</div>
+                            </div>
+
+                            <div class="seal-circle">
+                                <span>الختم الرسمي</span>
+                                <small>للمدرسة</small>
+                            </div>
+
+                            <div class="sig-col">
+                                <div class="sig-title">مدير المدرسة</div>
+                                <div class="sig-name">${config?.managerName?.takeIf { it.isNotBlank() } ?: "مدير المدرسة"}</div>
+                                <div class="sig-dots">التوقيع: ...................</div>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <hr class="divider">
-                    
-                    <div>
-                        <h3 class="main-title">سجل درجات الطلاب الرسمي (${tabName})</h3>
-                        <h1 class="subject-name">${subject}</h1>
-                        <h2 class="class-section">${grade} - الشعبة (${section})</h2>
-                    </div>
-                    
-                    <hr class="divider">
-                    
-                    <div>
-                        <h3 class="teacher-title">المدرسة: ${schoolName}</h3>
-                        <h3 class="teacher-title" style="margin-top: 5px; color: #1e3a8a;">أستاذ المادة: ${teacherName}</h3>
-                    </div>
-                    
-                    <div class="footer-text">العام الدراسي: 2025-2026</div>
                 </div>
             </div>
-            
-            <!-- Page 2: Table -->
+
+            <!-- Page 2+: Grades Table Page -->
             <div class="table-page">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 8px;">
                     <div>
@@ -2089,14 +2320,14 @@ fun generateGradesHtml(
                     </div>
                     <div style="text-align: center;">
                         <span style="font-weight: bold; font-size: 14px;">كشف الدرجات الرسمي - ${tabName}</span><br>
-                        <span style="font-size: 11px; font-weight: bold; color: #d97706;">المادة: ${subject} | الصف: ${grade} (${section})</span>
+                        <span style="font-size: 11px; font-weight: bold; color: #d97706;">المادة: ${subject} | الصف: ${grade} (${section}) | أستاذ المادة: ${teacherName}</span>
                     </div>
                     <div style="text-align: left; font-size: 10px; color: #64748b;">
                         <span>العام الدراسي: 2025-2026</span><br>
                         <span>التاريخ: ${java.time.LocalDate.now()}</span>
                     </div>
                 </div>
-                
+
                 <table>
                     <thead>
                         $tableHeader
@@ -2105,7 +2336,7 @@ fun generateGradesHtml(
                         $rowsHtml
                     </tbody>
                 </table>
-                
+
                 <!-- Statistics Summary Bar at the bottom of the page -->
                 <div class="stats-bar" style="margin-top: 15px; margin-bottom: 15px;">
                     <div style="text-align: center;">
@@ -2127,7 +2358,7 @@ fun generateGradesHtml(
                 </div>
 
                 <div class="signatures">
-                    <div>توقيع مدرس المادة: .......................................</div>
+                    <div>توقيع أستاذ المادة (${teacherName}): .......................................</div>
                     <div>توقيع وختم مدير المدرسة: .......................................</div>
                 </div>
             </div>
@@ -2135,6 +2366,7 @@ fun generateGradesHtml(
         </html>
     """.trimIndent()
 }
+
 
 @Composable
 fun AdminRegisterTable(

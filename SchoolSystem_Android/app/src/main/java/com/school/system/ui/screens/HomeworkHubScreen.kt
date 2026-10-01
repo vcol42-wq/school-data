@@ -188,16 +188,17 @@ fun HomeworkHubScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            TabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("الواجبات المنشورة (${assignments.size})") }
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("رسائل واستفسارات الطلاب (${messages.size})") }
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = "سجل الواجبات والتحضير المنشور (${assignments.size})",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Color(0xFF1E293B),
+                    modifier = Modifier.padding(12.dp)
                 )
             }
 

@@ -47,9 +47,12 @@ class StudentSettingsViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    val schoolId = sessionManager.getSchoolId() ?: ""
-    val schoolCode = sessionManager.getSchoolCode() ?: ""
-    val schoolName = sessionManager.getSchoolName() ?: "المدرسة الذكية"
+    var schoolId by mutableStateOf(sessionManager.getSchoolId() ?: "")
+        private set
+    var schoolCode by mutableStateOf(sessionManager.getSchoolCode() ?: "")
+        private set
+    var schoolName by mutableStateOf(sessionManager.getSchoolName() ?: "المدرسة الذكية")
+        private set
 
     private val prefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
 
@@ -59,6 +62,39 @@ class StudentSettingsViewModel @Inject constructor(
         private set
     var studentName by mutableStateOf(prefs.getString("student_name", "الطالب") ?: "الطالب")
         private set
+
+    fun pairWithQrData(
+        schoolId: String,
+        schoolCode: String,
+        schoolName: String,
+        url: String,
+        apiKey: String
+    ) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val res = repository.pairSchoolDirectly(
+                    schoolId = schoolId,
+                    schoolCode = schoolCode,
+                    schoolName = schoolName,
+                    url = url.ifBlank { null },
+                    apiKey = apiKey.ifBlank { null }
+                )
+                if (res.isSuccess) {
+                    this@StudentSettingsViewModel.schoolId = schoolId
+                    this@StudentSettingsViewModel.schoolCode = schoolCode
+                    this@StudentSettingsViewModel.schoolName = schoolName
+                    _testStatus.value = "تم الاقتران بمدرسة ($schoolName) وتحديث الجداول بنجاح ✓"
+                } else {
+                    _testStatus.value = "فشل في حفظ بيانات الربط السحابي ❌"
+                }
+            } catch (e: Exception) {
+                _testStatus.value = "خطأ في الربط: ${e.localizedMessage}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 
     fun updateStudentInfo(name: String, grade: String, section: String) {
         studentName = name.trim()
@@ -87,10 +123,21 @@ class StudentSettingsViewModel @Inject constructor(
         updateStudentInfo(name, grade, section)
         if (newCode.isNotBlank()) {
             viewModelScope.launch {
+                _isLoading.value = true
                 try {
-                    repository.verifySchoolCode(newCode)
+                    val res = repository.verifySchoolCode(newCode)
+                    if (res.isSuccess) {
+                        this@StudentSettingsViewModel.schoolId = sessionManager.getSchoolId() ?: ""
+                        this@StudentSettingsViewModel.schoolCode = sessionManager.getSchoolCode() ?: newCode
+                        this@StudentSettingsViewModel.schoolName = sessionManager.getSchoolName() ?: "المدرسة الذكية"
+                        _testStatus.value = "تم التحقق والاقتران بمدرسة (${this@StudentSettingsViewModel.schoolName}) بنجاح ✓"
+                    } else {
+                        _testStatus.value = res.exceptionOrNull()?.message ?: "كود المدرسة غير صحيح ❌"
+                    }
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    _testStatus.value = "خطأ في التحقق: ${e.localizedMessage}"
+                } finally {
+                    _isLoading.value = false
                 }
             }
         }
@@ -105,13 +152,14 @@ class StudentSettingsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
-    val maskedSchoolCode: String = if (schoolCode.length >= 4) {
-        "SCH-••••-" + schoolCode.takeLast(4)
-    } else if (savedSchoolCode.length >= 4) {
-        "SCH-••••-" + savedSchoolCode.takeLast(4)
-    } else {
-        "غير مقترن"
-    }
+    val maskedSchoolCode: String
+        get() = if (schoolCode.length >= 4) {
+            "SCH-••••-" + schoolCode.takeLast(4)
+        } else if (savedSchoolCode.length >= 4) {
+            "SCH-••••-" + savedSchoolCode.takeLast(4)
+        } else {
+            "غير مقترن"
+        }
 
     fun testConnection(onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
@@ -154,13 +202,13 @@ class StudentSettingsViewModel @Inject constructor(
             _isLoading.value = true
             _testStatus.value = "جاري تحديث كافة البيانات والجدول..."
             try {
+                val recordNumber = repository.getStudentRecordNumber()
                 repository.syncSchedule(currentSchoolId)
                 repository.syncDailyAssignments(currentSchoolId)
                 repository.syncDirectives(currentSchoolId)
-                repository.syncDirectMessages()
-                val deviceId = repository.getDeviceId()
-                repository.syncAttendance(currentSchoolId, deviceId)
-                _testStatus.value = "تم تحديث كافة البيانات بنجاح 🔄"
+                repository.syncStudentGrades(currentSchoolId, recordNumber)
+                repository.syncAttendance(currentSchoolId, recordNumber)
+                _testStatus.value = "تم تحديث كافة البيانات والدرجات بنجاح 🔄"
                 onComplete(true)
             } catch (e: Exception) {
                 _testStatus.value = "خطأ أثناء التحديث: ${e.localizedMessage}"
@@ -171,20 +219,54 @@ class StudentSettingsViewModel @Inject constructor(
         }
     }
 
-    // Reset session while storing last code in SharedPreferences for fast return without barcode!
     fun resetSchoolSession() {
-        val currentCode = sessionManager.getSchoolCode() ?: ""
-        if (currentCode.isNotEmpty()) {
-            prefs.edit().putString("last_saved_school_code", currentCode).apply()
-        }
         sessionManager.clearSchoolSession()
+        prefs.edit()
+            .remove("last_saved_school_code")
+            .remove("school_id")
+            .remove("school_code")
+            .remove("school_name")
+            .remove("synced_schedule")
+            .remove("independent_mode")
+            .apply()
+        this.schoolId = ""
+        this.schoolCode = ""
+        this.schoolName = "غير مقترن"
+        _testStatus.value = "تم إلغاء الارتباط بالمدرسة بنجاح"
     }
+
+    fun switchToIndependent() {
+        sessionManager.saveSchoolSession(
+            schoolId = "independent_student",
+            schoolCode = "INDEPENDENT",
+            schoolName = "طالب مستقل"
+        )
+        prefs.edit()
+            .putBoolean("independent_mode", true)
+            .putString("student_name", if (studentName != "الطالب" && studentName.isNotBlank()) studentName else "طالب مستقل")
+            .apply()
+        this.schoolId = "independent_student"
+        this.schoolCode = "INDEPENDENT"
+        this.schoolName = "طالب مستقل"
+        _testStatus.value = "أنت الآن في وضع الطالب المستقل (بدون ربط مدرسي) 👤"
+    }
+
+    fun isIndependent(): Boolean = schoolId == "independent_student" || sessionManager.isIndependentStudent()
 
     fun restoreStoredCode(onComplete: (Boolean) -> Unit) {
         val stored = prefs.getString("last_saved_school_code", "") ?: ""
         if (stored.isNotEmpty()) {
-            sessionManager.saveSchoolSession("school_default", stored, "المدرسة الذكية")
-            onComplete(true)
+            viewModelScope.launch {
+                val res = repository.verifySchoolCode(stored)
+                if (res.isSuccess) {
+                    schoolId = sessionManager.getSchoolId() ?: ""
+                    schoolCode = sessionManager.getSchoolCode() ?: stored
+                    schoolName = sessionManager.getSchoolName() ?: "المدرسة الذكية"
+                    onComplete(true)
+                } else {
+                    onComplete(false)
+                }
+            }
         } else {
             onComplete(false)
         }
@@ -197,32 +279,72 @@ fun StudentSettingsScreen(
     viewModel: StudentSettingsViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
-    onNavigateToRoleSelection: () -> Unit = {}
+    onNavigateToQrScanner: () -> Unit = {},
+    navController: androidx.navigation.NavController? = null
 ) {
     val context = LocalContext.current
     val testStatus by viewModel.testStatus.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
-    // Confirmation steps
-    var showConfirmDialogStep1 by remember { mutableStateOf(false) }
-    var showConfirmDialogStep2 by remember { mutableStateOf(false) }
-    var showResetRoleDialog by remember { mutableStateOf(false) }
+    var showUnpairConfirmDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showEditStudentDialog by remember { mutableStateOf(false) }
+
+    // Listen to barcode scanned from QrScannerScreen
+    val scannedCode = navController?.currentBackStackEntry
+        ?.savedStateHandle
+        ?.getStateFlow<String?>("scanned_code", null)
+        ?.collectAsState()
+
+    LaunchedEffect(scannedCode?.value) {
+        scannedCode?.value?.let { code ->
+            try {
+                val clean = code.trim()
+                if (clean.startsWith("{") && clean.endsWith("}")) {
+                    val gson = com.google.gson.Gson()
+                    val mapType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
+                    val data: Map<String, Any> = gson.fromJson(clean, mapType)
+                    
+                    val url = data["url"]?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val apiKey = data["apiKey"]?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val sCode = (data["schoolId"] ?: data["id"])?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val pCode = (data["studentPairingCode"] ?: data["student_pairing_code"] ?: data["pairingCode"])
+                        ?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val sName = (data["schoolName"] ?: data["name"])?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    
+                    val targetCode = if (pCode.isNotBlank()) pCode else sCode
+                    val targetName = if (sName.isNotBlank()) sName else "المدرسة الذكية"
+                    viewModel.pairWithQrData(
+                        schoolId = sCode,
+                        schoolCode = targetCode,
+                        schoolName = targetName,
+                        url = url,
+                        apiKey = apiKey
+                    )
+                    val nameMsg = if (sName.isNotBlank()) " ($sName)" else ""
+                    Toast.makeText(context, "تم مسح باركود المدرسة وتحديث الربط بنجاح$nameMsg ✓", Toast.LENGTH_SHORT).show()
+                } else {
+                    viewModel.updateStudentAndSchool(viewModel.studentName, viewModel.studentGrade, viewModel.studentSection, clean)
+                    Toast.makeText(context, "تم مسح كود المدرسة بنجاح: $clean ✓", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                viewModel.updateStudentAndSchool(viewModel.studentName, viewModel.studentGrade, viewModel.studentSection, code.trim())
+                Toast.makeText(context, "تم مسح الكود: ${code.trim()}", Toast.LENGTH_SHORT).show()
+            }
+            navController?.currentBackStackEntry?.savedStateHandle?.remove<String>("scanned_code")
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("الضبط وإعدادات الربط ⚙️", fontWeight = FontWeight.Bold) },
+                title = { Text("إعدادات بوابة الطالب ⚙️", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showResetRoleDialog = true }) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = "تبديل الصفة (أستاذ / طالب)", tint = Color(0xFF059669))
-                    }
                     IconButton(onClick = { showHelpGuideDialog = true }) {
                         Icon(Icons.Default.MenuBook, contentDescription = "دليل الاستخدام", tint = Color(0xFF059669))
                     }
@@ -236,145 +358,94 @@ fun StudentSettingsScreen(
                 .fillMaxSize()
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Card 1: School Identity
+            // Card 1: Student & School Profile
             Card(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
                 border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.School, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("بيانات المدرسة المقترنة", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("بيانات الطالب والمدرسة", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
                     HorizontalDivider(color = Color(0xFFE2E8F0))
-                    Text("اسم المدرسة: ${viewModel.schoolName}", fontSize = 13.5.sp, fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
-                    Text("اسم الطالب: ${viewModel.studentName}", fontSize = 12.5.sp, color = Color(0xFF334155))
+                    Text("اسم الطالب: ${viewModel.studentName}", fontSize = 13.5.sp, fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
+                    Text("المدرسة: ${viewModel.schoolName}", fontSize = 13.sp, color = Color(0xFF334155), fontWeight = FontWeight.Bold)
                     Text("الصف والشعبة: ${viewModel.studentGrade} - (${viewModel.studentSection})", fontSize = 12.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
 
                     Button(
                         onClick = { showEditStudentDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("تعديل وتسجيل بيانات الطالب ✏️", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Masked connection code
-                    Surface(
-                        color = Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.KeyOff, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("رمز الربط الخاص:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                            }
-                            Text(viewModel.maskedSchoolCode, fontSize = 12.5.sp, color = Color(0xFF059669), fontWeight = FontWeight.Black)
-                        }
+                        Text("تعديل بيانات الطالب والشعبة ✏️", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            // Card: Notifications Settings
-            val prefs = remember { context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE) }
-            var notificationsEnabled by remember {
-                mutableStateOf(prefs.getBoolean("notifications_enabled", true))
-            }
-
+            // Card 2: Barcode Scanner & Cloud Sync (Super Clean & Direct)
             Card(
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                border = BorderStroke(1.5.dp, Color(0xFF86EFAC)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Notifications,
-                                contentDescription = null,
-                                tint = if (notificationsEnabled) Color(0xFF059669) else Color.Gray,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Column {
-                                Text("إشعارات الواجبات والدروس 🔔", fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                                Text(
-                                    if (notificationsEnabled) "الإشعارات الفورية مفعّلة" else "الإشعارات الفورية متوقفة",
-                                    fontSize = 11.5.sp,
-                                    color = Color.Gray
-                                )
-                            }
-                        }
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("قارئ الباركود والمزامنة السحابية 📷", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color(0xFF166534))
+                    }
 
-                        Switch(
-                            checked = notificationsEnabled,
-                            onCheckedChange = { isChecked ->
-                                notificationsEnabled = isChecked
-                                prefs.edit().putBoolean("notifications_enabled", isChecked).apply()
+                    Text(
+                        "امسح باركود المدرسة المعروض في شاشة المدير لربط التطبيق أو تحديث الجداول فورياً.",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF15803D)
+                    )
+
+                    // Prominent Barcode Scanner Button
+                    Button(
+                        onClick = onNavigateToQrScanner,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("مسح باركود المدرسة (QR Scanner) 📸", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    }
+
+                    // Sync & Update Now Button
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.syncDataNow { success ->
                                 Toast.makeText(
                                     context,
-                                    if (isChecked) "تم تفعيل الإشعارات الفورية 🔔" else "تم إيقاف الإشعارات الفورية 🔕",
+                                    if (success) "تم تحديث البيانات والجدول بنجاح 🔄" else "تعذر التحديث، تحقق من الاتصال",
                                     Toast.LENGTH_SHORT
                                 ).show()
                             }
-                        )
-                    }
-                }
-            }
-
-            // Card 2: Secure Encrypted Cloud Connection
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Shield, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("حالة الاتصال السحابي الآمن 🔒", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    }
-
-                    Surface(
-                        color = Color(0xFFF1F5F9),
+                        },
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0284C7)),
+                        border = BorderStroke(1.2.dp, Color(0xFF0284C7)),
+                        enabled = !isLoading
                     ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("حالة الربط والخصوصية:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                Text("آمن / مفاتيح سرية مخفية ✓", fontSize = 12.sp, color = Color(0xFF059669), fontWeight = FontWeight.Black)
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("تشفير الاتصال السحابي:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                Text("TLS 1.3 / مشفر بالكامل ⚡", fontSize = 12.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
-                            }
+                        if (isLoading) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color(0xFF0284C7), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("تحديث ومزامنة البيانات والجدول الآن 🔄", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                         }
                     }
 
@@ -386,168 +457,71 @@ fun StudentSettingsScreen(
                         ) {
                             Text(
                                 text = testStatus!!,
-                                modifier = Modifier.padding(12.dp),
+                                modifier = Modifier.padding(10.dp),
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 color = if (testStatus!!.contains("✓") || testStatus!!.contains("🔄")) Color(0xFF166534) else Color(0xFF991B1B)
                             )
                         }
                     }
-
-                    Button(
-                        onClick = {
-                            viewModel.testConnection { success ->
-                                Toast.makeText(
-                                    context,
-                                    if (success) "تم التحقق من الربط السحابي بنجاح ⚡" else "تعذر الوصول للسحابة",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoading
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("تفعيل والتحقق من الربط السحابي ⚡", fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.syncDataNow { success ->
-                                Toast.makeText(
-                                    context,
-                                    if (success) "تم تحديث البيانات والجدول بنجاح 🔄" else "فشل التحديث",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !isLoading
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("تحديث ومزامنة البيانات والجدول الآن 🔄", fontWeight = FontWeight.Bold)
-                    }
                 }
             }
 
-            // Card 3: Fast Reconnect with Saved Code (No Barcode Scanner required!)
-            if (viewModel.savedSchoolCode.isNotEmpty()) {
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEFF6FF)),
-                    border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("الربط السريع بالكود المخزن", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFF1E40AF))
-                        Text("الرمز المدرسي محفوض ومخزن بأمان! يمكنك العودة والارتباط بنقرة واحدة دون مسح الباراكود.", fontSize = 11.5.sp, color = Color(0xFF1E3A8A))
-                        Button(
-                            onClick = {
-                                viewModel.restoreStoredCode { success ->
-                                    if (success) {
-                                        Toast.makeText(context, "تم إعادة الاتصال المباشر بالمدرسة بنجاح ⚡", Toast.LENGTH_SHORT).show()
-                                        onBack()
-                                    }
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("إعادة الربط الفوري المباشر (بدون باراكود) ⚡", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
+            // Card 3: Notifications
+            val prefs = remember { context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE) }
+            var notificationsEnabled by remember {
+                mutableStateOf(prefs.getBoolean("notifications_enabled", true))
             }
 
-            // Card 4: Session Reset / Unlink with DOUBLE CONFIRMATION!
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F2)),
-                border = BorderStroke(1.dp, Color(0xFFFECDD3)),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("إلغاء الربط مع المدرسة", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = Color(0xFFBE123C))
-                    Text("يتطلب إلغاء الارتباط تأكيداً مزدوجاً لمنع الإلغاء عن طريق الخطأ.", fontSize = 11.5.sp, color = Color(0xFF881337))
-                    Button(
-                        onClick = { showConfirmDialogStep1 = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.LinkOff, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("إلغاء الربط مع المدرسة ⚠️", fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-
-            // Card 5: Switch Role / Reset Portal
-            Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F5F9)),
-                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showResetRoleDialog = true }
-            ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFE2E8F0)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.SwapHoriz,
+                            Icons.Default.Notifications,
                             contentDescription = null,
-                            tint = Color(0xFF0F172A)
+                            tint = if (notificationsEnabled) Color(0xFF059669) else Color.Gray,
+                            modifier = Modifier.size(24.dp)
                         )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("إشعارات الحصص والواجبات 🔔", fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                            Text(
+                                if (notificationsEnabled) "الإشعارات الفورية مفعّلة" else "الإشعارات الفورية متوقفة",
+                                fontSize = 11.sp,
+                                color = Color.Gray
+                            )
+                        }
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "تبديل أو إعادة اختيار البوابة",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp,
-                            color = Color(0xFF0F172A)
-                        )
-                        Text(
-                            text = "العودة لشاشة البوابة للاختيار بين (أستاذ / طالب)",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(16.dp)
+
+                    Switch(
+                        checked = notificationsEnabled,
+                        onCheckedChange = { isChecked ->
+                            notificationsEnabled = isChecked
+                            prefs.edit().putBoolean("notifications_enabled", isChecked).apply()
+                            Toast.makeText(
+                                context,
+                                if (isChecked) "تم تفعيل الإشعارات الفورية 🔔" else "تم إيقاف الإشعارات 🔕",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     )
                 }
             }
 
-            // Card 6: Student User Guide Card
+            // Card 4: Student User Guide
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
-                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { showHelpGuideDialog = true }
@@ -558,7 +532,7 @@ fun StudentSettingsScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
                             .background(Color(0xFFDCFCE7)),
                         contentAlignment = Alignment.Center
@@ -567,20 +541,20 @@ fun StudentSettingsScreen(
                             imageVector = Icons.Default.MenuBook,
                             contentDescription = null,
                             tint = Color(0xFF16A34A),
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                     }
-                    Spacer(modifier = Modifier.width(14.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "دليل استخدام منصة الطالب 📖",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
+                            fontSize = 13.5.sp,
                             color = Color(0xFF166534)
                         )
                         Text(
-                            text = "إرشادات الجدول، الواجبات، مؤقت بومودورو والمزامنة",
-                            fontSize = 11.5.sp,
+                            text = "إرشادات الجدول، الواجبات، ومتابعة الدروس",
+                            fontSize = 11.sp,
                             color = Color(0xFF15803D)
                         )
                     }
@@ -592,121 +566,156 @@ fun StudentSettingsScreen(
                     )
                 }
             }
+
+            // Card: Independent Student Mode
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (viewModel.isIndependent()) Color(0xFFF0FDF4) else Color(0xFFF8FAFC)
+                ),
+                border = BorderStroke(1.2.dp, if (viewModel.isIndependent()) Color(0xFF16A34A) else Color(0xFFCBD5E1)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Person,
+                                contentDescription = null,
+                                tint = if (viewModel.isIndependent()) Color(0xFF16A34A) else Color(0xFF0F766E),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "وضع الطالب المستقل 👤",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp,
+                                    color = Color(0xFF0F172A)
+                                )
+                                Text(
+                                    if (viewModel.isIndependent()) "الحالة: مفعّل كطالب مستقل (بدون ربط مدرسي)" else "استخدام التطبيق بدون ربط بأي مدرسة لمتابعة الدروس شخصياً",
+                                    fontSize = 11.sp,
+                                    color = if (viewModel.isIndependent()) Color(0xFF15803D) else Color(0xFF64748B)
+                                )
+                            }
+                        }
+                    }
+
+                    if (!viewModel.isIndependent()) {
+                        Button(
+                            onClick = {
+                                viewModel.switchToIndependent()
+                                Toast.makeText(context, "تم التحويل إلى وضع الطالب المستقل 👤", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("التحويل إلى طالب مستقل 👤", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    } else {
+                        Surface(
+                            color = Color(0xFFDCFCE7),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                "✓ وضع الطالب المستقل نشط حالياً. يمكنك مسح باركود المدرسة في أي وقت للارتباط.",
+                                modifier = Modifier.padding(8.dp),
+                                fontSize = 11.sp,
+                                color = Color(0xFF166534),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                com.school.system.utils.RoleManager.resetRoleBeforeLock(context)
+                                navController?.navigate("role_selection") {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0F766E)),
+                            border = BorderStroke(1.2.dp, Color(0xFF0D9488)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("الرجوع إلى اختيار البوابات ↩️ (طالب / أستاذ / مدير)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+
+            // Card 5: Unlink School
+            Card(
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F2)),
+                border = BorderStroke(1.dp, Color(0xFFFECDD3)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("إلغاء الارتباط مع المدرسة", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFFBE123C))
+                        Text("للربط مع مدرسة أخرى أو إعادة المسح", fontSize = 11.sp, color = Color(0xFF881337))
+                    }
+                    Button(
+                        onClick = { showUnpairConfirmDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("إلغاء الربط ⚠️", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 
-    // ----------------------------------------------------
-    // STUDENT HELP GUIDE DIALOG
-    // ----------------------------------------------------
+    // Student Help Guide Dialog
     if (showHelpGuideDialog) {
         com.example.theboss.ui.dialogs.StudentHelpGuideDialog(
             onDismiss = { showHelpGuideDialog = false }
         )
     }
 
-    // ----------------------------------------------------
-    // DOUBLE CONFIRMATION DIALOG 1 (تأكيد إلغاء الربط 1)
-    // ----------------------------------------------------
-    if (showConfirmDialogStep1) {
+    // Single Clean Unpair Confirmation Dialog
+    if (showUnpairConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { showConfirmDialogStep1 = false },
-            title = { Text("إلغاء الارتباط مع المدرسة", fontWeight = FontWeight.Black, fontSize = 16.sp) },
+            onDismissRequest = { showUnpairConfirmDialog = false },
+            title = { Text("إلغاء الارتباط مع المدرسة ⚠️", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color(0xFFBE123C)) },
             text = {
                 Text(
-                    "سوف تلغي الارتباط مع المدرسة.. هل أنت متأكد من إلغاء الارتباط؟",
-                    fontSize = 13.sp,
+                    "هل أنت متأكد من إلغاء الارتباط بالمدرسة الحالية؟ ستتمكن من مسح باركود مدرسة جديدة أو إعادة الانضمام في أي وقت.",
+                    fontSize = 12.5.sp,
                     color = Color(0xFF334155),
-                    lineHeight = 19.sp
+                    lineHeight = 18.sp
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        showConfirmDialogStep1 = false
-                        showConfirmDialogStep2 = true // Proceed to Second Confirmation!
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE11D48))
-                ) {
-                    Text("نعم، تابع الإلغاء", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showConfirmDialogStep1 = false }) {
-                    Text("إلغاء", fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
-
-    // ----------------------------------------------------
-    // DOUBLE CONFIRMATION DIALOG 2 (تأكيد ثانٍ حاسم 2)
-    // ----------------------------------------------------
-    if (showConfirmDialogStep2) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialogStep2 = false },
-            title = { Text("تأكيد ثانٍ حاسم ⚠️", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFFBE123C)) },
-            text = {
-                Text(
-                    "هل أنت جاد في إلغاء الارتباط والمزامنة مع المدرسة؟ (سيتم حفظ الرمز أوتوماتيكياً للعودة لاحقاً دون الحاجة للباراكود).",
-                    fontSize = 13.sp,
-                    color = Color(0xFF881337),
-                    lineHeight = 19.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showConfirmDialogStep2 = false
+                        showUnpairConfirmDialog = false
                         viewModel.resetSchoolSession()
-                        Toast.makeText(context, "تم إلغاء الارتباط بنجاح مع حفظ كود العودة ⚡", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "تم إلغاء الارتباط بنجاح", Toast.LENGTH_SHORT).show()
                         onNavigateToLogin()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE123C))
-                ) {
-                    Text("تأكيد الإلغاء النهائي", fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                OutlinedButton(onClick = { showConfirmDialogStep2 = false }) {
-                    Text("تراجع", fontWeight = FontWeight.Bold)
-                }
-            }
-        )
-    }
-
-    if (showResetRoleDialog) {
-        AlertDialog(
-            onDismissRequest = { showResetRoleDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color(0xFF059669))
-                    Spacer(Modifier.width(8.dp))
-                    Text("إعادة اختيار البوابة", fontWeight = FontWeight.Black, fontSize = 15.sp)
-                }
-            },
-            text = {
-                Text(
-                    "هل ترغب في العودة إلى شاشة البوابة الرئيسية لاختيار دور آخر (أستاذ أو طالب)؟ يتم الاحتفاظ بكافة بياناتك وجدولك الحالي بأمان.",
-                    fontSize = 13.sp,
-                    color = Color(0xFF334155)
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showResetRoleDialog = false
-                        com.school.system.utils.RoleManager.clearSelectedRole(context)
-                        onNavigateToRoleSelection()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBE123C)),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("نعم، العودة للبوابة", fontWeight = FontWeight.Bold)
+                    Text("نعم، إلغاء الارتباط", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showResetRoleDialog = false }) {
-                    Text("تراجع", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                TextButton(onClick = { showUnpairConfirmDialog = false }) {
+                    Text("تراجع", fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
                 }
             }
         )
@@ -722,7 +731,7 @@ fun StudentSettingsScreen(
             onSave = { newName, newGrade, newSection, newCode ->
                 viewModel.updateStudentAndSchool(newName, newGrade, newSection, newCode)
                 showEditStudentDialog = false
-                Toast.makeText(context, "تم تحديث بيانات الطالب والمدرسة بنجاح 🎓", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "تم حفظ بيانات الطالب بنجاح 🎓", Toast.LENGTH_SHORT).show()
             }
         )
     }

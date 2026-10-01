@@ -29,11 +29,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.school.system.utils.RoleManager
 import kotlinx.coroutines.launch
 
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingScreen(
     onActivationComplete: () -> Unit,
     onNavigateToQrScanner: () -> Unit,
+    onNavigateToRoleSelection: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     navController: androidx.navigation.NavController? = null
 ) {
@@ -134,27 +137,37 @@ fun OnboardingScreen(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 8.dp, end = 12.dp),
-                contentAlignment = Alignment.TopEnd
-            ) {
-                TextButton(
-                    onClick = {
-                        RoleManager.clearSelectedRole(context)
-                        navController?.navigate("role_selection") {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    }
+            if (!RoleManager.isRoleLocked(context)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopStart)
+                        .padding(horizontal = 16.dp, vertical = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("تبديل الصفة ⇄", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    IconButton(
+                        onClick = {
+                            RoleManager.resetRoleBeforeLock(context)
+                            onNavigateToRoleSelection()
+                        },
+                        colors = IconButtonDefaults.iconButtonColors(containerColor = Color.White.copy(alpha = 0.2f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "رجوع لاختيار البوابات",
+                            tint = Color.White
+                        )
                     }
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "تغيير البوابة ↩️",
+                        color = Color(0xFFC7D2FE),
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
+
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.padding(16.dp)

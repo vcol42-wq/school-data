@@ -19,9 +19,10 @@ interface SupabaseApi {
     ): Response<List<School>>
 
     @POST("join_requests")
-    @Headers("Prefer: return=representation")
+    @Headers("Prefer: resolution=merge-duplicates,return=representation")
     suspend fun submitJoinRequest(
-        @Body request: JoinRequest
+        @Body request: JoinRequest,
+        @Query("on_conflict") onConflict: String = "school_id,device_id"
     ): Response<List<JoinRequest>>
 
     @GET("join_requests")
@@ -34,8 +35,17 @@ interface SupabaseApi {
     @GET("grades")
     suspend fun getStudentGrades(
         @Query("student_record_number") recordFilter: String,
+        @Query("school_id") schoolFilter: String? = null,
         @Query("select") select: String = "*"
     ): Response<List<GradeDto>>
+
+    @GET("students")
+    suspend fun getStudents(
+        @Query("school_id") schoolFilter: String,
+        @Query("current_grade") gradeFilter: String? = null,
+        @Query("section") sectionFilter: String? = null,
+        @Query("select") select: String = "*"
+    ): Response<List<StudentRemoteDto>>
 
     // جلب إعدادات التطبيق (مثل مفتاح Gemini API) من جدول app_config
     @GET("app_config")

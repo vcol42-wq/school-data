@@ -29,6 +29,21 @@ data class GradeDto(
     @SerializedName("marks") val marks: Map<String, Any>
 )
 
+data class StudentRemoteDto(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("school_id") val schoolId: String? = null,
+    @SerializedName("record_number") val recordNumber: String,
+    @SerializedName("full_name") val fullName: String,
+    @SerializedName("current_grade") val currentGrade: String? = null,
+    @SerializedName("section") val section: String? = null,
+    @SerializedName("first_name") val firstName: String? = null,
+    @SerializedName("second_name") val secondName: String? = null,
+    @SerializedName("third_name") val thirdName: String? = null,
+    @SerializedName("fourth_name") val fourthName: String? = null,
+    @SerializedName("title_name") val titleName: String? = null,
+    @SerializedName("absences_count") val absencesCount: Int? = 0
+)
+
 // نموذج جدول إعدادات التطبيق (app_config) في Supabase
 data class AppConfigDto(
     @SerializedName("key") val key: String,

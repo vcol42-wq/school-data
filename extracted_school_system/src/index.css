@@ -521,6 +521,25 @@
     box-shadow: none !important;
   }
 
+  .print-cover-page {
+    width: 210mm !important;
+    min-height: 290mm !important;
+    max-width: 210mm !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    box-sizing: border-box !important;
+    margin: 0 auto !important;
+    padding: 12mm 10mm !important;
+    border: 5px double #1e3a8a !important;
+    background-color: #fafaf9 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+
   img {
     max-width: 100% !important;
     height: auto !important;

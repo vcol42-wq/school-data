@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { normalizeArabic } from '../../utils/syncService';
 import { applyMinisterialGrace } from '../../utils/gradeCalculations';
+import { GradeRegisterCoverPage } from './GradeRegisterCoverPage';
 
 interface AdminMasterRegisterProps {
   students: Student[];
@@ -21,6 +22,7 @@ interface AdminMasterRegisterProps {
   onSelectStudent: (student: Student) => void;
   selectedGrade: string;
   selectedSection: string;
+  schoolName?: string;
 }
 
 export type AdminViewMetric = 'annual' | 'final' | 'midterm' | 'term1' | 'term2';
@@ -30,7 +32,8 @@ export const AdminMasterRegister: React.FC<AdminMasterRegisterProps> = ({
   subjectsList,
   onSelectStudent,
   selectedGrade,
-  selectedSection
+  selectedSection,
+  schoolName
 }) => {
   const [metric, setMetric] = useState<AdminViewMetric>('annual');
   const [applyGrace, setApplyGrace] = useState<boolean>(false);
@@ -152,6 +155,17 @@ export const AdminMasterRegister: React.FC<AdminMasterRegisterProps> = ({
           </button>
         </div>
 
+      </div>
+
+      {/* 1.5. صفحة الغلاف الرسمية المنفردة (تظهر في الطباعة فقط) */}
+      <div className="hidden print:block">
+        <GradeRegisterCoverPage
+          registerTitle="سِجِلّ الإِدَارَةِ العَام وشِيتِ النَّتَائِج المَرْكَزِي"
+          grade={selectedGrade}
+          section={selectedSection}
+          teacherName="إدارة المدرسة ولجنة الامتحانات"
+          schoolName={schoolName}
+        />
       </div>
 
       {/* 2. جدول الشيت الإداري المركزي الموحد */}

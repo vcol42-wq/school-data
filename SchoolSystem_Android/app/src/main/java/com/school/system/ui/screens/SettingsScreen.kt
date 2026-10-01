@@ -514,7 +514,6 @@ fun SettingsScreen(
     var isAiEnabled by remember { mutableStateOf(true) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showUnpairConfirmDialog by remember { mutableStateOf(false) }
-    var showResetRoleDialog by remember { mutableStateOf(false) }
     var showConnectWarningDialog by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
@@ -542,9 +541,6 @@ fun SettingsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showResetRoleDialog = true }) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = "تبديل الصفة (أستاذ / طالب)", tint = Color(0xFF2563EB))
-                    }
                     IconButton(onClick = { showHelpGuideDialog = true }) {
                         Icon(Icons.Default.Info, contentDescription = "دليل الاستخدام والتعليمات", tint = Color(0xFF2563EB))
                     }
@@ -1360,55 +1356,6 @@ fun SettingsScreen(
                 }
             }
 
-            // Switch / Re-select Portal Role Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showResetRoleDialog = true },
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0xFFCBD5E1))
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFEEF2FF)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = null,
-                            tint = Color(0xFF4F46E5)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "تبديل أو إعادة اختيار البوابة",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.5.sp,
-                            color = Color(0xFF1E293B)
-                        )
-                        Text(
-                            text = "العودة لشاشة البوابة للاختيار بين (أستاذ / طالب)",
-                            fontSize = 11.sp,
-                            color = Color(0xFF64748B)
-                        )
-                    }
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        tint = Color(0xFF94A3B8),
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-            }
-
             // Footer Version Info
             Box(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -1416,7 +1363,7 @@ fun SettingsScreen(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "المنظومة المدرسية الموحدة - الإصدار 4.4",
+                        text = "المنظومة المدرسية الموحدة - الإصدار 6.3",
                         color = Color(0xFF94A3B8),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold
@@ -1507,47 +1454,6 @@ fun SettingsScreen(
         // Help Guide Dialog
         if (showHelpGuideDialog) {
             HelpGuideDialog(onDismiss = { showHelpGuideDialog = false })
-        }
-
-        // Switch / Reset Role Confirmation Dialog
-        if (showResetRoleDialog) {
-            AlertDialog(
-                onDismissRequest = { showResetRoleDialog = false },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color(0xFF4F46E5))
-                        Spacer(Modifier.width(8.dp))
-                        Text("إعادة اختيار البوابة", fontWeight = FontWeight.Black, fontSize = 15.sp)
-                    }
-                },
-                text = {
-                    Text(
-                        "هل ترغب في العودة إلى شاشة البوابة الرئيسية لاختيار دور آخر (أستاذ • طالب • مدير)؟ يتم الاحتفاظ بكافة بياناتك وسجلاتك الحالية بأمان.",
-                        fontSize = 13.sp,
-                        color = Color(0xFF334155)
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showResetRoleDialog = false
-                            com.school.system.utils.RoleManager.clearSelectedRole(context)
-                            navController?.navigate("role_selection") {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4F46E5)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("نعم، العودة للبوابة", fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showResetRoleDialog = false }) {
-                        Text("تراجع", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
-                    }
-                }
-            )
         }
     }
 }

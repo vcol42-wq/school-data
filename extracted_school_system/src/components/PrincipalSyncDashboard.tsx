@@ -155,7 +155,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
     }
   }, []);
 
-  const generateNewIdentity = () => {
+  const generateNewIdentity = async () => {
     if (!confirm('هل أنت متأكد من توليد هوية ورموز جديدة؟ سيؤدي هذا لقطع الاتصال عن التطبيقات المرتبطة حالياً ويجب عليهم إعادة المسح.')) return;
     const newId = `SCH-${Math.random().toString(36).toUpperCase().substr(2, 6)}`;
     const randSuffix = Math.random().toString(36).substring(2, 4).toUpperCase();
@@ -170,6 +170,22 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
     localStorage.setItem('diyala_pairing_code', newPairing);
     localStorage.setItem('diyala_student_pairing_code', newStudentPairing);
     localStorage.setItem('diyala_principal_pairing_code', newPrincipalPairing);
+
+    try {
+      await supabase.from('schools').upsert({
+        id: newId,
+        name: config.schoolName || 'مدرسة سحابية',
+        pairing_code: newPairing,
+        admin_email: config.adminEmail || '',
+        config: {
+          student_pairing_code: newStudentPairing,
+          studentPairingCode: newStudentPairing,
+          principal_pairing_code: newPrincipalPairing,
+          principalPairingCode: newPrincipalPairing
+        }
+      }, { onConflict: 'id' });
+    } catch (_) {}
+
     window.location.reload();
   };
 
@@ -268,25 +284,50 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   useEffect(() => {
     const registerSchool = async () => {
       try {
-        const { error } = await supabase.from('schools').upsert({
-          id: schoolId, name: config.schoolName || 'مدرسة سحابية', pairing_code: pairingCode, admin_email: config.adminEmail || ''
-        }, { onConflict: 'id' });
-        if (error) { setConnectionStatus('error'); addLog('error', error.message, 'error'); }
-        else { 
-          setConnectionStatus('connected'); 
-          addLog('realtime', 'تم الاتصال بالسحابة بنجاح', 'success'); 
-          
-          // استرجاع أقفال الدرجات المسجلة في السحابة
+        const stCode = localStorage.getItem('diyala_student_pairing_code') || studentPairingCode || '223344';
+        const prCode = localStorage.getItem('diyala_principal_pairing_code') || principalPairingCode || '334455';
+        
+        let existingConfig: any = {};
+        try {
           const { data: schoolData } = await supabase.from('schools').select('config').eq('id', schoolId).single();
-          if (schoolData?.config?.grade_locks) {
-            setGradeLocks(schoolData.config.grade_locks);
+          if (schoolData?.config && typeof schoolData.config === 'object') {
+            existingConfig = schoolData.config;
+            if (schoolData.config.grade_locks) {
+              setGradeLocks(schoolData.config.grade_locks);
+            }
           }
+        } catch (_) {}
+
+        const mergedConfig = {
+          ...existingConfig,
+          student_pairing_code: stCode,
+          studentPairingCode: stCode,
+          principal_pairing_code: prCode,
+          principalPairingCode: prCode
+        };
+
+        const { error } = await supabase.from('schools').upsert({
+          id: schoolId,
+          name: config.schoolName || 'مدرسة سحابية',
+          pairing_code: pairingCode,
+          admin_email: config.adminEmail || '',
+          config: mergedConfig
+        }, { onConflict: 'id' });
+
+        if (error) {
+          setConnectionStatus('error');
+          addLog('error', error.message, 'error');
+        } else { 
+          setConnectionStatus('connected'); 
+          addLog('realtime', 'تم الاتصال بالسحابة ومزامنة أكواد الهوية بنجاح', 'success'); 
         }
-      } catch (e) { setConnectionStatus('error'); }
+      } catch (e) {
+        setConnectionStatus('error');
+      }
     };
     registerSchool();
     fetchTeachersFromSupabase();
-  }, [schoolId, pairingCode, config, fetchTeachersFromSupabase, addLog]);
+  }, [schoolId, pairingCode, studentPairingCode, principalPairingCode, config, fetchTeachersFromSupabase, addLog]);
 
   const handleSyncAll = async () => {
     if (!isDesktopActivated()) {

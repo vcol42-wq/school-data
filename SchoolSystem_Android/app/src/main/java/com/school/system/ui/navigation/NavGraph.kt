@@ -55,14 +55,22 @@ fun SchoolSystemNavHost(navController: NavHostController) {
             SplashScreen(
                 onAnimationFinished = {
                     val role = RoleManager.getSelectedRole(context)
+                    val isLocked = RoleManager.isRoleLocked(context)
+
+                    if (role == null) {
+                        navController.navigate("role_selection") {
+                            popUpTo("splash") { inclusive = true }
+                        }
+                        return@SplashScreen
+                    }
+
                     if (role == AppRole.TEACHER) {
                         settingsViewModel.setTeacherRole()
                     }
                     val nextRoute = when (role) {
-                        AppRole.TEACHER -> if (config?.isActivated == true) "dashboard" else "onboarding"
-                        AppRole.STUDENT -> if (studentSessionManager.isSchoolConfigured()) "student_schedule" else "student_onboarding"
-                        AppRole.PRINCIPAL -> if (config?.isActivated == true && config?.role == "supervisor") "dashboard" else "principal_onboarding"
-                        null -> "role_selection"
+                        AppRole.TEACHER -> if (config?.isActivated == true) "dashboard" else if (isLocked) "onboarding" else "role_selection"
+                        AppRole.STUDENT -> if (studentSessionManager.isSchoolConfigured()) "student_schedule" else if (isLocked) "student_onboarding" else "role_selection"
+                        AppRole.PRINCIPAL -> if (config?.isActivated == true && config?.role == "supervisor") "dashboard" else if (isLocked) "principal_onboarding" else "role_selection"
                     }
                     navController.navigate(nextRoute) {
                         popUpTo("splash") { inclusive = true }
@@ -99,6 +107,7 @@ fun SchoolSystemNavHost(navController: NavHostController) {
         composable("principal_onboarding") {
             PrincipalOnboardingScreen(
                 onActivationComplete = {
+                    RoleManager.lockRole(context, AppRole.PRINCIPAL)
                     navController.navigate("dashboard") {
                         popUpTo("principal_onboarding") { inclusive = true }
                     }
@@ -107,6 +116,7 @@ fun SchoolSystemNavHost(navController: NavHostController) {
                     navController.navigate("qr_scanner")
                 },
                 onNavigateToRoleSelection = {
+                    RoleManager.resetRoleBeforeLock(context)
                     navController.navigate("role_selection") {
                         popUpTo("principal_onboarding") { inclusive = true }
                     }
@@ -119,12 +129,19 @@ fun SchoolSystemNavHost(navController: NavHostController) {
         composable("onboarding") {
             OnboardingScreen(
                 onActivationComplete = {
+                    RoleManager.lockRole(context, AppRole.TEACHER)
                     navController.navigate("dashboard") {
                         popUpTo("onboarding") { inclusive = true }
                     }
                 },
                 onNavigateToQrScanner = {
                     navController.navigate("qr_scanner")
+                },
+                onNavigateToRoleSelection = {
+                    RoleManager.resetRoleBeforeLock(context)
+                    navController.navigate("role_selection") {
+                        popUpTo("onboarding") { inclusive = true }
+                    }
                 },
                 navController = navController
             )
@@ -234,9 +251,9 @@ fun SchoolSystemNavHost(navController: NavHostController) {
                     }
                 },
                 onNavigateToRoleSelection = {
-                    RoleManager.clearSelectedRole(context)
+                    RoleManager.resetRoleBeforeLock(context)
                     navController.navigate("role_selection") {
-                        popUpTo(0) { inclusive = true }
+                        popUpTo("student_onboarding") { inclusive = true }
                     }
                 }
             )
@@ -253,9 +270,9 @@ fun SchoolSystemNavHost(navController: NavHostController) {
                     navController.navigate("student_qr_scanner")
                 },
                 onNavigateToRoleSelection = {
-                    RoleManager.clearSelectedRole(context)
+                    RoleManager.resetRoleBeforeLock(context)
                     navController.navigate("role_selection") {
-                        popUpTo(0) { inclusive = true }
+                        popUpTo("student_join_request") { inclusive = true }
                     }
                 },
                 navController = navController
@@ -301,15 +318,14 @@ fun SchoolSystemNavHost(navController: NavHostController) {
             com.example.theboss.ui.settings.StudentSettingsScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToLogin = {
-                    navController.navigate("student_join_request") {
-                        popUpTo("student_schedule") { inclusive = true }
-                    }
-                },
-                onNavigateToRoleSelection = {
-                    navController.navigate("role_selection") {
+                    navController.navigate("student_onboarding") {
                         popUpTo(0) { inclusive = true }
                     }
-                }
+                },
+                onNavigateToQrScanner = {
+                    navController.navigate("student_qr_scanner")
+                },
+                navController = navController
             )
         }
 
