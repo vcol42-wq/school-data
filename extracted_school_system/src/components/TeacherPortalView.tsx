@@ -35,9 +35,11 @@ import {
   EyeOff,
   QrCode,
   Wifi,
-  WifiOff
+  WifiOff,
+  Flag
 } from 'lucide-react';
 import { isSupabaseConfigured, getSupabaseKey, getSupabase, supabase } from '../utils/supabaseClient';
+import { ReportAiContentModal } from './ReportAiContentModal';
 import { sendPairingRequest } from '../utils/syncService';
 import { generateSecureOtp } from '../utils/uploadTokens';
 
@@ -171,6 +173,7 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
   // AI Diagnosis State
   const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
   const [aiReportResult, setAiReportResult] = useState<string | null>(null);
+  const [isReportAiModalOpen, setIsReportAiModalOpen] = useState(false);
 
   // QR Sync State
   const [pairingRequests, setPairingRequests] = useState<any[]>([]);
@@ -1460,7 +1463,19 @@ ${gradesDataText}
 
               {aiReportResult && (
                 <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 space-y-2 relative">
-                  <button onClick={() => setAiReportResult(null)} className="absolute top-2 left-2 text-amber-600"><X className="w-4 h-4" /></button>
+                  <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                    <button 
+                      onClick={() => setIsReportAiModalOpen(true)} 
+                      title="الإبلاغ عن محتوى أو خطأ في تقرير الذكاء الاصطناعي (سياسة Microsoft 11.16)"
+                      className="px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[10px] font-black flex items-center gap-1 cursor-pointer transition border border-rose-200 shadow-sm"
+                    >
+                      <Flag className="w-3 h-3 text-rose-600" />
+                      <span>إبلاغ عن محتوى</span>
+                    </button>
+                    <button onClick={() => setAiReportResult(null)} className="p-1 rounded-lg text-amber-600 hover:bg-amber-100 transition cursor-pointer">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                   <h4 className="text-xs font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
                     <Sparkles className="w-4 h-4" />
                     <span>تقرير التشخيص الذكي لمستوى الطلاب:</span>
@@ -2125,6 +2140,14 @@ ${gradesDataText}
           </div>
         </div>
       )}
+
+      {/* Microsoft Store Policy 11.16 Generative AI Content Reporting Dialog */}
+      <ReportAiContentModal
+        isOpen={isReportAiModalOpen}
+        onClose={() => setIsReportAiModalOpen(false)}
+        initialContent={aiReportResult || ''}
+        schoolName={config?.schoolName}
+      />
 
     </div>
   );

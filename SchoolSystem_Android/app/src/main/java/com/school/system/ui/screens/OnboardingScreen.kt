@@ -452,51 +452,14 @@ fun OnboardingScreen(
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true
                     )
-
-                    // زر حفظ بيانات الأستاذ والمادة وبدء الاستخدام المباشر
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                prefs.edit()
-                                    .putString("teacher_name", teacherNameInput.trim())
-                                    .putString("teacher_subject", teacherSubjectInput.trim())
-                                    .putString("school_gender", selectedGender)
-                                    .putString("teacher_grade", selectedGrade)
-                                    .putString("teacher_section", selectedSection)
-                                    .apply()
-
-                                viewModel.activateStandaloneWithSubject(
-                                    name = teacherNameInput.ifBlank { "أستاذ المادة" },
-                                    email = teacherEmailInput.ifBlank { "teacher@local.edu" },
-                                    subject = teacherSubjectInput.ifBlank { "اللغة العربية" },
-                                    grade = selectedGrade,
-                                    section = selectedSection
-                                ) {
-                                    Toast.makeText(context, "تم حفظ بيانات الأستاذ والمادة بنجاح 👤✓", Toast.LENGTH_SHORT).show()
-                                    onActivationComplete()
-                                }
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("حفظ بيانات الأستاذ والمادة وبدء السجل ✓", fontWeight = FontWeight.Black, fontSize = 13.sp)
-                        }
-                    }
                 }
             }
 
-            // Connection to School Cloud (Secondary Option)
+            // Connection to School Cloud (Activation & Code Option)
             Card(
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(20.dp)
+                shape = RoundedCornerShape(22.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(18.dp),
@@ -506,14 +469,15 @@ fun OnboardingScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Cloud, contentDescription = null, tint = Color(0xFF2563EB))
                         Spacer(Modifier.width(6.dp))
-                        Text("أو الاقتران مع سحابة المدرسة ☁️", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color(0xFF1E3A8A))
+                        Text("تفعيل الربط والاقتران مع سحابة المدرسة ☁️🔑", fontWeight = FontWeight.Black, fontSize = 13.5.sp, color = Color(0xFF1E3A8A))
                     }
 
                     Text(
-                        text = "يتم الربط التلقائي عبر مسح رمز الباركود المعروض على شاشة حاسبة إدارة المدرسة",
+                        text = "يتم الربط التلقائي ومزامنة الجداول والصفوف عبر مسح رمز الباركود المعروض على شاشة حاسبة إدارة المدرسة أو إدخال كود المدرسة المعتمد:",
                         color = Color(0xFF64748B),
-                        fontSize = 11.sp,
-                        textAlign = TextAlign.Center
+                        fontSize = 11.5.sp,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 17.sp
                     )
 
                     // زر تحت الباركود لتفعيل الربط مع رسالة تحذير
@@ -565,6 +529,73 @@ fun OnboardingScreen(
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(10.dp)
                             )
+                        }
+                    }
+                }
+            }
+
+            // بطاقة حفظ المعلومات وبدء السجل (آخر بطاقة في الأسفل)
+            Card(
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Save, contentDescription = null, tint = Color(0xFF059669))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "بطاقة حفظ المعلومات وبدء السجل (مستقل / أوفلاين) 💾",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.5.sp,
+                            color = Color(0xFF0F172A)
+                        )
+                    }
+
+                    Text(
+                        text = "في حال عدم توفر باركود أو كود الربط السحابي مع المدرسة حالياً، يمكنك حفظ البيانات أعلاه وبدء السجل مباشرة بشكل مستقل.",
+                        color = Color(0xFF64748B),
+                        fontSize = 11.5.sp,
+                        lineHeight = 17.sp
+                    )
+
+                    // زر حفظ بيانات الأستاذ والمادة وبدء الاستخدام المباشر
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                prefs.edit()
+                                    .putString("teacher_name", teacherNameInput.trim())
+                                    .putString("teacher_subject", teacherSubjectInput.trim())
+                                    .putString("school_gender", selectedGender)
+                                    .putString("teacher_grade", selectedGrade)
+                                    .putString("teacher_section", selectedSection)
+                                    .apply()
+
+                                viewModel.activateStandaloneWithSubject(
+                                    name = teacherNameInput.ifBlank { "أستاذ المادة" },
+                                    email = teacherEmailInput.ifBlank { "teacher@local.edu" },
+                                    subject = teacherSubjectInput.ifBlank { "اللغة العربية" },
+                                    grade = selectedGrade,
+                                    section = selectedSection
+                                ) {
+                                    Toast.makeText(context, "تم حفظ بيانات الأستاذ والمادة بنجاح 👤✓", Toast.LENGTH_SHORT).show()
+                                    onActivationComplete()
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("حفظ بيانات الأستاذ والمادة وبدء السجل ✓", fontWeight = FontWeight.Black, fontSize = 13.sp)
                         }
                     }
                 }

@@ -4,6 +4,16 @@ title تشغيل تطبيق الإدارة المدرسية المحمول (The 
 
 echo جاري تشغيل تطبيق سطح المكتب (النسخة المحمولة)...
 
+if exist "%~dp0LATEST_BUILDS\The_Principal_v6_Desktop_App\The Principal v6.4 Super Edition.exe" (
+    start "" "%~dp0LATEST_BUILDS\The_Principal_v6_Desktop_App\The Principal v6.4 Super Edition.exe"
+    exit /b
+)
+
+if exist "%~dp0extracted_school_system\dist_electron\win-unpacked\The Principal v6.4 Super Edition.exe" (
+    start "" "%~dp0extracted_school_system\dist_electron\win-unpacked\The Principal v6.4 Super Edition.exe"
+    exit /b
+)
+
 if exist "%~dp0The_Principal_Portable\The Principal v6.0.exe" (
     start "" "%~dp0The_Principal_Portable\The Principal v6.0.exe"
     exit /b

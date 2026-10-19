@@ -3,8 +3,9 @@ import { Student, StaffMember, ActiveView, AppTheme, AppConfig } from '../types'
 import { supabase } from '../utils/supabaseClient';
 import { 
   Mic, MicOff, Sparkles, X, Loader2, Send, Home, User, Zap, Radio, MessageSquare, CheckCircle2,
-  Volume2, AlertCircle
+  Volume2, AlertCircle, Flag, ShieldAlert
 } from 'lucide-react';
+import { ReportAiContentModal } from './ReportAiContentModal';
 
 interface VoiceAssistantModalProps {
   isOpen: boolean; 
@@ -28,6 +29,13 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
     { role: 'assistant', text: 'أهلاً بك حضرة المدير. أنا مساعدك الإداري الذكي. يمكنك سؤالي عن إحصائيات الطلاب، الكادر، الغيابات، أو توجيه الأوامر بالصوت أو الكتابة.', id: '1' }
   ]);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportTargetContent, setReportTargetContent] = useState('');
+
+  const handleOpenReportModal = (content: string) => {
+    setReportTargetContent(content);
+    setIsReportModalOpen(true);
+  };
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -234,7 +242,15 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
               <p className="text-[10px] font-bold text-indigo-600 uppercase">Gemini 2.0 Pro / Ultra Hybrid v5.1</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => handleOpenReportModal('')}
+              title="الإبلاغ عن محتوى أو مشكلة في استجابات الذكاء الاصطناعي (وفق سياسة Microsoft 11.16)"
+              className="px-3 py-1.5 rounded-xl bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 cursor-pointer flex items-center gap-1.5 text-xs font-black transition shadow-sm"
+            >
+              <Flag className="w-3.5 h-3.5 text-rose-600" />
+              <span className="hidden sm:inline">الإبلاغ عن مشكلة</span>
+            </button>
             <button 
               onClick={() => { setActiveView('launcher'); onClose(); }} 
               className="p-2 rounded-xl bg-white border border-slate-200 text-indigo-600 cursor-pointer hover:bg-indigo-50"
@@ -259,9 +275,21 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
                   ? 'bg-white border-slate-200 text-slate-900 rounded-br-none' 
                   : 'bg-gradient-to-br from-indigo-600 to-blue-700 border-indigo-500 text-white rounded-bl-none'
               }`}>
-                <div className="flex items-center gap-2 mb-1.5 opacity-70">
-                  {m.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-                  <span className="text-[10px] font-black uppercase tracking-widest">{m.role === 'user' ? 'المدير' : 'المساعد الذكي'}</span>
+                <div className="flex items-center justify-between mb-1.5 opacity-90">
+                  <div className="flex items-center gap-2">
+                    {m.role === 'user' ? <User className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                    <span className="text-[10px] font-black uppercase tracking-widest">{m.role === 'user' ? 'المدير' : 'المساعد الذكي'}</span>
+                  </div>
+                  {m.role === 'assistant' && (
+                    <button
+                      onClick={() => handleOpenReportModal(m.text)}
+                      title="الإبلاغ عن هذا الرد (محتوى غير لائق، خطأ، أو مضلل)"
+                      className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-black/25 hover:bg-rose-600 text-amber-200 hover:text-white transition cursor-pointer text-[10px] font-bold"
+                    >
+                      <Flag className="w-3 h-3" />
+                      <span>إبلاغ عن محتوى غير لائق</span>
+                    </button>
+                  )}
                 </div>
                 <p className="text-sm md:text-base font-bold leading-relaxed whitespace-pre-wrap">{m.text}</p>
               </div>
@@ -351,13 +379,30 @@ export const VoiceAssistantModal: React.FC<VoiceAssistantModalProps> = ({
             </form>
           </div>
 
-          <div className="flex justify-center gap-6 text-[10px] font-black text-slate-400 uppercase tracking-tighter">
+          <div className="flex justify-center items-center flex-wrap gap-4 sm:gap-6 text-[10px] font-black text-slate-400 uppercase tracking-tighter">
             <span className="flex items-center gap-1.5"><Radio className={`w-3.5 h-3.5 ${isRecording ? 'text-rose-500' : ''}`} /> {isRecording ? 'جاري التسجيل الصوتي...' : 'صوتي (اضغط للتحدث)'}</span>
             <span className="flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> كتابي</span>
             <span className="flex items-center gap-1.5 text-indigo-600"><CheckCircle2 className="w-3.5 h-3.5" /> استجابة هجينة فورية</span>
+            <button 
+              type="button"
+              onClick={() => handleOpenReportModal('')}
+              className="flex items-center gap-1 text-rose-600 hover:text-rose-700 hover:underline cursor-pointer bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 transition"
+              title="الإبلاغ عن محتوى أو رد غير مناسب ناتج عن الذكاء الاصطناعي (سياسة 11.16)"
+            >
+              <Flag className="w-3 h-3 text-rose-500" />
+              <span>الإبلاغ عن مشكلة بالذكاء الاصطناعي</span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Microsoft Store Policy 11.16 Content Reporting Dialog */}
+      <ReportAiContentModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        initialContent={reportTargetContent}
+        schoolName={config?.schoolName}
+      />
     </div>
   );
 };

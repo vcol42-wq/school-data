@@ -22,10 +22,13 @@ import {
   Cloud,
   Search,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Flag,
+  ShieldAlert
 } from 'lucide-react';
 import { refreshSupabaseClient, getSupabase } from '../utils/supabaseClient';
 import { purgeSchoolDataFromCloud, searchSchoolsInSupabase, restoreSchoolData, CloudSchoolSummary } from '../utils/syncService';
+import { ReportAiContentModal, AiReportData } from './ReportAiContentModal';
 
 interface SettingsViewProps {
   config: AppConfig;
@@ -58,6 +61,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [selectedGradePurge, setSelectedGradePurge] = useState('الصف الأول');
   const [selectedFilterType, setSelectedFilterType] = useState<'all' | 'passed' | 'failed'>('all');
+
+  // Microsoft Store Policy 11.16 AI Content Reporting State
+  const [isReportAiModalOpen, setIsReportAiModalOpen] = useState(false);
+  const [showReportsLog, setShowReportsLog] = useState(false);
+  const [savedAiReports, setSavedAiReports] = useState<AiReportData[]>(() => {
+    try {
+      const data = localStorage.getItem('ai_content_reports');
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const refreshAiReports = () => {
+    try {
+      const data = localStorage.getItem('ai_content_reports');
+      setSavedAiReports(data ? JSON.parse(data) : []);
+    } catch {
+      setSavedAiReports([]);
+    }
+  };
 
   const getStudentAverage = (std: Student) => {
     const currentYear = std.registrationYear || '2024-2025';
@@ -725,6 +749,62 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Microsoft Store Policy 11.16 Generative AI Content Safety & Reporting */}
+          <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-rose-500" />
+                  <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+                    سلامة مخرجات الذكاء الاصطناعي وآلية الإبلاغ (Microsoft Policy 11.16)
+                  </h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsReportAiModalOpen(true)}
+                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-black text-[11px] flex items-center gap-1.5 shadow-sm cursor-pointer transition"
+                  >
+                    <Flag className="w-3.5 h-3.5" />
+                    <span>تقديم بلاغ عن محتوى غير مناسب</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { refreshAiReports(); setShowReportsLog(prev => !prev); }}
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-[11px] cursor-pointer hover:bg-slate-100 transition"
+                  >
+                    {showReportsLog ? 'إخفاء سجل البلاغات' : `سجل البلاغات (${savedAiReports.length})`}
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed font-normal">
+                يعتمد تطبيق "The Principal" على نماذج ذكاء اصطناعي توليدي لتقديم إحصائيات ونماذج تقارير تشخيصية. التزاماً بسياسات متجر Microsoft Store وميثاق سلامة المحتوى في المؤسسات التعليمية، يتم توفير ميزة الإبلاغ الفوري عن أي رد غير ملائم، غير دقيق، أو مخالف للآداب والخصوصية.
+              </p>
+
+              {showReportsLog && (
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                  <h5 className="font-bold text-[11px] text-slate-800 dark:text-slate-200">البلاغات المسجلة في هذا الجهاز:</h5>
+                  {savedAiReports.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 italic">لا توجد بلاغات مسجلة حتى الآن. كافة مخرجات الذكاء الاصطناعي تعمل وفق معايير الأمان المحددة.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {savedAiReports.map(rep => (
+                        <div key={rep.id} className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] space-y-1">
+                          <div className="flex justify-between items-center text-slate-500 text-[10px]">
+                            <span className="font-mono">{new Date(rep.timestamp).toLocaleString('ar')}</span>
+                            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">{rep.category}</span>
+                          </div>
+                          <p className="text-slate-800 dark:text-slate-200 font-medium line-clamp-2">{rep.reportedContent}</p>
+                          {rep.additionalDetails && <p className="text-slate-500 text-[10px]">ملاحظات: {rep.additionalDetails}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Section 6: Smart Data Purging Center */}
@@ -1047,6 +1127,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Microsoft Store Policy 11.16 Generative AI Content Reporting Modal */}
+      <ReportAiContentModal
+        isOpen={isReportAiModalOpen}
+        onClose={() => {
+          setIsReportAiModalOpen(false);
+          refreshAiReports();
+        }}
+        schoolName={formConfig.schoolName}
+      />
 
     </div>
   );

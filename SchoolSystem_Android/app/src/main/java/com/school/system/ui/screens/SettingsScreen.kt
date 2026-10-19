@@ -515,6 +515,10 @@ fun SettingsScreen(
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showUnpairConfirmDialog by remember { mutableStateOf(false) }
     var showConnectWarningDialog by remember { mutableStateOf(false) }
+    var showManualCodeDialog by remember { mutableStateOf(false) }
+    var directCodeInput by remember { mutableStateOf("") }
+    val clipboardManager = LocalClipboardManager.current
+    val connectionStatus by viewModel.connectionStatus.collectAsState()
 
     val scope = rememberCoroutineScope()
     val isPaired = config?.isVerified == true && !config?.schoolId.isNullOrEmpty()
@@ -534,10 +538,15 @@ fun SettingsScreen(
         containerColor = Color(0xFFF8FAFC),
         topBar = {
             TopAppBar(
-                title = { Text("إعدادات المنظومة ⚙️", fontWeight = FontWeight.Black, fontSize = 17.sp) },
+                title = { 
+                    Column {
+                        Text("إعدادات المنظومة ⚙️", fontWeight = FontWeight.Black, fontSize = 17.sp, color = Color(0xFF0F172A))
+                        Text("إدارة الحساب والمزامنة السحابية", fontSize = 11.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Normal)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع", tint = Color(0xFF1E293B))
                     }
                 },
                 actions = {
@@ -557,133 +566,252 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // CARD 1: اقتران وسحابة المدرسة عبر الباركود فقط
+            // بطاقة ملخص هوية الأستاذ وحالة المزامنة
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isPaired) Color(0xFF059669).copy(alpha = 0.12f) else Color(0xFF2563EB).copy(alpha = 0.12f),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isPaired) Icons.Default.CloudDone else Icons.Default.Person,
+                                contentDescription = null,
+                                tint = if (isPaired) Color(0xFF059669) else Color(0xFF2563EB),
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = teacherName.ifBlank { "أستاذ المادة" },
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp,
+                            color = Color(0xFF0F172A)
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "مادة: $teacherSubject • $schoolGender",
+                            fontSize = 12.sp,
+                            color = Color(0xFF64748B),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isPaired) Color(0xFFDCFCE7) else Color(0xFFF1F5F9),
+                        border = BorderStroke(1.dp, if (isPaired) Color(0xFF86EFAC) else Color(0xFFCBD5E1))
+                    ) {
+                        Text(
+                            text = if (isPaired) "🟢 متصل" else "⚪ أوفلاين",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isPaired) Color(0xFF166534) else Color(0xFF475569),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            // CARD 1: الربط السحابي ومزامنة المدرسة (باركود + رمز المدرسة)
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 shadowElevation = 2.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = if (isPaired) Color(0xFF10B981).copy(alpha = 0.15f) else Color(0xFF64748B).copy(alpha = 0.12f),
-                                shape = CircleShape,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        if (isPaired) Icons.Default.CloudDone else Icons.Default.QrCodeScanner,
-                                        contentDescription = null,
-                                        tint = if (isPaired) Color(0xFF059669) else Color(0xFF2563EB),
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = if (isPaired) "الربط السحابي مع المدرسة 🟢" else "ربط المدرسة عبر الباركود 📷",
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 14.sp,
-                                    color = Color(0xFF0F172A)
-                                )
-                                Text(
-                                    text = if (isPaired) "الحالة: مقترن ونشط بالسحابة المدرسية" else "الحالة: غير مقترن (الوضع المحلي المستقل)",
-                                    fontSize = 11.5.sp,
-                                    color = if (isPaired) Color(0xFF059669) else Color(0xFF64748B),
-                                    fontWeight = FontWeight.Bold
+                        Surface(
+                            color = if (isPaired) Color(0xFF059669).copy(alpha = 0.12f) else Color(0xFF2563EB).copy(alpha = 0.12f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    if (isPaired) Icons.Default.CloudDone else Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    tint = if (isPaired) Color(0xFF059669) else Color(0xFF2563EB),
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "الربط مع سحابة المدرسة ☁️",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.5.sp,
+                                color = Color(0xFF0F172A)
+                            )
+                            Text(
+                                text = if (isPaired) "الحالة: مقترن بسحابة (${config?.schoolName})" else "الحالة: غير مقترن (الوضع المحلي المستقل)",
+                                fontSize = 11.5.sp,
+                                color = if (isPaired) Color(0xFF059669) else Color(0xFF64748B),
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
 
                     if (isPaired) {
-                        // Paired State: Show school name & Unpair / Re-scan buttons
                         Surface(
                             color = Color(0xFFF0FDF4),
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                            border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(
-                                    text = "المدرسة: ${config?.schoolName?.ifBlank { "مدرستي" } ?: "مدرستي"}", 
-                                    fontSize = 13.sp, 
-                                    fontWeight = FontWeight.Black, 
+                                    text = "المدرسة المقترنة: ${config?.schoolName?.ifBlank { "مدرستي" } ?: "مدرستي"}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
                                     color = Color(0xFF166534)
                                 )
                                 Text(
-                                    text = "المزامنة نشطة: يتم حفظ ومزامنة الدرجات وجداول الحصص تلقائياً مع الإدارة.", 
-                                    fontSize = 11.sp, 
-                                    color = Color(0xFF15803D), 
+                                    text = "المزامنة نشطة: يتم حفظ ومزامنة الدرجات وجداول الحصص تلقائياً مع السحابة المركزية.",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF15803D),
                                     fontWeight = FontWeight.Normal
                                 )
                             }
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { showUnpairConfirmDialog = true },
-                                modifier = Modifier.weight(1f).height(46.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
-                                shape = RoundedCornerShape(12.dp)
+                        // أزرار التحكم في حالة الربط
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.LinkOff, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("إلغاء الربط السحابي ✕", fontSize = 11.5.sp, fontWeight = FontWeight.Black)
+                                Button(
+                                    onClick = {
+                                        viewModel.syncFromPrincipal()
+                                        Toast.makeText(context, "جاري مزامنة وسحب البيانات السحابية 🔄", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("مزامنة الآن 🔄", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { showManualCodeDialog = true },
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF2563EB)),
+                                    border = BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.5f))
+                                ) {
+                                    Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("تغيير الرمز 🔑", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
 
-                            OutlinedButton(
-                                onClick = { showConnectWarningDialog = true },
-                                modifier = Modifier.weight(1f).height(46.dp),
-                                shape = RoundedCornerShape(12.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("مسح باركود جديد 🔄", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                OutlinedButton(
+                                    onClick = { showConnectWarningDialog = true },
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, Color(0xFF64748B).copy(alpha = 0.5f))
+                                ) {
+                                    Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("مسح باركود جديد 📷", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = { showUnpairConfirmDialog = true },
+                                    modifier = Modifier.weight(1f).height(46.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.LinkOff, contentDescription = null, modifier = Modifier.size(17.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("إلغاء الربط ✕", fontSize = 11.5.sp, fontWeight = FontWeight.Black)
+                                }
                             }
                         }
                     } else {
-                        // Unpaired State: Single Primary Button to Activate Pairing via Barcode
+                        // Unpaired State: 2 Prominent Options (Barcode & School Code)
+                        Text(
+                            text = "لربط التطبيق مع مدرستك ومزامنة الشعب والطلاب والجدول، يمكنك مسح باركود الـ QR أو إدخال كود المدرسة:",
+                            fontSize = 11.5.sp,
+                            color = Color(0xFF64748B),
+                            lineHeight = 17.sp
+                        )
+
                         Button(
                             onClick = { showConnectWarningDialog = true },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(52.dp),
+                                .height(50.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                             shape = RoundedCornerShape(12.dp),
-                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 3.dp)
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                         ) {
-                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
                                 text = "تفعيل الربط السحابي ومسح الباركود 📷",
                                 fontWeight = FontWeight.Black,
-                                fontSize = 13.5.sp
+                                fontSize = 13.sp
                             )
                         }
 
+                        OutlinedButton(
+                            onClick = { showManualCodeDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1E3A8A)),
+                            border = BorderStroke(1.5.dp, Color(0xFF3B82F6).copy(alpha = 0.5f))
+                        ) {
+                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF2563EB))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "أو الربط بواسطة كود المدرسة (الرمز) 🔢",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.5.sp
+                            )
+                        }
+                    }
+
+                    if (connectionStatus.isNotBlank()) {
                         Surface(
-                            color = Color(0xFFF8FAFC),
+                            color = if (connectionStatus.contains("✓") || connectionStatus.contains("بنجاح")) Color(0xFFF0FDF4) else Color(0xFFFEF3C7),
                             shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            border = BorderStroke(1.dp, if (connectionStatus.contains("✓") || connectionStatus.contains("بنجاح")) Color(0xFFBBF7D0) else Color(0xFFFDE68A)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
-                                text = "💡 لربط التطبيق مع مدرستك: اضغط على زر تفعيل الربط أعلاه ووجّه الكاميرا نحو باركود QR المعروض على شاشة حاسبة الإدارة ليتم استيراد صفوفك وطلابك وحصصك مباشرة.",
-                                fontSize = 11.sp,
-                                color = Color(0xFF475569),
-                                lineHeight = 16.sp,
+                                text = connectionStatus,
+                                color = if (connectionStatus.contains("✓") || connectionStatus.contains("بنجاح")) Color(0xFF15803D) else Color(0xFF92400E),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(10.dp)
                             )
                         }
@@ -691,20 +819,20 @@ fun SettingsScreen(
                 }
             }
 
-            // CARD 3: بيانات الأستاذ والمادة التدريسية
+            // CARD 2: بيانات الأستاذ والمادة التدريسية
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 shadowElevation = 2.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             color = Color(0xFF0284C7).copy(alpha = 0.12f),
                             shape = CircleShape,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(38.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
@@ -716,7 +844,10 @@ fun SettingsScreen(
                             }
                         }
                         Spacer(Modifier.width(10.dp))
-                        Text("بيانات الأستاذ والمادة التدريسية 📝", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
+                        Column {
+                            Text("بيانات الأستاذ والمادة التدريسية 📝", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = Color(0xFF0F172A))
+                            Text("تعديل الاسم والمادة الأساسية للتطبيق", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
                     }
 
                     OutlinedTextField(
@@ -726,10 +857,11 @@ fun SettingsScreen(
                             prefs.edit().putString("teacher_name", it.trim()).apply()
                         },
                         label = { Text("اسم الأستاذ الكامل") },
-                        placeholder = { Text("اكتب اسمك الثلاثي أو الكامل") },
+                        placeholder = { Text("اكتب اسمك الكامل") },
+                        leadingIcon = { Icon(Icons.Default.Person, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(12.dp)
                     )
 
                     var settingSubExpanded by remember { mutableStateOf(false) }
@@ -751,6 +883,7 @@ fun SettingsScreen(
                             },
                             label = { Text("المادة أو الاختصاص التدريسي 📚") },
                             placeholder = { Text("اكتب اسم المادة أو اختر للسرعة...") },
+                            leadingIcon = { Icon(Icons.Default.MenuBook, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = settingSubExpanded)
                             },
@@ -758,7 +891,7 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .menuAnchor()
                                 .fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(12.dp)
                         )
 
                         if (filteredSettingSubjects.isNotEmpty()) {
@@ -804,7 +937,8 @@ fun SettingsScreen(
                                 settingGenderExpanded = true
                             },
                             label = { Text("جنس المدرسة 🏛️") },
-                            placeholder = { Text("اختر أو اكتب: بنين، بنات، مختلط...") },
+                            placeholder = { Text("اختر: بنين، بنات، مختلط...") },
+                            leadingIcon = { Icon(Icons.Default.School, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = settingGenderExpanded)
                             },
@@ -812,7 +946,7 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .menuAnchor()
                                 .fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(12.dp)
                         )
 
                         if (filteredSettingGenders.isNotEmpty()) {
@@ -843,12 +977,12 @@ fun SettingsScreen(
                         value = teacherEmail,
                         onValueChange = { teacherEmail = it },
                         label = { Text("البريد الإلكتروني للنسخ والربط السحابي") },
+                        leadingIcon = { Icon(Icons.Default.Email, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(12.dp)
                     )
 
-                    // Save Teacher Profile & Subject Button (Explicit Green Button)
                     Button(
                         onClick = {
                             prefs.edit()
@@ -857,37 +991,34 @@ fun SettingsScreen(
                                 .putString("school_gender", schoolGender)
                                 .apply()
                             viewModel.saveTeacherProfileAndSubject(teacherName, teacherEmail, teacherSubject, schoolGender)
-                            Toast.makeText(context, "تم حفظ بيانات الأستاذ والمادة وجنس المدرسة بنجاح ✓", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "تم حفظ بيانات الأستاذ والمادة بنجاح ✓", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 48.dp),
+                            .height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = "حفظ بيانات الأستاذ والمادة ✓", 
+                                text = "حفظ التعديلات ✓", 
                                 fontWeight = FontWeight.Black, 
-                                fontSize = 13.sp,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1
+                                fontSize = 13.sp
                             )
                         }
                     }
                 }
             }
 
-            // CARD 3: مخصص حسب الصفة (للمدير: أدوات الإشراف المختصرة | للأستاذ: كارت الاقتراح الدعائي)
+            // CARD 3: المشرف والمدير (فقط في وضع الإشراف)
             if (isSupervisorMode) {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(18.dp),
                     color = Color.White,
                     shadowElevation = 2.dp,
-                    border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                    border = BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -921,7 +1052,7 @@ fun SettingsScreen(
                         Surface(
                             color = Color(0xFFFEF3C7),
                             shape = RoundedCornerShape(8.dp),
-                            border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFFDE68A)),
+                            border = BorderStroke(0.5.dp, Color(0xFFFDE68A)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -943,7 +1074,7 @@ fun SettingsScreen(
                                 .fillMaxWidth()
                                 .defaultMinSize(minHeight = 44.dp),
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFD97706)),
+                            border = BorderStroke(1.2.dp, Color(0xFFD97706)),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF92400E))
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -954,115 +1085,13 @@ fun SettingsScreen(
                         }
                     }
                 }
-            } else {
-                // للأستاذ: كارت الاقتراح الدعائي لإدارة المدرسة (The Principal على PC)
-                val desktopDownloadUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    shadowElevation = 2.dp,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF6366F1).copy(alpha = 0.3f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                color = Color(0xFF6366F1).copy(alpha = 0.12f),
-                                shape = CircleShape,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        Icons.Default.Share,
-                                        contentDescription = null,
-                                        tint = Color(0xFF4F46E5),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                Text("📢 اقترح المنظومة على إدارتك المدرسية", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
-                                Text(
-                                    text = "تطبيق The Principal المعتمد للحاسوب (Windows 10/11)",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF6366F1),
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "هل أعجبك النظام؟ اقترح على مدير مدرستك تنزيل منظومة الإدارة المركزية على كمبيوتر المدرسة لربط كادر المعلمين وتوليد الجداول السحابية فورياً.",
-                            fontSize = 11.5.sp,
-                            color = Color(0xFF475569),
-                            lineHeight = 17.sp
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    try {
-                                        val sendIntent = android.content.Intent().apply {
-                                            action = android.content.Intent.ACTION_SEND
-                                            putExtra(
-                                                android.content.Intent.EXTRA_TEXT,
-                                                "حضرة مدير المدرسة المحترم،\nنقترح عليكم تجربة منظومة (The Principal) لإدارة الجداول السحابية وسجلات الدرجات.\nرابط التنزيل المباشر من متجر مايكروسوفت الرسمي:\n$desktopDownloadUrl"
-                                            )
-                                            type = "text/plain"
-                                        }
-                                        val shareIntent = android.content.Intent.createChooser(sendIntent, "مشاركة رابط المنظومة للإدارة")
-                                        shareIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        context.startActivity(shareIntent)
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, "تعذر مشاركة الرابط", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("مشاركة الرابط 📲", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                    val clip = android.content.ClipData.newPlainText("رابط مايكروسوفت", desktopDownloadUrl)
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(context, "تم نسخ رابط برنامج الحاسوب بنجاح ✓", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(42.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB))
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(15.dp), tint = Color(0xFF2563EB))
-                                    Spacer(Modifier.width(4.dp))
-                                    Text("نسخ الرابط 📋", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2563EB))
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
             // CARD 4: النسخ السحابي المستقل عبر Google Drive / البريد الإلكتروني
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = Color.White,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                 shadowElevation = 2.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -1092,7 +1121,7 @@ fun SettingsScreen(
                     Surface(
                         color = Color(0xFFECFDF5),
                         shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(0.5.dp, Color(0xFFA7F3D0)),
+                        border = BorderStroke(0.5.dp, Color(0xFFA7F3D0)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
@@ -1149,139 +1178,14 @@ fun SettingsScreen(
                 }
             }
 
-            // The Principal Desktop PC App Card (Microsoft Store Edition)
-            val clipboardManager = LocalClipboardManager.current
-            val desktopUrl = "https://apps.microsoft.com/detail/9P0SWQHDT4H5"
-
+            // CARD 5: قنوات التواصل والدعم الفني الرسمي
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF0078D4).copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.Computer,
-                                contentDescription = null,
-                                tint = Color(0xFF0078D4),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(Modifier.width(10.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "منظومة الكمبيوتر المركزية (PC) 💻",
-                                color = Color(0xFF0F172A),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.5.sp
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = "سوق مايكروسوفت (Microsoft Store)",
-                                color = Color(0xFF0078D4),
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Surface(
-                                color = Color(0xFF10B981).copy(alpha = 0.15f),
-                                shape = RoundedCornerShape(4.dp),
-                                border = BorderStroke(0.5.dp, Color(0xFF10B981).copy(alpha = 0.5f))
-                            ) {
-                                Text(
-                                    text = "معتمد رسمياً ✓",
-                                    color = Color(0xFF047857),
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Text(
-                        text = "برنامج الحاسوب المعتمد رسمياً لإدارة الشيت الإلكتروني، استيراد وتصدير إكسل الوزاري، وتوليد الجدول المدرسي مع مزامنة سحابية مع الهواتف.",
-                        color = Color(0xFF475569),
-                        fontSize = 10.5.sp,
-                        lineHeight = 15.sp
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                try {
-                                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(desktopUrl)).apply {
-                                        addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(intent)
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "تعذر فتح الرابط", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0078D4)),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                            modifier = Modifier.weight(1f).height(38.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("تنزيل من المتجر 📥", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                clipboardManager.setText(AnnotatedString(desktopUrl))
-                                Toast.makeText(context, "تم نسخ رابط التنزيل من سوق مايكروسوفت بنجاح ✓", Toast.LENGTH_SHORT).show()
-                            },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0078D4)),
-                            border = BorderStroke(1.dp, Color(0xFF0078D4).copy(alpha = 0.5f)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                            modifier = Modifier.weight(1f).height(38.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("نسخ الرابط 📋", fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Official Support & Communication Channels Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(18.dp),
                 border = BorderStroke(1.dp, Color(0xFFE2E8F0))
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             color = Color(0xFF059669).copy(alpha = 0.12f),
@@ -1323,7 +1227,7 @@ fun SettingsScreen(
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(46.dp)
                     ) {
                         Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
@@ -1347,7 +1251,7 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1E293B)),
                         border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(46.dp)
                     ) {
                         Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF2563EB))
                         Spacer(Modifier.width(8.dp))
@@ -1409,6 +1313,74 @@ fun SettingsScreen(
                 dismissButton = {
                     TextButton(onClick = { showConnectWarningDialog = false }) {
                         Text("إلغاء", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
+
+        // Manual School Code Entry Dialog 🔑
+        if (showManualCodeDialog) {
+            AlertDialog(
+                onDismissRequest = { showManualCodeDialog = false },
+                icon = {
+                    Icon(
+                        Icons.Default.Key,
+                        contentDescription = null,
+                        tint = Color(0xFF2563EB),
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "الربط بواسطة كود المدرسة 🔑",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        color = Color(0xFF0F172A),
+                        textAlign = TextAlign.Center
+                    )
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "أدخل رمز التحقق والاقتران المعتمد لمدرستك (المعروض في منظومة الإدارة):",
+                            fontSize = 12.sp,
+                            color = Color(0xFF475569),
+                            lineHeight = 17.sp
+                        )
+                        OutlinedTextField(
+                            value = directCodeInput,
+                            onValueChange = { directCodeInput = it },
+                            label = { Text("كود أو رمز المدرسة") },
+                            placeholder = { Text("أدخل الرمز هنا...") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val codeToVerify = directCodeInput.trim()
+                            if (codeToVerify.isNotBlank()) {
+                                showManualCodeDialog = false
+                                viewModel.verify(codeToVerify)
+                                Toast.makeText(context, "جاري فحص كود المدرسة والربط بالسحابة... ⏳", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = directCodeInput.isNotBlank(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("تأكيد والربط 🔑", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    OutlinedButton(
+                        onClick = { showManualCodeDialog = false },
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("إلغاء", color = Color(0xFF64748B))
                     }
                 }
             )

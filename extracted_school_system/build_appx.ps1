@@ -1,4 +1,10 @@
-Set-Location "c:\boss\extracted_school_system"
+if ($PSScriptRoot) {
+    Set-Location $PSScriptRoot
+} elseif (Test-Path "e:\boss\extracted_school_system") {
+    Set-Location "e:\boss\extracted_school_system"
+} elseif (Test-Path "c:\boss\extracted_school_system") {
+    Set-Location "c:\boss\extracted_school_system"
+}
 
 Write-Host ">>> [0/7] Cleaning up previous processes..."
 Stop-Process -Name "electron", "The Principal v6.4", "The Principal v6.3", "The Principal v6.0" -Force -ErrorAction SilentlyContinue
@@ -57,18 +63,18 @@ Write-Host ">>> [7/7] Exporting Builds to RELEASE_DESKTOP_V6 and dist_releases..
 New-Item -ItemType Directory -Path "..\RELEASE_DESKTOP_V6" -Force | Out-Null
 New-Item -ItemType Directory -Path "..\dist_releases" -Force | Out-Null
 
-$appxFile = "dist_electron\The_Principal_v6.4.0_MicrosoftStore.appx"
-if (Test-Path $appxFile) {
-    Copy-Item -Path $appxFile -Destination "..\RELEASE_DESKTOP_V6\The_Principal_v6.4.0_MicrosoftStore.appx" -Force
-    Copy-Item -Path $appxFile -Destination "..\dist_releases\The_Principal_v6.4.0_MicrosoftStore.appx" -Force
-    $sizeMB = [math]::Round((Get-Item $appxFile).Length / 1MB, 2)
-    Write-Host "SUCCESS: Exported The_Principal_v6.4.0_MicrosoftStore.appx ($sizeMB MB)"
+$appxFiles = Get-ChildItem -Path "dist_electron\*MicrosoftStore.appx" -ErrorAction SilentlyContinue
+foreach ($f in $appxFiles) {
+    Copy-Item -Path $f.FullName -Destination "..\RELEASE_DESKTOP_V6\$($f.Name)" -Force
+    Copy-Item -Path $f.FullName -Destination "..\dist_releases\$($f.Name)" -Force
+    $sizeMB = [math]::Round($f.Length / 1MB, 2)
+    Write-Host "SUCCESS: Exported $($f.Name) ($sizeMB MB)"
 }
 
-$setupFile = "dist_electron\The_Principal_Setup_v6.4.0.exe"
-if (Test-Path $setupFile) {
-    Copy-Item -Path $setupFile -Destination "..\RELEASE_DESKTOP_V6\The_Principal_Setup_v6.4.0.exe" -Force
-    Copy-Item -Path $setupFile -Destination "..\dist_releases\The_Principal_Setup_v6.4.0.exe" -Force
-    $sizeMB = [math]::Round((Get-Item $setupFile).Length / 1MB, 2)
-    Write-Host "SUCCESS: Exported The_Principal_Setup_v6.4.0.exe ($sizeMB MB)"
+$setupFiles = Get-ChildItem -Path "dist_electron\*Setup*.exe" -ErrorAction SilentlyContinue
+foreach ($f in $setupFiles) {
+    Copy-Item -Path $f.FullName -Destination "..\RELEASE_DESKTOP_V6\$($f.Name)" -Force
+    Copy-Item -Path $f.FullName -Destination "..\dist_releases\$($f.Name)" -Force
+    $sizeMB = [math]::Round($f.Length / 1MB, 2)
+    Write-Host "SUCCESS: Exported $($f.Name) ($sizeMB MB)"
 }

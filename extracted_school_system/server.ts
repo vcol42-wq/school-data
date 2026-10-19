@@ -157,6 +157,32 @@ async function startServer() {
     }
   });
 
+  // Microsoft Store Policy 11.16: User Reporting for Generative AI Content
+  app.post('/api/report-ai-content', async (req, res) => {
+    try {
+      const report = req.body;
+      const reportsFilePath = path.join(activeDirname, 'ai_reports_log.json');
+      let existingReports: any[] = [];
+      if (fs.existsSync(reportsFilePath)) {
+        try {
+          existingReports = JSON.parse(fs.readFileSync(reportsFilePath, 'utf-8'));
+        } catch (e) {
+          existingReports = [];
+        }
+      }
+      existingReports.unshift({
+        ...report,
+        serverReceivedAt: new Date().toISOString()
+      });
+      fs.writeFileSync(reportsFilePath, JSON.stringify(existingReports.slice(0, 200), null, 2), 'utf-8');
+      console.log(`[AI Policy 11.16] AI Content Report recorded: ${report.id || 'N/A'} (${report.category})`);
+      res.json({ success: true, message: 'Report received and logged for review.' });
+    } catch (err: any) {
+      console.error('Failed to log AI content report:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.use(express.static(activeDirname));
   app.get('*', (req, res) => {
     const indexPath = path.join(activeDirname, 'index.html');
