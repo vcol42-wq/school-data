@@ -203,7 +203,15 @@ object WidgetScheduleHelper {
         return SCHOOL_DAYS[dayIdx]
     }
 
-    fun getTimingFromScheduleJson(context: Context): Triple<String, Int, Int> {
+    data class ScheduleTimingInfo(
+        val startHour: String,
+        val lessonDuration: Int,
+        val breakDuration: Int,
+        val customLessons: List<Int> = emptyList(),
+        val customBreaks: List<Int> = emptyList()
+    )
+
+    fun getFullTimingFromScheduleJson(context: Context): ScheduleTimingInfo {
         return try {
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
             val rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
@@ -225,10 +233,31 @@ object WidgetScheduleHelper {
                 ?: prefs.getInt("bell_break_duration", 0).takeIf { it > 0 }
                 ?: 10
 
-            Triple(startHour, lessonDur, breakDur)
+            var customLessons = (timingObj?.get("customLessonDurations") as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+            if (customLessons.isNullOrEmpty()) {
+                val cached = prefs.getString("custom_lesson_durations", null)
+                if (!cached.isNullOrBlank()) {
+                    customLessons = Gson().fromJson<List<Int>>(cached, object : TypeToken<List<Int>>() {}.type)
+                }
+            }
+
+            var customBreaks = (timingObj?.get("customBreakDurations") as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+            if (customBreaks.isNullOrEmpty()) {
+                val cached = prefs.getString("custom_break_durations", null)
+                if (!cached.isNullOrBlank()) {
+                    customBreaks = Gson().fromJson<List<Int>>(cached, object : TypeToken<List<Int>>() {}.type)
+                }
+            }
+
+            ScheduleTimingInfo(startHour, lessonDur, breakDur, customLessons ?: emptyList(), customBreaks ?: emptyList())
         } catch (e: Exception) {
-            Triple("08:00", 45, 10)
+            ScheduleTimingInfo("08:00", 45, 10, emptyList(), emptyList())
         }
+    }
+
+    fun getTimingFromScheduleJson(context: Context): Triple<String, Int, Int> {
+        val info = getFullTimingFromScheduleJson(context)
+        return Triple(info.startHour, info.lessonDuration, info.breakDuration)
     }
 
     fun calculateLessonTiming(
@@ -236,7 +265,9 @@ object WidgetScheduleHelper {
         startHourStr: String = "08:00",
         lessonDuration: Int = 45,
         breakDuration: Int = 10,
-        isShort: Boolean = true
+        isShort: Boolean = true,
+        customLessons: List<Int> = emptyList(),
+        customBreaks: List<Int> = emptyList()
     ): String {
         if (lessonNumber < 1) return ""
         val parts = startHourStr.split(":").mapNotNull { it.toIntOrNull() }
@@ -245,11 +276,14 @@ object WidgetScheduleHelper {
 
         var currentTotalMinutes = startH * 60 + startM
         for (i in 1 until lessonNumber) {
-            currentTotalMinutes += lessonDuration + breakDuration
+            val lDur = customLessons.getOrNull(i - 1) ?: lessonDuration
+            val bDur = customBreaks.getOrNull(i - 1) ?: breakDuration
+            currentTotalMinutes += lDur + bDur
         }
 
+        val lDurCurrent = customLessons.getOrNull(lessonNumber - 1) ?: lessonDuration
         val lessonStartMin = currentTotalMinutes
-        val lessonEndMin = currentTotalMinutes + lessonDuration
+        val lessonEndMin = currentTotalMinutes + lDurCurrent
 
         fun formatMin(min: Int): String {
             var h = min / 60
@@ -272,7 +306,13 @@ object WidgetScheduleHelper {
     fun getTeacherLessonsForDay(context: Context, dayArabic: String): List<LessonTimeInfo> {
         val result = mutableListOf<LessonTimeInfo>()
         try {
-            val (startHourStr, lessonD, breakD) = getTimingFromScheduleJson(context)
+            val fullTiming = getFullTimingFromScheduleJson(context)
+            val startHourStr = fullTiming.startHour
+            val lessonD = fullTiming.lessonDuration
+            val breakD = fullTiming.breakDuration
+            val customLessons = fullTiming.customLessons
+            val customBreaks = fullTiming.customBreaks
+
             val parts = startHourStr.split(":").mapNotNull { it.toIntOrNull() }
             val startH = if (parts.isNotEmpty()) parts[0] else 8
             val startM = if (parts.size > 1) parts[1] else 0
@@ -331,9 +371,12 @@ object WidgetScheduleHelper {
 
             var currentTotalMinutes = startH * 60 + startM
             for (i in 1..7) {
+                val lDur = customLessons.getOrNull(i - 1) ?: lessonD
+                val bDur = customBreaks.getOrNull(i - 1) ?: breakD
+
                 val lessonStartH = currentTotalMinutes / 60
                 val lessonStartM = currentTotalMinutes % 60
-                val lessonEndTotal = currentTotalMinutes + lessonD
+                val lessonEndTotal = currentTotalMinutes + lDur
                 val lessonEndH = lessonEndTotal / 60
                 val lessonEndM = lessonEndTotal % 60
 
@@ -352,8 +395,7 @@ object WidgetScheduleHelper {
                         )
                     )
                 }
-
-                currentTotalMinutes = lessonEndTotal + breakD
+                currentTotalMinutes = lessonEndTotal + bDur
             }
         } catch (e: Exception) {
             e.printStackTrace()

@@ -16,6 +16,8 @@ SchoolSystem_Android/app/build/
 SchoolSystem_Android/local.properties
 SchoolSystem_Android/.artifacts/
 SchoolSystem_Android/.kotlin/
+SchoolSystem_Android/keystore.properties
+SchoolSystem_Android/*.jks
 **/.kotlin/
 
 # === Principal_Android ===

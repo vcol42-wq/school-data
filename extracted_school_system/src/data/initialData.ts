@@ -13,6 +13,8 @@ export const defaultAppConfig: AppConfig = {
   developerCode: '9999',
   lessonDurationMinutes: 45,
   breakDurationMinutes: 10,
+  customLessonDurations: [45, 45, 45, 45, 45, 45],
+  customBreakDurations: [10, 10, 10, 10, 10],
   schoolStartHour: '08:00',
   enableBellSound: true,
   enableScreensaver: false,

@@ -616,6 +616,117 @@ fun PrincipalOnboardingScreen(
                 }
             }
 
+            // THIRD METHOD: Standalone Principal Management (العمل مستقل)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(4.dp, RoundedCornerShape(22.dp)),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                border = BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.5f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFF059669).copy(alpha = 0.2f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.AdminPanelSettings, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "بدء العمل كإدارة مستقلة (أوفلاين) 👑",
+                                color = Color.White,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "دخول مباشر بدون الحاجة لربط مسبق",
+                                color = Color(0xFF34D399),
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "يمكنك فتح لوحة المدير واستخدام كافة ميزات الإدارة والصفوف فوراً بشكل مستقل، وتعديل بيانات المدرسة أو ربطها لاحقاً من شاشة الضبط.",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Button(
+                        onClick = {
+                            val diyalaPrefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                            diyalaPrefs.edit()
+                                .putString("user_role", "PRINCIPAL")
+                                .putBoolean("is_principal_standalone", true)
+                                .putString("school_name", "إدارة المدرسة المستقلة")
+                                .apply()
+                            Toast.makeText(context, "تم تفعيل بوابة المدير المستقلة بنجاح 👑✓", Toast.LENGTH_SHORT).show()
+                            onActivationComplete()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "دخول مباشر كمدير مستقل 🚀",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.5.sp,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+
+            // Information Notice Card for Principal
+            Surface(
+                color = Color(0xFF1E293B),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFF334155)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = Color(0xFFFBBF24),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "💡 ملاحظة: بعد فتح التطبيق، يمكنك في أي وقت الانتقال إلى شاشة (الضبط ⚙️) لإضافة اسم المدرسة، تعديل بيانات الإدارة، أو تفعيل وتعديل الربط السحابي.",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFFCBD5E1),
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+
             // Security Deterrent Alert Dialog ⚠️
             if (showDeterrentDialog) {
                 AlertDialog(

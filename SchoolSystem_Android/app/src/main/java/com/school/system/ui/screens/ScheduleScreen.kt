@@ -107,22 +107,14 @@ fun ScheduleScreen(
     val gson = remember { Gson() }
 
     // Dynamic schedule timings (configured by principal in desktop system)
-    val (timingStartHour, timingLessonDur, timingBreakDur) = remember(rawScheduleJson) {
-        try {
-            val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
-            val timingObj = rootObj?.get("_timing") as? Map<*, *>
-            val startHour = timingObj?.get("schoolStartHour")?.toString()
-                ?: prefs.getString("school_start_hour", "08:00")
-                ?: "08:00"
-            val lessonDur = (timingObj?.get("lessonDurationMinutes") as? Number)?.toInt()
-                ?: prefs.getInt("lesson_duration_minutes", 45)
-            val breakDur = (timingObj?.get("breakDurationMinutes") as? Number)?.toInt()
-                ?: prefs.getInt("break_duration_minutes", 10)
-            Triple(startHour, lessonDur, breakDur)
-        } catch (e: Exception) {
-            Triple("08:00", 45, 10)
-        }
+    val timingInfo = remember(rawScheduleJson) {
+        WidgetScheduleHelper.getFullTimingFromScheduleJson(context)
     }
+    val timingStartHour = timingInfo.startHour
+    val timingLessonDur = timingInfo.lessonDuration
+    val timingBreakDur = timingInfo.breakDuration
+    val customLessonDurations = timingInfo.customLessons
+    val customBreakDurations = timingInfo.customBreaks
     
     // Parse structured schedule items
     val parsedScheduleByDay: Map<String, List<TeacherLessonInfo>> = remember(rawScheduleJson) {
@@ -363,6 +355,8 @@ fun ScheduleScreen(
                         startHourStr = timingStartHour,
                         lessonDuration = timingLessonDur,
                         breakDuration = timingBreakDur,
+                        customLessons = customLessonDurations,
+                        customBreaks = customBreakDurations,
                         onLessonSelect = { lesson ->
                             selectedLessonForInspection = lesson
                         }
@@ -496,7 +490,9 @@ fun WeeklyPersonalScheduleTable(
     lessons: List<TeacherLessonInfo>,
     startHourStr: String = "08:00",
     lessonDuration: Int = 45,
-    breakDuration: Int = 10
+    breakDuration: Int = 10,
+    customLessons: List<Int> = emptyList(),
+    customBreaks: List<Int> = emptyList()
 ) {
     val currentTheme = LocalAppTheme.current
     val hScroll = rememberScrollState()
@@ -594,7 +590,7 @@ fun WeeklyPersonalScheduleTable(
                         modifier = Modifier.background(currentTheme.tableHeaderBg)
                     ) {
                         for (i in 1..6) {
-                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i, startHourStr, lessonDuration, breakDuration), lessonColW, headerH)
+                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i, startHourStr, lessonDuration, breakDuration, customLessons, customBreaks), lessonColW, headerH)
                         }
                     }
 
@@ -674,6 +670,8 @@ fun GeneralDayScheduleGrid(
     startHourStr: String = "08:00",
     lessonDuration: Int = 45,
     breakDuration: Int = 10,
+    customLessons: List<Int> = emptyList(),
+    customBreaks: List<Int> = emptyList(),
     onLessonSelect: ((TeacherLessonInfo) -> Unit)? = null
 ) {
     val currentTheme = LocalAppTheme.current
@@ -731,7 +729,7 @@ fun GeneralDayScheduleGrid(
                             .horizontalScroll(hScroll)
                     ) {
                         for (i in 1..6) {
-                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i, startHourStr, lessonDuration, breakDuration), lessonColW, headerH)
+                            ScheduleHeaderCellWithTiming("الدرس $i", getLessonShortTiming(i, startHourStr, lessonDuration, breakDuration, customLessons, customBreaks), lessonColW, headerH)
                         }
                     }
                 }
@@ -922,7 +920,9 @@ fun calculateSlotTiming(
     startHourStr: String = "08:00",
     lessonDuration: Int = 45,
     breakDuration: Int = 10,
-    isShort: Boolean = false
+    isShort: Boolean = false,
+    customLessons: List<Int> = emptyList(),
+    customBreaks: List<Int> = emptyList()
 ): String {
     if (lessonNumber < 1) return ""
     val parts = startHourStr.split(":").mapNotNull { it.toIntOrNull() }
@@ -931,11 +931,14 @@ fun calculateSlotTiming(
 
     var currentTotalMinutes = startH * 60 + startM
     for (i in 1 until lessonNumber) {
-        currentTotalMinutes += lessonDuration + breakDuration
+        val lDur = customLessons.getOrNull(i - 1) ?: lessonDuration
+        val bDur = customBreaks.getOrNull(i - 1) ?: breakDuration
+        currentTotalMinutes += lDur + bDur
     }
 
+    val lDurCurrent = customLessons.getOrNull(lessonNumber - 1) ?: lessonDuration
     val lessonStartMin = currentTotalMinutes
-    val lessonEndMin = currentTotalMinutes + lessonDuration
+    val lessonEndMin = currentTotalMinutes + lDurCurrent
 
     fun formatMin(min: Int, short: Boolean): String {
         var h = min / 60
@@ -956,24 +959,39 @@ fun getLessonShortTiming(
     lessonNumber: Int,
     startHourStr: String = "08:00",
     lessonDuration: Int = 45,
-    breakDuration: Int = 10
+    breakDuration: Int = 10,
+    customLessons: List<Int> = emptyList(),
+    customBreaks: List<Int> = emptyList()
 ): String {
-    return calculateSlotTiming(lessonNumber, startHourStr, lessonDuration, breakDuration, isShort = true)
+    return calculateSlotTiming(lessonNumber, startHourStr, lessonDuration, breakDuration, isShort = true, customLessons = customLessons, customBreaks = customBreaks)
 }
 
 fun getLessonTiming(
     lessonNumber: Int,
     startHourStr: String = "08:00",
     lessonDuration: Int = 45,
-    breakDuration: Int = 10
+    breakDuration: Int = 10,
+    customLessons: List<Int> = emptyList(),
+    customBreaks: List<Int> = emptyList()
 ): String {
-    return calculateSlotTiming(lessonNumber, startHourStr, lessonDuration, breakDuration, isShort = false)
+    return calculateSlotTiming(lessonNumber, startHourStr, lessonDuration, breakDuration, isShort = false, customLessons = customLessons, customBreaks = customBreaks)
 }
 
 @Composable
 fun PersonalLessonCardRtl(lesson: TeacherLessonInfo) {
+    val context = LocalContext.current
     val currentTheme = LocalAppTheme.current
-    val timing = remember(lesson.lessonNumber) { getLessonTiming(lesson.lessonNumber) }
+    val timing = remember(lesson.lessonNumber) {
+        val tInfo = WidgetScheduleHelper.getFullTimingFromScheduleJson(context)
+        getLessonTiming(
+            lesson.lessonNumber,
+            tInfo.startHour,
+            tInfo.lessonDuration,
+            tInfo.breakDuration,
+            tInfo.customLessons,
+            tInfo.customBreaks
+        )
+    }
     val cleanCls = remember(lesson.className) { WidgetScheduleHelper.cleanClassName(lesson.className) }
     val cleanSubj = remember(lesson.subject) { WidgetScheduleHelper.cleanSubjectName(lesson.subject) }
     val cleanTeacher = remember(lesson.teacherName) { WidgetScheduleHelper.cleanTeacherFirstName(lesson.teacherName) }

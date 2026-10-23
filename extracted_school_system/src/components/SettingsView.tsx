@@ -572,7 +572,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="block font-bold mb-1">مدة الدرس الواحد (بالدقائق):</label>
+              <label className="block font-bold mb-1">المدة الافتراضية للدرس (بالدقائق):</label>
               <input
                 type="number"
                 min={20}
@@ -584,10 +584,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold mb-1">مدة الفرصة الاستراحة (بالدقائق):</label>
+              <label className="block font-bold mb-1">المدة الافتراضية للفرصة (بالدقائق):</label>
               <input
                 type="number"
-                min={5}
+                min={0}
                 max={40}
                 value={formConfig.breakDurationMinutes}
                 onChange={e => setFormConfig(p => ({ ...p, breakDurationMinutes: Number(e.target.value) }))}
@@ -603,6 +603,102 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={e => setFormConfig(p => ({ ...p, schoolStartHour: e.target.value }))}
                 className="w-full p-2.5 rounded-xl border bg-white font-bold text-emerald-600"
               />
+            </div>
+          </div>
+
+          {/* Individual Lesson Durations */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-slate-800 dark:text-slate-200">
+                تخصيص مدة كل درس على حدة (الدرس الأول 30د، الثاني 40د، إلخ):
+              </label>
+              <span className="text-[10px] text-slate-500">بالدقائق لكل حصة</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+              {[1, 2, 3, 4, 5, 6].map(lessonNum => {
+                const idx = lessonNum - 1;
+                const currentDur = formConfig.customLessonDurations?.[idx] ?? formConfig.lessonDurationMinutes ?? 45;
+                return (
+                  <div key={lessonNum} className="bg-slate-50 dark:bg-slate-800/60 p-2 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <span className="block text-[11px] font-bold text-blue-600 mb-1">الدرس {lessonNum}:</span>
+                    <input
+                      type="number"
+                      min={15}
+                      max={90}
+                      value={currentDur}
+                      onChange={e => {
+                        const val = Number(e.target.value) || 45;
+                        setFormConfig(p => {
+                          const base = p.customLessonDurations && p.customLessonDurations.length === 6
+                            ? [...p.customLessonDurations]
+                            : [p.lessonDurationMinutes || 45, p.lessonDurationMinutes || 45, p.lessonDurationMinutes || 45, p.lessonDurationMinutes || 45, p.lessonDurationMinutes || 45, p.lessonDurationMinutes || 45];
+                          base[idx] = val;
+                          return { ...p, customLessonDurations: base };
+                        });
+                      }}
+                      className="w-full p-1.5 rounded-lg border bg-white font-black text-center text-xs"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Individual Break Durations (With 0 min Merged Support) */}
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-amber-900 dark:text-amber-200">
+                تخصيص مدة الفرص بين الدروس (وضع 0 دقيقة يعني دمج الدرسين معاً بدون فرصة):
+              </label>
+              <span className="text-[10px] text-amber-600">0 دقيقة = دمج</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {[1, 2, 3, 4, 5].map(bNum => {
+                const bIdx = bNum - 1;
+                const currentBDur = formConfig.customBreakDurations?.[bIdx] ?? formConfig.breakDurationMinutes ?? 10;
+                return (
+                  <div key={bNum} className={`p-2 rounded-xl border ${currentBDur === 0 ? 'bg-amber-100/80 border-amber-400' : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700'}`}>
+                    <span className="block text-[11px] font-bold text-pink-700 dark:text-pink-300 mb-1">
+                      فرصة {bNum} (بين {bNum} و {bNum + 1}):
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={0}
+                        max={60}
+                        value={currentBDur}
+                        onChange={e => {
+                          const val = Math.max(0, Number(e.target.value) || 0);
+                          setFormConfig(p => {
+                            const base = p.customBreakDurations && p.customBreakDurations.length === 5
+                              ? [...p.customBreakDurations]
+                              : [p.breakDurationMinutes || 10, p.breakDurationMinutes || 10, p.breakDurationMinutes || 10, p.breakDurationMinutes || 10, p.breakDurationMinutes || 10];
+                            base[bIdx] = val;
+                            return { ...p, customBreakDurations: base };
+                          });
+                        }}
+                        className="w-full p-1.5 rounded-lg border bg-white font-black text-center text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormConfig(p => {
+                            const base = p.customBreakDurations && p.customBreakDurations.length === 5
+                              ? [...p.customBreakDurations]
+                              : [p.breakDurationMinutes || 10, p.breakDurationMinutes || 10, p.breakDurationMinutes || 10, p.breakDurationMinutes || 10, p.breakDurationMinutes || 10];
+                            base[bIdx] = 0;
+                            return { ...p, customBreakDurations: base };
+                          });
+                        }}
+                        className="text-[9px] font-black px-1.5 py-1 bg-amber-500 text-slate-950 rounded hover:bg-amber-600 transition-colors whitespace-nowrap"
+                        title="دمج الحصتين بدون فرصة"
+                      >
+                        دمج (0د)
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

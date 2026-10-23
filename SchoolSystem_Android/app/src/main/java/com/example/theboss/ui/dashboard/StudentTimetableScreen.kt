@@ -709,6 +709,22 @@ fun StudentTimetableScreen(
         val lessonDur = if (lessonDuration > 0) lessonDuration else ((timingObj?.get("lessonDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("lesson_duration_minutes", 45))
         val breakDur = if (breakDuration >= 0) breakDuration else ((timingObj?.get("breakDurationMinutes") as? Number)?.toInt() ?: prefs.getInt("break_duration_minutes", 10))
 
+        var customLessons = (timingObj?.get("customLessonDurations") as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+        if (customLessons.isNullOrEmpty()) {
+            val cached = prefs.getString("custom_lesson_durations", null)
+            if (!cached.isNullOrBlank()) {
+                customLessons = com.google.gson.Gson().fromJson<List<Int>>(cached, object : com.google.gson.reflect.TypeToken<List<Int>>() {}.type)
+            }
+        }
+
+        var customBreaks = (timingObj?.get("customBreakDurations") as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+        if (customBreaks.isNullOrEmpty()) {
+            val cached = prefs.getString("custom_break_durations", null)
+            if (!cached.isNullOrBlank()) {
+                customBreaks = com.google.gson.Gson().fromJson<List<Int>>(cached, object : com.google.gson.reflect.TypeToken<List<Int>>() {}.type)
+            }
+        }
+
         val names = listOf("الأولى", "الثانية", "الثالثة", "الرابعة", "الخامسة", "السادسة")
         val bgColors = listOf(
             Color(0xFFFEF08A), Color(0xFFBAE6FD), Color(0xFFFEF08A),
@@ -727,7 +743,9 @@ fun StudentTimetableScreen(
             val lessonNum = idx + 1
             var currentTotalMinutes = startH * 60 + startM
             for (i in 1 until lessonNum) {
-                currentTotalMinutes += lessonDur + breakDur
+                val lD = customLessons?.getOrNull(i - 1) ?: lessonDur
+                val bD = customBreaks?.getOrNull(i - 1) ?: breakDur
+                currentTotalMinutes += lD + bD
             }
             var h = currentTotalMinutes / 60
             val m = currentTotalMinutes % 60

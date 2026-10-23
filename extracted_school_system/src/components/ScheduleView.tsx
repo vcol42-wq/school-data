@@ -47,6 +47,7 @@ interface ScheduleViewProps {
   scheduleMap: DayScheduleMap;
   setScheduleMap: React.Dispatch<React.SetStateAction<DayScheduleMap>>;
   config: AppConfig;
+  setConfig?: React.Dispatch<React.SetStateAction<AppConfig>>;
   staffList?: StaffMember[];
   setStaffList?: React.Dispatch<React.SetStateAction<StaffMember[]>>;
   students?: Student[];
@@ -57,6 +58,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   scheduleMap,
   setScheduleMap,
   config,
+  setConfig,
   staffList = [],
   setStaffList,
   students = [],
@@ -79,6 +81,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [showAddRowModal, setShowAddRowModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showPrintPreviewModal, setShowPrintPreviewModal] = useState(false);
+  const [showTimingsModal, setShowTimingsModal] = useState(false);
+  const [tempLessonDurations, setTempLessonDurations] = useState<number[]>(() => {
+    return config.customLessonDurations && config.customLessonDurations.length === 6
+      ? [...config.customLessonDurations]
+      : [Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45];
+  });
+  const [tempBreakDurations, setTempBreakDurations] = useState<number[]>(() => {
+    return config.customBreakDurations && config.customBreakDurations.length === 5
+      ? [...config.customBreakDurations]
+      : [Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10];
+  });
+  const [timingSaveSuccessMsg, setTimingSaveSuccessMsg] = useState('');
   const [isUploadingSchedule, setIsUploadingSchedule] = useState(false);
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState('');
   const [newRowGrade, setNewRowGrade] = useState('الصف الأول');
@@ -100,7 +114,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         _timing: {
           schoolStartHour: config.schoolStartHour || '08:00',
           lessonDurationMinutes: Number(config.lessonDurationMinutes) || 45,
-          breakDurationMinutes: Number(config.breakDurationMinutes) || 10
+          breakDurationMinutes: Number(config.breakDurationMinutes) || 10,
+          customLessonDurations: config.customLessonDurations || [45, 45, 45, 45, 45, 45],
+          customBreakDurations: config.customBreakDurations || [10, 10, 10, 10, 10]
         }
       };
 
@@ -353,11 +369,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   // Current day's rows
   const currentDayRows = sortSectionsList(scheduleMap[selectedDay] || []);
 
-  // Calculate start and end times for all 6 lesson slots & 5 breaks in 12-Hour format (ص/م)
+  // Calculate start and end times for all 6 lesson slots & breaks in 12-Hour format (ص/م)
   const calculateSlotTimings = () => {
     const timings: { type: 'lesson' | 'break'; name: string; start: string; end: string; slotNum?: number }[] = [];
     
-    const [startH, startM] = config.schoolStartHour.split(':').map(Number);
+    const [startH, startM] = (config.schoolStartHour || '08:00').split(':').map(Number);
     let currentTotalMinutes = (startH || 8) * 60 + (startM || 0);
 
     const formatTime12 = (totalMin: number) => {
@@ -369,10 +385,25 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${period}`;
     };
 
+    const getLessonDur = (idx: number) => {
+      if (config.customLessonDurations && config.customLessonDurations[idx] !== undefined && Number(config.customLessonDurations[idx]) > 0) {
+        return Number(config.customLessonDurations[idx]);
+      }
+      return Number(config.lessonDurationMinutes) || 45;
+    };
+
+    const getBreakDur = (idx: number) => {
+      if (config.customBreakDurations && config.customBreakDurations[idx] !== undefined) {
+        return Math.max(0, Number(config.customBreakDurations[idx]));
+      }
+      return Number(config.breakDurationMinutes) || 10;
+    };
+
     for (let i = 1; i <= 6; i++) {
       // Lesson
+      const lDur = getLessonDur(i - 1);
       const lessonStart = formatTime12(currentTotalMinutes);
-      currentTotalMinutes += config.lessonDurationMinutes;
+      currentTotalMinutes += lDur;
       const lessonEnd = formatTime12(currentTotalMinutes);
 
       timings.push({
@@ -385,16 +416,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
       // Break (after lessons 1 to 5)
       if (i < 6) {
-        const breakStart = formatTime12(currentTotalMinutes);
-        currentTotalMinutes += config.breakDurationMinutes;
-        const breakEnd = formatTime12(currentTotalMinutes);
+        const bDur = getBreakDur(i - 1);
+        if (bDur > 0) {
+          const breakStart = formatTime12(currentTotalMinutes);
+          currentTotalMinutes += bDur;
+          const breakEnd = formatTime12(currentTotalMinutes);
 
-        timings.push({
-          type: 'break',
-          name: `${config.breakDurationMinutes} د`,
-          start: breakStart,
-          end: breakEnd
-        });
+          timings.push({
+            type: 'break',
+            name: `${bDur} د`,
+            start: breakStart,
+            end: breakEnd
+          });
+        }
       }
     }
 
@@ -729,6 +763,27 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             </button>
 
             <button
+              onClick={() => {
+                setTempLessonDurations(
+                  config.customLessonDurations && config.customLessonDurations.length === 6
+                    ? [...config.customLessonDurations]
+                    : [Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45, Number(config.lessonDurationMinutes) || 45]
+                );
+                setTempBreakDurations(
+                  config.customBreakDurations && config.customBreakDurations.length === 5
+                    ? [...config.customBreakDurations]
+                    : [Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10, Number(config.breakDurationMinutes) || 10]
+                );
+                setShowTimingsModal(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-slate-950 text-xs font-black transition-all cursor-pointer shadow-md border-2 border-amber-300 hover:scale-102"
+              title="تعديل وقت كل درس على حدة والفرص بين الدروس وإمكانية دمج الحصص (0 دقيقة)"
+            >
+              <Clock className="w-4 h-4 text-slate-950" />
+              <span>تخصيص أوقات الحصص والفرص ⏱️</span>
+            </button>
+
+            <button
               onClick={() => setShowSettingsModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-amber-400 text-xs font-bold transition-colors cursor-pointer shadow border border-slate-700"
               title="تعديل ألقاب وأسماء الدروس والأساتذة والتوقيتات"
@@ -783,17 +838,39 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 <th className="py-2 px-2 rounded-xl bg-sky-800 text-amber-200">
                   الصفوف والشعب
                 </th>
-                <th className={`py-2 px-1 rounded-xl bg-sky-200 text-sky-950 font-black ${activeSlotIndex === 0 ? 'bg-amber-400 text-slate-950' : ''}`}>الدرس الأول</th>
-                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 1 ? 'bg-amber-400 text-slate-950' : ''}`}>{config.breakDurationMinutes} د</th>
-                <th className={`py-2 px-1 rounded-xl bg-cyan-200 text-cyan-950 font-black ${activeSlotIndex === 2 ? 'bg-amber-400 text-slate-950' : ''}`}>الدرس الثاني</th>
-                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 3 ? 'bg-amber-400 text-slate-950' : ''}`}>{config.breakDurationMinutes} د</th>
-                <th className={`py-2 px-1 rounded-xl bg-amber-200 text-amber-950 font-black ${activeSlotIndex === 4 ? 'bg-amber-400 text-slate-950' : ''}`}>الدرس الثالث</th>
-                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 5 ? 'bg-amber-400 text-slate-950' : ''}`}>{config.breakDurationMinutes} د</th>
-                <th className={`py-2 px-1 rounded-xl bg-emerald-200 text-emerald-950 font-black ${activeSlotIndex === 6 ? 'bg-amber-400 text-slate-950' : ''}`}>الدرس الرابع</th>
-                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 7 ? 'bg-amber-400 text-slate-950' : ''}`}>{config.breakDurationMinutes} د</th>
-                <th className={`py-2 px-1 rounded-xl bg-indigo-200 text-indigo-950 font-black ${activeSlotIndex === 8 ? 'bg-amber-400 text-slate-950' : ''}`}>الدرس الخامس</th>
-                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 9 ? 'bg-amber-400 text-slate-950' : ''}`}>{config.breakDurationMinutes} د</th>
-                <th className={`py-2 px-1 rounded-xl bg-rose-200 text-rose-950 font-black ${activeSlotIndex === 10 ? 'bg-amber-400 text-slate-950' : ''}`}>الدرس السادس</th>
+                <th className={`py-2 px-1 rounded-xl bg-sky-200 text-sky-950 font-black ${activeSlotIndex === 0 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {customLessonNames.lesson1 || 'الدرس الأول'} ({config.customLessonDurations?.[0] || config.lessonDurationMinutes} د)
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 1 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {(config.customBreakDurations?.[0] !== undefined ? config.customBreakDurations[0] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[0] ?? config.breakDurationMinutes} د`}
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-cyan-200 text-cyan-950 font-black ${activeSlotIndex === 2 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {customLessonNames.lesson2 || 'الدرس الثاني'} ({config.customLessonDurations?.[1] || config.lessonDurationMinutes} د)
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 3 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {(config.customBreakDurations?.[1] !== undefined ? config.customBreakDurations[1] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[1] ?? config.breakDurationMinutes} د`}
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-amber-200 text-amber-950 font-black ${activeSlotIndex === 4 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {customLessonNames.lesson3 || 'الدرس الثالث'} ({config.customLessonDurations?.[2] || config.lessonDurationMinutes} د)
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 5 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {(config.customBreakDurations?.[2] !== undefined ? config.customBreakDurations[2] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[2] ?? config.breakDurationMinutes} د`}
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-emerald-200 text-emerald-950 font-black ${activeSlotIndex === 6 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {customLessonNames.lesson4 || 'الدرس الرابع'} ({config.customLessonDurations?.[3] || config.lessonDurationMinutes} د)
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 7 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {(config.customBreakDurations?.[3] !== undefined ? config.customBreakDurations[3] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[3] ?? config.breakDurationMinutes} د`}
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-indigo-200 text-indigo-950 font-black ${activeSlotIndex === 8 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {customLessonNames.lesson5 || 'الدرس الخامس'} ({config.customLessonDurations?.[4] || config.lessonDurationMinutes} د)
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 9 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {(config.customBreakDurations?.[4] !== undefined ? config.customBreakDurations[4] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[4] ?? config.breakDurationMinutes} د`}
+                </th>
+                <th className={`py-2 px-1 rounded-xl bg-rose-200 text-rose-950 font-black ${activeSlotIndex === 10 ? 'bg-amber-400 text-slate-950' : ''}`}>
+                  {customLessonNames.lesson6 || 'الدرس السادس'} ({config.customLessonDurations?.[5] || config.lessonDurationMinutes} د)
+                </th>
                 <th className="py-2 px-1 rounded-xl bg-slate-300 text-slate-900 text-center">حذف</th>
               </tr>
             </thead>
@@ -830,7 +907,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 1 */}
-                    <BreakCell isActive={activeSlotIndex === 1} durationMinutes={config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 1} durationMinutes={config.customBreakDurations?.[0] ?? config.breakDurationMinutes} />
 
                     {/* Lesson 2 */}
                     <LessonCell
@@ -841,7 +918,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 2 */}
-                    <BreakCell isActive={activeSlotIndex === 3} durationMinutes={config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 3} durationMinutes={config.customBreakDurations?.[1] ?? config.breakDurationMinutes} />
 
                     {/* Lesson 3 */}
                     <LessonCell
@@ -852,7 +929,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 3 */}
-                    <BreakCell isActive={activeSlotIndex === 5} durationMinutes={config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 5} durationMinutes={config.customBreakDurations?.[2] ?? config.breakDurationMinutes} />
 
                     {/* Lesson 4 */}
                     <LessonCell
@@ -863,7 +940,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 4 */}
-                    <BreakCell isActive={activeSlotIndex === 7} durationMinutes={config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 7} durationMinutes={config.customBreakDurations?.[3] ?? config.breakDurationMinutes} />
 
                     {/* Lesson 5 */}
                     <LessonCell
@@ -874,7 +951,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 5 */}
-                    <BreakCell isActive={activeSlotIndex === 9} durationMinutes={config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 9} durationMinutes={config.customBreakDurations?.[4] ?? config.breakDurationMinutes} />
 
                     {/* Lesson 6 */}
                     <LessonCell
@@ -1547,6 +1624,317 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         </Portal>
       )}
 
+      {/* Modal: Custom Timing Per Lesson & Per Break (With 0 min Merged Support) */}
+      {showTimingsModal && (
+        <Portal>
+          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-3 animate-fade-in font-tajawal dir-rtl">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-2xl w-full p-5 shadow-2xl border-2 border-amber-400/60 max-h-[92vh] overflow-y-auto space-y-4">
+              
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl text-slate-950 shadow-md">
+                    <Clock className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base md:text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>تخصيص وقت كل درس على حدة والفرص والدمج ⏱️</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-bold mt-0.5">
+                      يمكنك تحديد مدة كل حصة بدقة، وتعديل الفرص بين كل درسين، أو وضع 0 دقيقة لدمج درسين متتاليين
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowTimingsModal(false)} 
+                  className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* 1. Lessons Durations Grid */}
+              <div className="bg-slate-50 dark:bg-slate-800/40 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    1. مدة كل درس على حدة (بالدقائق):
+                  </label>
+                  <span className="text-[10px] font-bold text-slate-500">مثال: الدرس الأول 30 د والثاني 40 د</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                  {tempLessonDurations.map((dur, idx) => (
+                    <div key={idx} className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border-2 border-slate-200 dark:border-slate-700 shadow-xs space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-blue-700 dark:text-blue-300">
+                          {customLessonNames[`lesson${idx + 1}`] || `الدرس ${idx + 1}`}
+                        </span>
+                        <span className="text-xs font-mono font-black text-slate-900 dark:text-white bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
+                          {dur} د
+                        </span>
+                      </div>
+
+                      <input
+                        type="number"
+                        min={15}
+                        max={120}
+                        value={dur}
+                        onChange={e => {
+                          const val = Math.max(10, Math.min(120, Number(e.target.value) || 0));
+                          setTempLessonDurations(prev => {
+                            const next = [...prev];
+                            next[idx] = val;
+                            return next;
+                          });
+                        }}
+                        className="w-full px-2.5 py-1.5 text-xs font-black rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                      />
+
+                      {/* Quick Presets */}
+                      <div className="flex items-center gap-1">
+                        {[30, 40, 45].map(preset => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => {
+                              setTempLessonDurations(prev => {
+                                const next = [...prev];
+                                next[idx] = preset;
+                                return next;
+                              });
+                            }}
+                            className={`flex-1 text-[9.5px] font-bold py-0.5 rounded transition-colors ${
+                              dur === preset ? 'bg-blue-600 text-white font-black' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                            }`}
+                          >
+                            {preset}د
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Break Durations Grid (With 0 min Merged Support) */}
+              <div className="bg-amber-50/60 dark:bg-amber-950/20 p-3.5 rounded-2xl border border-amber-200 dark:border-amber-800/60 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                    2. مدة الفرص بين كل درسين (0 دقيقة = دمج درسين معاً):
+                  </label>
+                  <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400">0 دقيقة تعني لا توجد فرصة ودمج الحصتين</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {tempBreakDurations.map((bDur, bIdx) => (
+                    <div key={bIdx} className={`p-2.5 rounded-xl border-2 transition-all shadow-xs space-y-1.5 ${
+                      bDur === 0 
+                        ? 'bg-amber-100/80 dark:bg-amber-900/40 border-amber-400 border-dashed' 
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-slate-800 dark:text-slate-200">
+                          فرصة ما بين الدرسين ({bIdx + 1}) و ({bIdx + 2}):
+                        </span>
+                        <span className={`text-xs font-mono font-black px-2 py-0.5 rounded-md border ${
+                          bDur === 0 
+                            ? 'bg-amber-400 text-slate-950 border-amber-500 font-black' 
+                            : 'bg-pink-100 dark:bg-pink-950/50 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800'
+                        }`}>
+                          {bDur === 0 ? 'دمج درسين (0 د)' : `${bDur} دقيقة`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          max={60}
+                          value={bDur}
+                          onChange={e => {
+                            const val = Math.max(0, Math.min(60, Number(e.target.value) || 0));
+                            setTempBreakDurations(prev => {
+                              const next = [...prev];
+                              next[bIdx] = val;
+                              return next;
+                            });
+                          }}
+                          className="w-24 px-2.5 py-1.5 text-xs font-black rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                        />
+
+                        {/* Presets: 0 (دمج), 5, 10, 15 */}
+                        <div className="flex items-center gap-1 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTempBreakDurations(prev => {
+                                const next = [...prev];
+                                next[bIdx] = 0;
+                                return next;
+                              });
+                            }}
+                            className={`flex-1 text-[10px] font-black py-1 rounded transition-colors ${
+                              bDur === 0 ? 'bg-amber-500 text-slate-950 shadow-xs' : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                            }`}
+                            title="دمج الدرسين بدون فرصة استراحة"
+                          >
+                            🔗 دمج (0د)
+                          </button>
+                          {[5, 10, 15].map(preset => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => {
+                                setTempBreakDurations(prev => {
+                                  const next = [...prev];
+                                  next[bIdx] = preset;
+                                  return next;
+                                });
+                              }}
+                              className={`px-2 text-[10px] font-bold py-1 rounded transition-colors ${
+                                bDur === preset ? 'bg-pink-600 text-white font-black' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                              }`}
+                            >
+                              {preset}د
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. Live Calculated Timeline Preview */}
+              <div className="bg-slate-900 text-white p-3 rounded-2xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-300 border-b border-slate-800 pb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    معاينة حية ومباشرة للجدول الزمني:
+                  </span>
+                  <span className="text-[11px] text-slate-400">بداية الدوام: {config.schoolStartHour || '08:00'} صباحاً</span>
+                </div>
+
+                <div className="flex items-center gap-1 overflow-x-auto py-1 text-[11px] font-mono no-scrollbar">
+                  {(() => {
+                    const [sH, sM] = (config.schoolStartHour || '08:00').split(':').map(Number);
+                    let curMin = (sH || 8) * 60 + (sM || 0);
+
+                    const f12 = (min: number) => {
+                      let h = Math.floor(min / 60);
+                      const m = min % 60;
+                      const p = h >= 12 ? 'م' : 'ص';
+                      h = h % 12;
+                      if (h === 0) h = 12;
+                      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}${p}`;
+                    };
+
+                    const timeline: React.ReactNode[] = [];
+                    for (let l = 1; l <= 6; l++) {
+                      const dur = tempLessonDurations[l - 1] || 45;
+                      const st = f12(curMin);
+                      curMin += dur;
+                      const en = f12(curMin);
+
+                      timeline.push(
+                        <div key={`l-${l}`} className="flex-1 min-w-[76px] bg-blue-900/60 border border-blue-400/40 rounded-xl p-1 text-center font-sans">
+                          <div className="text-[10px] text-blue-200 font-bold truncate">الدرس {l}</div>
+                          <div className="text-[9.5px] text-amber-300 font-black font-mono">{st}-{en}</div>
+                          <div className="text-[9px] text-slate-300 font-mono">({dur} د)</div>
+                        </div>
+                      );
+
+                      if (l < 6) {
+                        const bDur = tempBreakDurations[l - 1] ?? 10;
+                        if (bDur > 0) {
+                          const bSt = f12(curMin);
+                          curMin += bDur;
+                          const bEn = f12(curMin);
+                          timeline.push(
+                            <div key={`b-${l}`} className="min-w-[42px] bg-pink-900/60 border border-pink-400/40 rounded-xl p-1 text-center font-sans">
+                              <div className="text-[9px] text-pink-300 font-bold">فرصة</div>
+                              <div className="text-[8.5px] text-pink-200 font-mono">{bDur}د</div>
+                            </div>
+                          );
+                        } else {
+                          timeline.push(
+                            <div key={`m-${l}`} className="px-1 text-[10px] text-amber-400 font-black" title="دمج درسين متتاليين">
+                              🔗
+                            </div>
+                          );
+                        }
+                      }
+                    }
+                    return timeline;
+                  })()}
+                </div>
+              </div>
+
+              {timingSaveSuccessMsg && (
+                <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-black rounded-xl text-center animate-bounce">
+                  {timingSaveSuccessMsg}
+                </div>
+              )}
+
+              {/* Actions Footer */}
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const defL = [45, 45, 45, 45, 45, 45];
+                    const defB = [10, 10, 10, 10, 10];
+                    setTempLessonDurations(defL);
+                    setTempBreakDurations(defB);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                >
+                  استعادة التوقيت الموحد (45د/10د) 🔄
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTimingsModal(false)}
+                    className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updatedConfig: AppConfig = {
+                        ...config,
+                        customLessonDurations: [...tempLessonDurations],
+                        customBreakDurations: [...tempBreakDurations]
+                      };
+
+                      if (setConfig) {
+                        setConfig(updatedConfig);
+                      }
+                      localStorage.setItem('diyala_school_config', JSON.stringify(updatedConfig));
+
+                      setTimingSaveSuccessMsg('تم حفظ وتطبيق توقيتات الحصص والفرص والدمج بنجاح! ✓');
+                      setTimeout(() => {
+                        setTimingSaveSuccessMsg('');
+                        setShowTimingsModal(false);
+                      }, 1200);
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                    <span>حفظ التوقيتات وتطبيقها فوراً ✓</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </Portal>
+      )}
+
       {/* Print Preview Modal */}
       <PrintPreviewModal
         isOpen={showPrintPreviewModal}
@@ -1770,16 +2158,23 @@ const LessonCell: React.FC<{
   );
 };
 
-// Subcomponent: Break Cell in schedule (Slim bar, no repeated 'فرصة' text)
-const BreakCell: React.FC<{ isActive: boolean }> = ({ isActive }) => {
+// Subcomponent: Break Cell in schedule (Slim bar, with merged support if 0 minutes)
+const BreakCell: React.FC<{ isActive: boolean; durationMinutes?: number }> = ({ isActive, durationMinutes }) => {
+  const isMerged = durationMinutes === 0;
   return (
-    <td className="p-0.5 align-middle bg-[#e6f4f1] w-5 min-w-[20px] max-w-[24px]">
-      <div className={`w-full rounded-xl border-2 transition-all min-h-[56px] flex items-center justify-center ${
+    <td className="p-0.5 align-middle bg-[#e6f4f1] w-6 min-w-[22px] max-w-[28px]" title={isMerged ? "درسان مدمجان (بدون استراحة)" : `استراحة ${durationMinutes ?? 10} دقيقة`}>
+      <div className={`w-full rounded-xl border-2 transition-all min-h-[56px] flex flex-col items-center justify-center ${
         isActive 
           ? 'bg-emerald-500 border-emerald-600 animate-pulse shadow-md' 
-          : 'bg-pink-100/90 border-pink-300 shadow-2xs'
+          : isMerged
+            ? 'bg-amber-100/90 border-amber-400 border-dashed shadow-2xs'
+            : 'bg-pink-100/90 border-pink-300 shadow-2xs'
       }`}>
-        <div className="w-1 h-6 bg-pink-400/60 rounded-full"></div>
+        {isMerged ? (
+          <span className="text-[9px] font-black text-amber-800 rotate-90 whitespace-nowrap select-none">دمج</span>
+        ) : (
+          <div className="w-1 h-6 bg-pink-400/60 rounded-full"></div>
+        )}
       </div>
     </td>
   );

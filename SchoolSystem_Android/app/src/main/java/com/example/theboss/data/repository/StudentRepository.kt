@@ -670,9 +670,17 @@ class StudentRepository @Inject constructor(
                         editor.putInt("lesson_duration_minutes", it)
                         diyalaEditor.putInt("lesson_duration_minutes", it)
                     }
-                    (timingObj["breakDurationMinutes"] as? Number)?.toInt()?.let {
-                        editor.putInt("break_duration_minutes", it)
-                        diyalaEditor.putInt("break_duration_minutes", it)
+                    val customLessons = (timingObj["customLessonDurations"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+                    val customBreaks = (timingObj["customBreakDurations"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+                    if (!customLessons.isNullOrEmpty()) {
+                        val customLessonsJson = gson.toJson(customLessons)
+                        editor.putString("custom_lesson_durations", customLessonsJson)
+                        diyalaEditor.putString("custom_lesson_durations", customLessonsJson)
+                    }
+                    if (!customBreaks.isNullOrEmpty()) {
+                        val customBreaksJson = gson.toJson(customBreaks)
+                        editor.putString("custom_break_durations", customBreaksJson)
+                        diyalaEditor.putString("custom_break_durations", customBreaksJson)
                     }
                 }
                 editor.apply()

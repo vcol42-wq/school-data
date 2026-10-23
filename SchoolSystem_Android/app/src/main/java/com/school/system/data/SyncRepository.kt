@@ -2196,6 +2196,19 @@ class SyncRepository @Inject constructor(
                         val lessonDur = (timingObj["lessonDurationMinutes"] as? Number)?.toInt() ?: 40
                         val breakDur = (timingObj["breakDurationMinutes"] as? Number)?.toInt() ?: 10
 
+                        val customLessons = (timingObj["customLessonDurations"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+                        val customBreaks = (timingObj["customBreakDurations"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() }
+                        if (!customLessons.isNullOrEmpty()) {
+                            val customLessonsJson = com.google.gson.Gson().toJson(customLessons)
+                            editor.putString("custom_lesson_durations", customLessonsJson)
+                            bossEditor.putString("custom_lesson_durations", customLessonsJson)
+                        }
+                        if (!customBreaks.isNullOrEmpty()) {
+                            val customBreaksJson = com.google.gson.Gson().toJson(customBreaks)
+                            editor.putString("custom_break_durations", customBreaksJson)
+                            bossEditor.putString("custom_break_durations", customBreaksJson)
+                        }
+
                         editor.putString("school_start_hour", startHourStr)
                         editor.putInt("lesson_duration_minutes", lessonDur)
                         editor.putInt("break_duration_minutes", breakDur)

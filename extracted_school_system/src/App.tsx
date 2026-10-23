@@ -362,6 +362,7 @@ export default function App() {
                 scheduleMap={scheduleMap}
                 setScheduleMap={setScheduleMap}
                 config={config}
+                setConfig={setConfig}
                 staffList={staffList}
                 setStaffList={setStaffList}
                 students={students}

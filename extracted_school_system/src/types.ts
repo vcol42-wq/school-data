@@ -38,6 +38,8 @@ export interface AppConfig {
   developerCode: string;
   lessonDurationMinutes: number;
   breakDurationMinutes: number;
+  customLessonDurations?: number[]; // [d1, d2, d3, d4, d5, d6] in minutes
+  customBreakDurations?: number[];  // [b1, b2, b3, b4, b5] in minutes (0 for merged lessons / no break)
   schoolStartHour: string;
   enableBellSound: boolean;
   enableScreensaver?: boolean;

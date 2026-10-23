@@ -186,278 +186,29 @@ fun OnboardingScreen(
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "سجل المدرس الإلكتروني الذكي",
-                    color = Color.White,
+                    text = "نظام إدارة المدرسة",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Black,
-                    textAlign = TextAlign.Center
+                    color = Color.White
                 )
                 Text(
-                    text = "استخدام مستقل أوفلاين أو ربط فوري مع سحابة المدرسة",
-                    color = Color(0xFFC7D2FE),
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 4.dp)
+                    text = "بوابة المعلم والملازم الذكية",
+                    fontSize = 12.5.sp,
+                    color = Color(0xFFE0E7FF)
                 )
             }
         }
 
-        // Main Profile & Subject Setup Card
+        // Main Action Container (الباركود، الرمز، أو العمل مستقل)
         Column(
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .offset(y = (-20).dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // CARD 1: مسح باركود المدرسة (QR 📷)
             Card(
                 elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(24.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF2563EB))
-                        Spacer(Modifier.width(8.dp))
-                        Text("بيانات الأستاذ والمادة التدريسية 📝", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
-                    }
-
-                    OutlinedTextField(
-                        value = teacherNameInput,
-                        onValueChange = { 
-                            teacherNameInput = it
-                            prefs.edit().putString("teacher_name", it.trim()).apply()
-                        },
-                        label = { Text("اسم الأستاذ الكامل") },
-                        placeholder = { Text("اكتب اسمك الثلاثي أو الكامل") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-
-                    // 1. اختيار المادة الدراسية (قائمة منسدلة ذكية عند الكتابة وتسمح بإكمال الاسم)
-                    val filteredSubjects = remember(teacherSubjectInput) {
-                        if (teacherSubjectInput.isBlank()) quickSubjects
-                        else quickSubjects.filter { it.contains(teacherSubjectInput.trim(), ignoreCase = true) }
-                    }
-
-                    ExposedDropdownMenuBox(
-                        expanded = subjectExpanded,
-                        onExpandedChange = { subjectExpanded = it },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        OutlinedTextField(
-                            value = teacherSubjectInput,
-                            onValueChange = { 
-                                teacherSubjectInput = it
-                                subjectExpanded = true
-                            },
-                            label = { Text("1. المادة أو الاختصاص التدريسي 📚", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                            placeholder = { Text("اكتب اسم المادة أو اختر للسرعة...") },
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = subjectExpanded)
-                            },
-                            modifier = Modifier
-                                .menuAnchor()
-                                .fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        if (filteredSubjects.isNotEmpty()) {
-                            ExposedDropdownMenu(
-                                expanded = subjectExpanded,
-                                onDismissRequest = { subjectExpanded = false }
-                            ) {
-                                filteredSubjects.forEach { s ->
-                                    DropdownMenuItem(
-                                        text = { 
-                                            Text(
-                                                text = s, 
-                                                fontWeight = if (s == teacherSubjectInput) FontWeight.Black else FontWeight.Medium,
-                                                color = if (s == teacherSubjectInput) Color(0xFF2563EB) else Color(0xFF1E293B)
-                                            ) 
-                                        },
-                                        onClick = {
-                                            teacherSubjectInput = s
-                                            subjectExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // 2. اختيار الصف الدراسي (من الأول إلى السادس - يشمل الابتدائي والمتوسط والإعدادي)
-                    val filteredGrades = remember(selectedGrade) {
-                        if (selectedGrade.isBlank()) gradesList
-                        else gradesList.filter { it.contains(selectedGrade.trim(), ignoreCase = true) }
-                    }
-
-                    ExposedDropdownMenuBox(
-                        expanded = gradeExpanded,
-                        onExpandedChange = { gradeExpanded = it },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        OutlinedTextField(
-                            value = selectedGrade,
-                            onValueChange = { 
-                                selectedGrade = it
-                                gradeExpanded = true
-                            },
-                            label = { Text("2. الصف الدراسي (من الأول إلى السادس) 🏫", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                            placeholder = { Text("اختر الصف أو ابدأ بالكتابة...") },
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = gradeExpanded)
-                            },
-                            modifier = Modifier
-                                .menuAnchor()
-                                .fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        if (filteredGrades.isNotEmpty()) {
-                            ExposedDropdownMenu(
-                                expanded = gradeExpanded,
-                                onDismissRequest = { gradeExpanded = false }
-                            ) {
-                                filteredGrades.forEach { gr ->
-                                    DropdownMenuItem(
-                                        text = { 
-                                            Text(
-                                                text = gr, 
-                                                fontWeight = if (gr == selectedGrade) FontWeight.Black else FontWeight.Medium,
-                                                color = if (gr == selectedGrade) Color(0xFF2563EB) else Color(0xFF1E293B)
-                                            ) 
-                                        },
-                                        onClick = {
-                                            selectedGrade = gr
-                                            gradeExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // 3. اختيار جنس المدرسة (قائمة منسدلة ويمكن كتابة الاسم إذا لم يوجد)
-                    val filteredGenders = remember(selectedGender) {
-                        if (selectedGender.isBlank()) schoolGenders
-                        else schoolGenders.filter { it.contains(selectedGender.trim(), ignoreCase = true) }
-                    }
-
-                    ExposedDropdownMenuBox(
-                        expanded = genderExpanded,
-                        onExpandedChange = { genderExpanded = it },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        OutlinedTextField(
-                            value = selectedGender,
-                            onValueChange = { 
-                                selectedGender = it
-                                genderExpanded = true
-                            },
-                            label = { Text("3. جنس المدرسة 🏛️", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                            placeholder = { Text("اختر أو اكتب: بنين، بنات، مختلط...") },
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = genderExpanded)
-                            },
-                            modifier = Modifier
-                                .menuAnchor()
-                                .fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        if (filteredGenders.isNotEmpty()) {
-                            ExposedDropdownMenu(
-                                expanded = genderExpanded,
-                                onDismissRequest = { genderExpanded = false }
-                            ) {
-                                filteredGenders.forEach { g ->
-                                    DropdownMenuItem(
-                                        text = { 
-                                            Text(
-                                                text = g, 
-                                                fontWeight = if (g == selectedGender) FontWeight.Black else FontWeight.Medium,
-                                                color = if (g == selectedGender) Color(0xFF2563EB) else Color(0xFF1E293B)
-                                            ) 
-                                        },
-                                        onClick = {
-                                            selectedGender = g
-                                            genderExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // 4. اختيار الشعبة (قائمة منسدلة)
-                    ExposedDropdownMenuBox(
-                        expanded = sectionExpanded,
-                        onExpandedChange = { sectionExpanded = it },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        OutlinedTextField(
-                            value = selectedSection,
-                            onValueChange = { 
-                                selectedSection = it
-                                sectionExpanded = true
-                            },
-                            label = { Text("4. الشعبة الأساسية 🔤", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                            placeholder = { Text("اختر الشعبة...") },
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = sectionExpanded)
-                            },
-                            modifier = Modifier
-                                .menuAnchor()
-                                .fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-
-                        ExposedDropdownMenu(
-                            expanded = sectionExpanded,
-                            onDismissRequest = { sectionExpanded = false }
-                        ) {
-                            sectionsList.forEach { sec ->
-                                DropdownMenuItem(
-                                    text = { 
-                                        Text(
-                                            text = "الشعبة ($sec)", 
-                                            fontWeight = if (sec == selectedSection) FontWeight.Black else FontWeight.Medium,
-                                            color = if (sec == selectedSection) Color(0xFF059669) else Color(0xFF1E293B)
-                                        ) 
-                                    },
-                                    onClick = {
-                                        selectedSection = sec
-                                        sectionExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = teacherEmailInput,
-                        onValueChange = { teacherEmailInput = it },
-                        label = { Text("البريد الإلكتروني (للنسخ السحابي مع Google Drive)") },
-                        placeholder = { Text("teacher@gmail.com (اختياري)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        singleLine = true
-                    )
-                }
-            }
-
-            // Connection to School Cloud (Activation & Code Option)
-            Card(
-                elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 shape = RoundedCornerShape(22.dp)
             ) {
@@ -466,77 +217,54 @@ fun OnboardingScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Cloud, contentDescription = null, tint = Color(0xFF2563EB))
-                        Spacer(Modifier.width(6.dp))
-                        Text("تفعيل الربط والاقتران مع سحابة المدرسة ☁️🔑", fontWeight = FontWeight.Black, fontSize = 13.5.sp, color = Color(0xFF1E3A8A))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(24.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("1. مسح باركود المدرسة (الباركود) 📷", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = Color(0xFF0F172A))
+                            Text("ربط مباشر وسريع عبر كاميرا الهاتف", fontSize = 11.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Text(
-                        text = "يتم الربط التلقائي ومزامنة الجداول والصفوف عبر مسح رمز الباركود المعروض على شاشة حاسبة إدارة المدرسة أو إدخال كود المدرسة المعتمد:",
-                        color = Color(0xFF64748B),
-                        fontSize = 11.5.sp,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 17.sp
+                        text = "وجّه الكاميرا نحو باركود المدرسة المعروض في شاشة الحاسبة ليتم تفعيل الحساب واستيراد الحصص فوراً.",
+                        color = Color(0xFF475569),
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
                     )
 
-                    // زر تحت الباركود لتفعيل الربط مع رسالة تحذير
                     Button(
                         onClick = { showPairWarningDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                         enabled = !isLoading
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.QrCodeScanner, null, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.CameraAlt, null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
-                            Text("تفعيل الربط السحابي ومسح الباركود 📷", fontSize = 12.5.sp, fontWeight = FontWeight.Black)
-                        }
-                    }
-
-                    // زر الربط بواسطة كود المدرسة مباشرة
-                    OutlinedButton(
-                        onClick = { showManualCodeDialog = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1E3A8A)),
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF3B82F6).copy(alpha = 0.5f)),
-                        enabled = !isLoading
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Key, null, modifier = Modifier.size(18.dp), tint = Color(0xFF2563EB))
-                            Spacer(Modifier.width(8.dp))
-                            Text("أو الربط بواسطة كود المدرسة (الرمز) 🔢", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    if (statusText != null) {
-                        Surface(
-                            color = Color(0xFFFEF3C7),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = statusText ?: "",
-                                color = Color(0xFF92400E),
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(10.dp)
-                            )
+                            Text("مسح الباركود الآن 📷", fontSize = 13.5.sp, fontWeight = FontWeight.Black)
                         }
                     }
                 }
             }
 
-            // بطاقة حفظ المعلومات وبدء السجل (آخر بطاقة في الأسفل)
+            // CARD 2: الربط بواسطة كود المدرسة (الرمز 🔢)
             Card(
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 shape = RoundedCornerShape(22.dp)
             ) {
@@ -544,36 +272,118 @@ fun OnboardingScreen(
                     modifier = Modifier.padding(18.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Save, contentDescription = null, tint = Color(0xFF059669))
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "بطاقة حفظ المعلومات وبدء السجل (مستقل / أوفلاين) 💾",
-                            fontWeight = FontWeight.Black,
-                            fontSize = 13.5.sp,
-                            color = Color(0xFF0F172A)
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFFD97706).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(22.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("2. الربط بواسطة كود المدرسة (الرمز) 🔢", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = Color(0xFF0F172A))
+                            Text("إدخال الرمز السحابي المعتمد", fontSize = 11.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = directCodeInput,
+                        onValueChange = { directCodeInput = it },
+                        label = { Text("أدخل رمز أو كود المدرسة") },
+                        placeholder = { Text("مثال: SCH-123456 أو كود الربط") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFFD97706))
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Button(
+                        onClick = {
+                            val codeToVerify = directCodeInput.trim()
+                            if (codeToVerify.isNotBlank()) {
+                                isLoading = true
+                                statusText = "جاري الفحص والتحقق الأمني..."
+                                scope.launch {
+                                    val ok = viewModel.syncManager.connectAndPairQr(codeToVerify)
+                                    isLoading = false
+                                    if (ok) {
+                                        prefs.edit().putInt("pairing_failed_attempts", 0).apply()
+                                        if (teacherNameInput.isNotBlank()) {
+                                            prefs.edit().putString("teacher_name", teacherNameInput.trim()).apply()
+                                        }
+                                        Toast.makeText(context, "تم الربط والاقتران بالرمز بنجاح ✓", Toast.LENGTH_SHORT).show()
+                                        onActivationComplete()
+                                    } else {
+                                        statusText = "تعذر الاقتران بالرمز، تحقق من صحة الرمز"
+                                        Toast.makeText(context, "رمز غير مصرح به", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }
+                        },
+                        enabled = directCodeInput.isNotBlank() && !isLoading,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("تأكيد والربط بواسطة الرمز 🚀", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
+                    }
+                }
+            }
+
+            // CARD 3: العمل كحساب مستقل (أوفلاين 👤)
+            Card(
+                elevation = CardDefaults.cardElevation(defaultElevation = 5.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(22.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFF059669).copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(24.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("3. العمل مستقل (أوفلاين) 👤", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = Color(0xFF0F172A))
+                            Text("دخول فوري ومباشر بدون ربط سحابي", fontSize = 11.sp, color = Color(0xFF059669), fontWeight = FontWeight.Bold)
+                        }
                     }
 
                     Text(
-                        text = "في حال عدم توفر باركود أو كود الربط السحابي مع المدرسة حالياً، يمكنك حفظ البيانات أعلاه وبدء السجل مباشرة بشكل مستقل.",
-                        color = Color(0xFF64748B),
-                        fontSize = 11.5.sp,
-                        lineHeight = 17.sp
+                        text = "يمكنك فتح السجل والبدء فوراً بشكل مستقل بدون إنترنت، وستتمكن من إضافة وتعديل كافة بياناتك لاحقاً.",
+                        color = Color(0xFF475569),
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp
                     )
 
-                    // زر حفظ بيانات الأستاذ والمادة وبدء الاستخدام المباشر
                     Button(
                         onClick = {
                             scope.launch {
-                                prefs.edit()
-                                    .putString("teacher_name", teacherNameInput.trim())
-                                    .putString("teacher_subject", teacherSubjectInput.trim())
-                                    .putString("school_gender", selectedGender)
-                                    .putString("teacher_grade", selectedGrade)
-                                    .putString("teacher_section", selectedSection)
-                                    .apply()
-
                                 viewModel.activateStandaloneWithSubject(
                                     name = teacherNameInput.ifBlank { "أستاذ المادة" },
                                     email = teacherEmailInput.ifBlank { "teacher@local.edu" },
@@ -581,23 +391,132 @@ fun OnboardingScreen(
                                     grade = selectedGrade,
                                     section = selectedSection
                                 ) {
-                                    Toast.makeText(context, "تم حفظ بيانات الأستاذ والمادة بنجاح 👤✓", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "تم فتح السجل كعمل مستقل بنجاح 👤✓", Toast.LENGTH_SHORT).show()
                                     onActivationComplete()
                                 }
                             }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(48.dp),
+                            .height(50.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(14.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("حفظ بيانات الأستاذ والمادة وبدء السجل ✓", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                            Text("دخول مباشر وبدء السجل المستقل 🚀", fontWeight = FontWeight.Black, fontSize = 13.5.sp)
                         }
                     }
+                }
+            }
+
+            // Information Notice Card about Settings
+            Surface(
+                color = Color(0xFFEFF6FF),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = Color(0xFF2563EB),
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = "💡 ملاحظة: بعد فتح التطبيق، يمكنك في أي وقت الانتقال إلى شاشة (الضبط ⚙️) لإضافة أو تعديل اسمك والمادة التدريسية والصفوف والشعب متى رغبت.",
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF1E40AF),
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            // Optional Expandable Section for Personal Profile
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showManualFields = !showManualFields },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Edit, contentDescription = null, tint = Color(0xFF64748B), modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("إضافة معلوماتك الشخصية الآن (اختياري 📝)", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = Color(0xFF475569))
+                        }
+                        Icon(
+                            if (showManualFields) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = Color(0xFF64748B)
+                        )
+                    }
+
+                    AnimatedVisibility(visible = showManualFields) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = teacherNameInput,
+                                onValueChange = {
+                                    teacherNameInput = it
+                                    prefs.edit().putString("teacher_name", it.trim()).apply()
+                                },
+                                label = { Text("اسم الأستاذ الكامل") },
+                                placeholder = { Text("اكتب اسمك الثلاثي") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                singleLine = true
+                            )
+
+                            OutlinedTextField(
+                                value = teacherSubjectInput,
+                                onValueChange = {
+                                    teacherSubjectInput = it
+                                    prefs.edit().putString("teacher_subject", it.trim()).apply()
+                                },
+                                label = { Text("المادة التدريسية") },
+                                placeholder = { Text("مثال: اللغة العربية") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp),
+                                singleLine = true
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (statusText != null) {
+                Surface(
+                    color = Color(0xFFFEF3C7),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = statusText ?: "",
+                        color = Color(0xFF92400E),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(10.dp)
+                    )
                 }
             }
 

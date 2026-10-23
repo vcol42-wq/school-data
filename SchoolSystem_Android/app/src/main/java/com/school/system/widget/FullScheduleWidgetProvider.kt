@@ -85,7 +85,7 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
                     views.setTextColor(btnId, Color.parseColor("#FEF08A"))
                 } else {
                     views.setInt(btnId, "setBackgroundResource", R.drawable.widget_item_bg)
-                    views.setTextColor(btnId, Color.parseColor("#94A3B8"))
+                    views.setTextColor(btnId, Color.parseColor("#E2E8F0"))
                 }
 
                 val dayIntent = Intent(context, FullScheduleWidgetProvider::class.java).apply {

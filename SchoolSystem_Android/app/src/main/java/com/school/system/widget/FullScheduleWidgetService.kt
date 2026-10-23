@@ -70,10 +70,10 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             val display = subj
             views.setTextViewText(cellViewId, display)
 
-            if (subj == "اجتماعيات") {
-                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 7.5f)
+            if (subj == "اجتماعيات" || subj.length > 8) {
+                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 8.5f)
             } else {
-                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 9.5f)
+                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 10.0f)
             }
 
             val isTeacherLesson = if (teacherName.isNotEmpty() && subj != "-") {
@@ -96,7 +96,7 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                 }
                 else -> {
-                    views.setTextColor(cellViewId, Color.parseColor("#F8FAFC"))
+                    views.setTextColor(cellViewId, Color.WHITE)
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_item_bg)
                 }
             }

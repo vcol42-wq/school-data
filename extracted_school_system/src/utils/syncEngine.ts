@@ -536,10 +536,12 @@ export async function exportSchoolDataWithProgress(
     // ----------------------------------------------------
     emit('step_school', 2, 'تصدير هوية المدرسة ورمز الاقتران', 20, `جاري تسجيل مدرسة (${schoolName}) ورمز (${pairingCode})...`, 'active');
     
-    let timingConfig = {
+    let timingConfig: any = {
       schoolStartHour: '08:00',
       lessonDurationMinutes: 45,
-      breakDurationMinutes: 10
+      breakDurationMinutes: 10,
+      customLessonDurations: [45, 45, 45, 45, 45, 45],
+      customBreakDurations: [10, 10, 10, 10, 10]
     };
     try {
       const savedCfg = typeof window !== 'undefined' ? localStorage.getItem('diyala_school_config') : null;
@@ -548,6 +550,8 @@ export async function exportSchoolDataWithProgress(
         if (parsed.schoolStartHour) timingConfig.schoolStartHour = parsed.schoolStartHour;
         if (parsed.lessonDurationMinutes) timingConfig.lessonDurationMinutes = Number(parsed.lessonDurationMinutes);
         if (parsed.breakDurationMinutes) timingConfig.breakDurationMinutes = Number(parsed.breakDurationMinutes);
+        if (parsed.customLessonDurations) timingConfig.customLessonDurations = parsed.customLessonDurations;
+        if (parsed.customBreakDurations) timingConfig.customBreakDurations = parsed.customBreakDurations;
       }
     } catch (_) {}
 

@@ -32,8 +32,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="👨‍🏫 جدول الأستاذ"
-            android:textColor="#94A3B8"
-            android:textSize="10.5sp"
+            android:textColor="#BAE6FD"
+            android:textSize="11sp"
             android:textStyle="bold"
             android:layout_marginStart="8dp" />
 
@@ -290,7 +290,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="-"
-                android:textColor="#64748B"
+                android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
                 android:maxLines="1"
@@ -301,7 +301,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="-"
-                android:textColor="#475569"
+                android:textColor="#93C5FD"
                 android:textSize="9sp"
                 android:maxLines="1"
                 android:ellipsize="end" />

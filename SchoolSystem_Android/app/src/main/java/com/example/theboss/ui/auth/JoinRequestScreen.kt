@@ -220,114 +220,131 @@ fun JoinRequestScreen(
                 }
             }
 
-            Text(
-                "أو أدخل بيانات الطالب يدوياً:",
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = androidx.compose.ui.graphics.Color(0xFF64748B),
+            // 2. كود أو رمز المدرسة
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFFCBD5E1)),
                 modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text("اسم الطالب الكامل") },
-                placeholder = { Text("مثال: علي محمد حسن") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            OutlinedTextField(
-                value = schoolCode,
-                onValueChange = { schoolCode = it },
-                label = { Text("رمز أو كود المدرسة") },
-                placeholder = { Text("يتم تعبئته آلياً عبر مسح الباركود") },
-                trailingIcon = {
-                    IconButton(onClick = onNavigateToQrScanner) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = "مسح باركود", tint = androidx.compose.ui.graphics.Color(0xFF16A34A))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Key, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF2563EB), modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("الربط بواسطة رمز المدرسة (الرمز) 🔢", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = androidx.compose.ui.graphics.Color(0xFF1E293B))
                     }
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = grade,
-                    onValueChange = { grade = it },
-                    label = { Text("الصف") },
-                    placeholder = { Text("الأول المتوسط") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                OutlinedTextField(
-                    value = section,
-                    onValueChange = { section = it },
-                    label = { Text("الشعبة") },
-                    placeholder = { Text("أ") },
-                    singleLine = true,
-                    modifier = Modifier.weight(0.7f),
-                    shape = RoundedCornerShape(12.dp)
-                )
-            }
-
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("البريد الإلكتروني (اختياري)") },
-                placeholder = { Text("student@gmail.com") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Button(
-                onClick = {
-                    val finalEmail = email.ifEmpty { "student_${System.currentTimeMillis()}@school.edu" }
-                    val finalSchoolCode = schoolCode.trim()
-                    viewModel.sendRequest(name, finalEmail, finalSchoolCode, stage.ifEmpty { "الصف الأول" }, grade.ifEmpty { "الأول" }, section.ifEmpty { "أ" })
-                },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF2563EB)),
-                enabled = name.isNotBlank() && !viewModel.isLoading.value
-            ) {
-                if (viewModel.isLoading.value) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
+                    OutlinedTextField(
+                        value = schoolCode,
+                        onValueChange = { schoolCode = it },
+                        label = { Text("رمز أو كود المدرسة") },
+                        placeholder = { Text("أدخل رمز المدرسة المعتمد...") },
+                        trailingIcon = {
+                            IconButton(onClick = onNavigateToQrScanner) {
+                                Icon(Icons.Default.QrCodeScanner, contentDescription = "مسح باركود", tint = androidx.compose.ui.graphics.Color(0xFF16A34A))
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
                     )
-                } else {
-                    Text("انضمام مباشر للجدول والصفوف 🚀", fontWeight = FontWeight.Black, fontSize = 14.sp)
+
+                    Button(
+                        onClick = {
+                            val finalName = name.ifBlank { "طالب جديد" }
+                            val finalEmail = email.ifEmpty { "student_${System.currentTimeMillis()}@school.edu" }
+                            val finalSchoolCode = schoolCode.trim()
+                            viewModel.sendRequest(finalName, finalEmail, finalSchoolCode, stage.ifEmpty { "الصف الأول" }, grade.ifEmpty { "الأول" }, section.ifEmpty { "أ" })
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF2563EB)),
+                        enabled = schoolCode.isNotBlank() && !viewModel.isLoading.value
+                    ) {
+                        if (viewModel.isLoading.value) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text("انضمام مباشر للجدول بواسطة الرمز 🚀", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        }
+                    }
                 }
             }
 
-            HorizontalDivider(color = androidx.compose.ui.graphics.Color(0xFFE2E8F0), modifier = Modifier.padding(vertical = 4.dp))
-
-            OutlinedButton(
-                onClick = {
-                    viewModel.continueAsIndependentStudent(
-                        name = name.ifBlank { "طالب مستقل" },
-                        grade = grade.ifBlank { "الأول المتوسط" },
-                        section = section.ifBlank { "أ" }
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = androidx.compose.ui.graphics.Color(0xFF0D9488)),
-                border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Color(0xFF0D9488))
+            // 3. العمل مستقل بدون ربط
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = androidx.compose.ui.graphics.Color.White),
+                border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF0D9488).copy(alpha = 0.5f)),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("المتابعة كطالب مستقل بدون ربط مدرسي 👤", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Person, contentDescription = null, tint = androidx.compose.ui.graphics.Color(0xFF0D9488), modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("العمل مستقل (أوفلاين) 👤", fontWeight = FontWeight.Bold, fontSize = 13.5.sp, color = androidx.compose.ui.graphics.Color(0xFF1E293B))
+                    }
+
+                    Text(
+                        "استخدام جدول الحصص ومتابعة المواد كطالب مستقل مباشرة بدون ربط سحابي:",
+                        fontSize = 11.5.sp,
+                        color = androidx.compose.ui.graphics.Color(0xFF64748B)
+                    )
+
+                    Button(
+                        onClick = {
+                            viewModel.continueAsIndependentStudent(
+                                name = name.ifBlank { "طالب مستقل" },
+                                grade = grade.ifBlank { "الأول المتوسط" },
+                                section = section.ifBlank { "أ" }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFF0D9488))
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("دخول كطالب مستقل مباشرة 🚀", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    }
+                }
+            }
+
+            // Information Note for Settings
+            Surface(
+                color = androidx.compose.ui.graphics.Color(0xFFEFF6FF),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFFBFDBFE)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color(0xFF2563EB),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "💡 ملاحظة: يمكنك في أي وقت إضافة اسمك وتعديل الصف والشعبة والمواد من شاشة (الضبط ⚙️).",
+                        fontSize = 11.5.sp,
+                        color = androidx.compose.ui.graphics.Color(0xFF1E40AF),
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             viewModel.error.value?.let {
