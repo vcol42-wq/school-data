@@ -1,6 +1,7 @@
 package com.school.system.widget
 
 import android.content.Context
+import android.content.Intent
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.util.Calendar
@@ -298,6 +299,33 @@ object WidgetScheduleHelper {
         return "${formatMin(lessonStartMin)} - ${formatMin(lessonEndMin)}"
     }
 
+    fun getCurrentActiveLessonNumber(context: Context): Int {
+        val calendar = Calendar.getInstance()
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        if (dayOfWeek == Calendar.FRIDAY || dayOfWeek == Calendar.SATURDAY) return 0
+
+        val nowMinutes = calendar.get(Calendar.HOUR_OF_DAY) * 60 + calendar.get(Calendar.MINUTE)
+        val timing = getFullTimingFromScheduleJson(context)
+        val parts = timing.startHour.split(":").mapNotNull { it.toIntOrNull() }
+        val startH = if (parts.isNotEmpty()) parts[0] else 8
+        val startM = if (parts.size > 1) parts[1] else 0
+
+        var currentTotalMinutes = startH * 60 + startM
+        for (i in 1..7) {
+            val lDur = timing.customLessons.getOrNull(i - 1) ?: timing.lessonDuration
+            val bDur = timing.customBreaks.getOrNull(i - 1) ?: timing.breakDuration
+
+            val lessonStartMin = currentTotalMinutes
+            val lessonEndMin = currentTotalMinutes + lDur
+
+            if (nowMinutes in lessonStartMin..lessonEndMin) {
+                return i
+            }
+            currentTotalMinutes = lessonEndMin + bDur
+        }
+        return 0
+    }
+
     fun getTodayTeacherLessons(context: Context): List<LessonTimeInfo> {
         val dayArabic = getEffectiveDayArabic(context)
         return getTeacherLessonsForDay(context, dayArabic)
@@ -509,5 +537,24 @@ object WidgetScheduleHelper {
             formattedTime = "",
             isFutureDay = false
         )
+    }
+
+    /**
+     * تحديث فوري لجميع الودجات على الشاشة الرئيسية (الودجت اليومي والودجت الكامل)
+     */
+    fun updateAllWidgets(context: Context) {
+        try {
+            val intentDaily = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
+                action = DailyScheduleWidgetProvider.ACTION_REFRESH_WIDGET
+            }
+            context.sendBroadcast(intentDaily)
+
+            val intentFull = Intent(context, FullScheduleWidgetProvider::class.java).apply {
+                action = FullScheduleWidgetProvider.ACTION_REFRESH_WIDGET
+            }
+            context.sendBroadcast(intentFull)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

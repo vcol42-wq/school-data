@@ -71,9 +71,9 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             views.setTextViewText(cellViewId, display)
 
             if (subj == "اجتماعيات" || subj.length > 8) {
-                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 8.5f)
-            } else {
                 views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 10.0f)
+            } else {
+                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 12.0f)
             }
 
             val isTeacherLesson = if (teacherName.isNotEmpty() && subj != "-") {
@@ -85,18 +85,18 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             when {
                 isCurrentActive && isTeacherLesson -> {
                     views.setTextColor(cellViewId, Color.parseColor("#FEF08A"))
-                    views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_highlight_bg)
+                    views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_active_teacher_cell_bg)
                 }
                 isCurrentActive -> {
-                    views.setTextColor(cellViewId, Color.parseColor("#38BDF8"))
-                    views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_compact_ongoing_bg)
+                    views.setTextColor(cellViewId, Color.parseColor("#FFFFFF"))
+                    views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_active_cell_bg)
                 }
                 isTeacherLesson -> {
                     views.setTextColor(cellViewId, Color.WHITE)
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                 }
                 else -> {
-                    views.setTextColor(cellViewId, Color.WHITE)
+                    views.setTextColor(cellViewId, Color.parseColor("#F1F5F9"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_item_bg)
                 }
             }
@@ -123,10 +123,10 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             val rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
             teacherName = prefs.getString("teacher_name", "")?.trim()?.lowercase() ?: ""
 
-            val upcoming = WidgetScheduleHelper.calculateUpcomingTeacherLesson(context)
-            activeLessonNumber = if (upcoming.isOngoing) upcoming.lessonNumber else 0
-
             val currentDayArabic = WidgetScheduleHelper.getEffectiveDayArabic(context)
+            val currentActiveLesson = WidgetScheduleHelper.getCurrentActiveLessonNumber(context)
+            val isViewingRealToday = (currentDayArabic == WidgetScheduleHelper.getRealCurrentDayArabic())
+            activeLessonNumber = if (isViewingRealToday) currentActiveLesson else 0
 
             val gson = Gson()
             val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)

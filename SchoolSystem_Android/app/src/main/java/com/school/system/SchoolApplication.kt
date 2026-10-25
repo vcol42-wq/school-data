@@ -8,6 +8,9 @@ class SchoolApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         try {
+            android.webkit.WebView.enableSlowWholeDocumentDraw()
+        } catch (ignored: Exception) {}
+        try {
             com.school.system.data.worker.TeacherSyncWorker.schedule(this)
         } catch (e: Exception) {
             e.printStackTrace()

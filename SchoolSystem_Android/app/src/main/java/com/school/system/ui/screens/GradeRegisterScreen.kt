@@ -59,6 +59,7 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
+import android.print.PdfPrint
 import android.provider.MediaStore
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -74,6 +75,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import kotlin.math.roundToInt
 import com.school.system.data.model.Student
 import com.school.system.data.model.StudentMarks
@@ -240,6 +242,8 @@ fun GradeRegisterScreen(
     var showPublishHomeworkDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showShareRosterDialog by remember { mutableStateOf(false) }
+    var showEditSchoolInfoDialog by remember { mutableStateOf(false) }
     var studentToEdit by remember { mutableStateOf<Student?>(null) }
     var headerToEdit by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
@@ -251,6 +255,12 @@ fun GradeRegisterScreen(
     var isRefreshingStudentsFromCloud by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(java.time.LocalDate.now()) }
     var selectedPeriod by remember { mutableIntStateOf(1) }
+
+    LaunchedEffect(config?.schoolId) {
+        if (!config?.schoolId.isNullOrBlank()) {
+            viewModel.refreshSchoolIdentityFromCloud()
+        }
+    }
 
     val isSpecial = remember(subject) { isSpecialSubject(subject) }
 
@@ -481,7 +491,11 @@ fun GradeRegisterScreen(
                                 Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
                                 IconButton(
                                     onClick = { 
-                                        printRegister(context, grade, section, subject, selectedTab, students, absences, config)
+                                        if (students.isEmpty()) {
+                                            Toast.makeText(context, "لا توجد أسماء طلاب في هذه الشعبة للطباعة", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            printRegister(context, grade, section, subject, selectedTab, students, absences, config, includeCover = true, columnSettings = columnSettings)
+                                        }
                                     },
                                     modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
                                 ) {
@@ -495,13 +509,17 @@ fun GradeRegisterScreen(
                                 Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
                                 IconButton(
                                     onClick = { 
-                                        exportAndSharePdfWithNativePdf(context, grade, section, subject, selectedTab, students, absences, config)
+                                        if (students.isEmpty()) {
+                                            Toast.makeText(context, "لا توجد أسماء طلاب في هذه الشعبة للمشاركة", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            showShareRosterDialog = true
+                                        }
                                     },
                                     modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Share,
-                                        contentDescription = "مشاركة السجل الرسمي كـ PDF",
+                                        contentDescription = "مشاركة السجل وقائمة الأسماء",
                                         tint = Color(0xFF059669),
                                         modifier = Modifier.size(19.dp)
                                     )
@@ -882,6 +900,346 @@ fun GradeRegisterScreen(
                     }
                 }
             }
+        }
+
+        if (showShareRosterDialog) {
+            AlertDialog(
+                onDismissRequest = { showShareRosterDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Share,
+                            contentDescription = null,
+                            tint = Color(0xFF059669),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "مشاركة سجل وأسماء الشعبة 📤",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "اختر صيغة المشاركة لشعبة $grade ($section) - (${students.size} طالب):",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // 1. Share Official PDF directly (1-page A4)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF059669).copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF059669).copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showShareRosterDialog = false
+                                    exportAndSharePdfWithNativePdf(
+                                        context,
+                                        grade,
+                                        section,
+                                        subject,
+                                        selectedTab,
+                                        students,
+                                        absences,
+                                        config,
+                                        includeCover = true,
+                                        columnSettings = columnSettings
+                                    )
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Print,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "مشاركة السجل كملف PDF رسمي (مع صفحة الغلاف) 📄",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF065F46)
+                                    )
+                                    Text(
+                                        text = "كشف درجات وأسماء جاهز للطباعة والمشاركة عبر واتساب أو تليغرام",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        // 2. Share Student Names List as formatted text (WhatsApp)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF2563EB).copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showShareRosterDialog = false
+                                    shareStudentNamesAsText(context, grade, section, subject, students)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Send,
+                                    contentDescription = null,
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "مشاركة قائمة الأسماء نصياً (واتساب / تليغرام) 💬",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF1E40AF)
+                                    )
+                                    Text(
+                                        text = "إرسال قائمة أسماء طلاب الشعبة مرقمة كرسالة نصية فورية",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        // 3. Copy Student Names List to Clipboard
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF8B5CF6).copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.3f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showShareRosterDialog = false
+                                    copyStudentNamesToClipboard(context, grade, section, subject, students)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    tint = Color(0xFF8B5CF6),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "نسخ قائمة الأسماء إلى الحافظة 📋",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF5B21B6)
+                                    )
+                                    Text(
+                                        text = "نسخ قائمة الأسماء للصقها في أي تطبيق أو مستند فوراً",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        // 4. Edit Official School Name & Directorate for Printing
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF0284C7).copy(alpha = 0.08f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.35f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showShareRosterDialog = false
+                                    showEditSchoolInfoDialog = true
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.School,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0284C7),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "تعديل اسم المدرسة والمديرية في الطباعة 🏫✏️",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp,
+                                        color = Color(0xFF0369A1)
+                                    )
+                                    Text(
+                                        text = "تغيير اسم المدرسة التي تظهر في ترويسة السجلات والـ PDF رسمياً",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showShareRosterDialog = false }) {
+                        Text("إغلاق", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            )
+        }
+
+        if (showEditSchoolInfoDialog) {
+            val resolved = remember(config) { resolveSchoolInfo(context, config) }
+            var editSchoolNameInput by remember(showEditSchoolInfoDialog) { mutableStateOf(resolved.schoolName) }
+            var editDirectorateInput by remember(showEditSchoolInfoDialog) { mutableStateOf(resolved.directorateName) }
+            var editManagerNameInput by remember(showEditSchoolInfoDialog) { mutableStateOf(resolved.managerName) }
+            var isCloudFetching by remember { mutableStateOf(false) }
+
+            AlertDialog(
+                onDismissRequest = { showEditSchoolInfoDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.School, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("بيانات المدرسة والمدير في الطباعة 🏫", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            "اسم المدرسة والمديرية والمدير المدخلين هنا سيظهران في الترويسة والتواقيع الرسمية للطباعة والمشاركة PDF:",
+                            fontSize = 11.5.sp,
+                            color = currentTheme.textSecondaryColor,
+                            lineHeight = 16.sp
+                        )
+
+                        OutlinedButton(
+                            onClick = {
+                                isCloudFetching = true
+                                viewModel.refreshSchoolIdentityFromCloud { success, msg ->
+                                    isCloudFetching = false
+                                    Toast.makeText(context, msg ?: "", Toast.LENGTH_SHORT).show()
+                                    if (success) {
+                                        val updated = resolveSchoolInfo(context, config)
+                                        editSchoolNameInput = updated.schoolName
+                                        editDirectorateInput = updated.directorateName
+                                        editManagerNameInput = updated.managerName
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            enabled = !isCloudFetching
+                        ) {
+                            Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF0D9488), modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isCloudFetching) "جاري الجلب من السحابة... ⏳" else "جلب بيانات المدرسة والمدير من السحابة ☁️", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0D9488))
+                        }
+
+                        OutlinedTextField(
+                            value = editSchoolNameInput,
+                            onValueChange = { editSchoolNameInput = it },
+                            label = { Text("اسم المدرسة الرسمي 🏫") },
+                            placeholder = { Text("اتركه فارغاً إذا لم ترغب بظهوره") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value = editDirectorateInput,
+                            onValueChange = { editDirectorateInput = it },
+                            label = { Text("المديرية العامة للتربية 🏛️") },
+                            placeholder = { Text("مثال: المديرية العامة لتربية ديالى") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        OutlinedTextField(
+                            value = editManagerNameInput,
+                            onValueChange = { editManagerNameInput = it },
+                            label = { Text("اسم مدير المدرسة 👨‍🏫") },
+                            placeholder = { Text("اسم المدير للتوقيع الرسمي") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val cleanName = editSchoolNameInput.trim()
+                            val cleanDir = editDirectorateInput.trim().ifBlank { "المديرية العامة للتربية" }
+                            val cleanMgr = editManagerNameInput.trim()
+                            coroutineScope.launch {
+                                val currentCfg = viewModel.configDao.getConfig().first() ?: com.school.system.data.model.SchoolConfig()
+                                viewModel.configDao.saveConfig(currentCfg.copy(
+                                    schoolName = cleanName,
+                                    directorateName = cleanDir,
+                                    managerName = cleanMgr
+                                ))
+                            }
+                            val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                            prefs.edit().apply {
+                                if (cleanName.isNotBlank()) putString("school_name", cleanName) else remove("school_name")
+                                putString("directorate_name", cleanDir)
+                                if (cleanMgr.isNotBlank()) putString("manager_name", cleanMgr) else remove("manager_name")
+                                apply()
+                            }
+                            val bossPrefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                            bossPrefs.edit().apply {
+                                if (cleanName.isNotBlank()) putString("school_name", cleanName) else remove("school_name")
+                                putString("directorate_name", cleanDir)
+                                if (cleanMgr.isNotBlank()) putString("manager_name", cleanMgr) else remove("manager_name")
+                                apply()
+                            }
+                            try {
+                                val sessionManager = com.school.system.data.local.SessionManager(context)
+                                if (cleanName.isNotBlank()) {
+                                    sessionManager.saveSchoolSession(
+                                        schoolId = config?.schoolId.orEmpty(),
+                                        schoolCode = config?.pairingCode.orEmpty(),
+                                        schoolName = cleanName,
+                                        managerName = cleanMgr
+                                    )
+                                }
+                            } catch (_: Exception) {}
+                            Toast.makeText(context, "تم حفظ بيانات المدرسة والمدير بنجاح ✓", Toast.LENGTH_SHORT).show()
+                            showEditSchoolInfoDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("حفظ واعتماد في الطباعة 💾", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEditSchoolInfoDialog = false }) {
+                        Text("إلغاء", color = Color(0xFF64748B))
+                    }
+                }
+            )
         }
 
         if (showAddStudentDialog) {
@@ -1636,6 +1994,29 @@ private fun isSpecialSubject(subject: String): Boolean {
            s.contains("لغة") || s.contains("لغات")
 }
 
+fun sanitizeRoleName(name: String?): String {
+    if (name.isNullOrBlank()) return ""
+    val t = name.trim()
+    val isRole = t.contains("مدير المدرسة") ||
+                 t.contains("الإشراف العام") ||
+                 t.contains("الاشراف العام") ||
+                 t.contains("المشرف العام") ||
+                 t.contains("الإشراف") ||
+                 t.contains("الاشراف") ||
+                 t.contains("المشرف") ||
+                 t.contains("المدير /") ||
+                 t.contains("مدير /") ||
+                 t.contains("إدارة المدرسة") ||
+                 t.contains("ادارة المدرسة") ||
+                 t == "مدير" ||
+                 t == "المدير" ||
+                 t == "مدرس المادة" ||
+                 t == "أستاذ المادة" ||
+                 t == "استاذ المادة" ||
+                 t == "-"
+    return if (isRole) "" else t
+}
+
 fun resolveTeacherName(
     context: Context,
     grade: String,
@@ -1663,22 +2044,183 @@ fun resolveTeacherName(
                     val gradeMatches = g.contains(grade) && (section.isBlank() || g.contains(section) || g.contains("($section)"))
                     val subjectMatches = s.isNotBlank() && (s.contains(subject) || subject.contains(s))
                     if (gradeMatches && subjectMatches && t.isNotBlank() && t != "-") {
-                        return t.trim()
+                        val clean = sanitizeRoleName(t)
+                        if (clean.isNotBlank()) return clean
                     }
                 }
             }
         }
 
-        val prefTeacher = prefs.getString("teacher_name", "")?.trim()
-        if (!prefTeacher.isNullOrBlank()) return prefTeacher
+        val prefTeacher = sanitizeRoleName(prefs.getString("teacher_name", ""))
+        if (prefTeacher.isNotBlank()) return prefTeacher
 
-        val bossTeacher = prefs.getString("user_name", "")?.trim()
-        if (!bossTeacher.isNullOrBlank()) return bossTeacher
+        val bossTeacher = sanitizeRoleName(prefs.getString("user_name", ""))
+        if (bossTeacher.isNotBlank()) return bossTeacher
     } catch (e: Exception) {
         e.printStackTrace()
     }
 
-    return config?.managerName?.takeIf { it.isNotBlank() } ?: "مدرس المادة"
+    return ""
+}
+
+data class ResolvedSchoolInfo(
+    val schoolName: String,
+    val directorateName: String,
+    val managerName: String
+)
+
+fun resolveSchoolInfo(
+    context: Context,
+    config: SchoolConfig?,
+    teacherName: String? = null
+): ResolvedSchoolInfo {
+    try {
+        val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+        val sessionManager = com.school.system.data.local.SessionManager(context)
+        val bossPrefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+
+        fun isInvalid(s: String?): Boolean {
+            if (s.isNullOrBlank()) return true
+            val t = s.trim()
+            return t == "المدرسة الذكية" ||
+                   t == "مدرسة التميز للبنين" ||
+                   t == "مدرسة سحابية" ||
+                   t == "سجل مستقل (أوفلاين)" ||
+                   t == "مدرسة مرتبطة" ||
+                   t == "المدرسة" ||
+                   t == "school_01"
+        }
+
+        fun isLegitManager(name: String?): Boolean {
+            if (name.isNullOrBlank()) return false
+            val clean = sanitizeRoleName(name)
+            if (clean.isBlank()) return false
+            val cleanTeacher = sanitizeRoleName(teacherName)
+            if (cleanTeacher.isNotBlank() && clean.equals(cleanTeacher, ignoreCase = true)) return false
+            if (clean.contains("مدرس") || clean.contains("أستاذ") || clean.contains("استاذ")) return false
+            return true
+        }
+
+        // 1. SharedPreferences (set by user or synced from cloud)
+        val prefSchool = prefs.getString("school_name", null)?.trim()?.takeIf { !isInvalid(it) }
+        val prefDir = prefs.getString("directorate_name", null)?.trim()?.takeIf { it.isNotBlank() }
+        val prefMgr = prefs.getString("manager_name", null)?.trim()?.takeIf { isLegitManager(it) }
+            ?: prefs.getString("school_manager_name", null)?.trim()?.takeIf { isLegitManager(it) }
+            ?: prefs.getString("principal_name", null)?.trim()?.takeIf { isLegitManager(it) }
+
+        // 2. Room database config
+        val cfgSchool = config?.schoolName?.trim()?.takeIf { !isInvalid(it) }
+        val cfgDir = config?.directorateName?.trim()?.takeIf { it.isNotBlank() }
+        val cfgMgr = config?.managerName?.trim()?.takeIf { isLegitManager(it) }
+
+        // 3. SessionManager
+        val sessionSchool = sessionManager.getSchoolName()?.trim()?.takeIf { !isInvalid(it) }
+        val sessionMgr = sessionManager.getManagerName()?.trim()?.takeIf { isLegitManager(it) }
+
+        // 4. BossPrefs
+        val bossSchool = bossPrefs.getString("school_name", null)?.trim()?.takeIf { !isInvalid(it) }
+        val bossMgr = bossPrefs.getString("manager_name", null)?.trim()?.takeIf { isLegitManager(it) }
+            ?: bossPrefs.getString("school_manager_name", null)?.trim()?.takeIf { isLegitManager(it) }
+
+        val finalSchool = prefSchool
+            ?: cfgSchool
+            ?: sessionSchool
+            ?: bossSchool
+            ?: "" // ترك اسم المدرسة فارغاً تماماً إذا لم يكتب اسم
+
+        val finalDir = prefDir ?: cfgDir ?: "المديرية العامة للتربية"
+
+        val finalMgr = prefMgr ?: sessionMgr ?: bossMgr ?: cfgMgr ?: ""
+
+        return ResolvedSchoolInfo(finalSchool, finalDir, finalMgr)
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+
+    val fallbackMgr = config?.managerName?.trim()?.takeIf {
+        val clean = sanitizeRoleName(it)
+        val cleanTeacher = sanitizeRoleName(teacherName)
+        clean.isNotBlank() && (cleanTeacher.isBlank() || !clean.equals(cleanTeacher, ignoreCase = true)) && !clean.contains("مدرس") && !clean.contains("أستاذ")
+    } ?: ""
+
+    return ResolvedSchoolInfo(
+        config?.schoolName?.trim()?.takeIf { it.isNotBlank() && it != "مدرسة التميز للبنين" && it != "المدرسة الذكية" } ?: "",
+        config?.directorateName?.takeIf { it.isNotBlank() } ?: "المديرية العامة للتربية",
+        fallbackMgr
+    )
+}
+
+fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+fun copyStudentNamesToClipboard(
+    context: Context,
+    grade: String,
+    section: String,
+    subject: String,
+    students: List<Student>
+) {
+    try {
+        val text = buildStudentRosterText(grade, section, subject, students)
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("قائمة أسماء الطلاب", text)
+        clipboard?.setPrimaryClip(clip)
+        Toast.makeText(context, "تم نسخ قائمة الأسماء بنجاح (${students.size} طالب) 📋", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "تعذر نسخ الأسماء: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun shareStudentNamesAsText(
+    context: Context,
+    grade: String,
+    section: String,
+    subject: String,
+    students: List<Student>
+) {
+    try {
+        val text = buildStudentRosterText(grade, section, subject, students)
+        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "قائمة أسماء طلبة $grade ($section)")
+            putExtra(android.content.Intent.EXTRA_TEXT, text)
+        }
+        val chooser = android.content.Intent.createChooser(sendIntent, "مشاركة قائمة الأسماء عبر:").apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "تعذر مشاركة الأسماء: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun buildStudentRosterText(
+    grade: String,
+    section: String,
+    subject: String,
+    students: List<Student>
+): String {
+    val sb = StringBuilder()
+    sb.append("📋 قائمة أسماء طلبة: $grade ($section)\n")
+    if (subject.isNotBlank()) {
+        sb.append("📚 المادة: $subject\n")
+    }
+    sb.append("👥 العدد الكلي: ${students.size} طالب\n")
+    sb.append("-----------------------------\n")
+    students.forEachIndexed { index, student ->
+        sb.append("${index + 1}. ${student.fullName}\n")
+    }
+    sb.append("-----------------------------\n")
+    sb.append("تم التصدير عبر منظومة الإدارة المدرسية الذكية 🏫")
+    return sb.toString()
 }
 
 fun printRegister(
@@ -1690,27 +2232,81 @@ fun printRegister(
     students: List<Student>,
     absences: List<AbsenceRecord>,
     config: SchoolConfig?,
-    explicitTeacherName: String? = null
+    explicitTeacherName: String? = null,
+    includeCover: Boolean = true,
+    columnSettings: DailyColumnSetting? = null
 ) {
-    (context as? Activity)?.runOnUiThread {
+    if (students.isEmpty()) {
+        Toast.makeText(context, "لا توجد أسماء طلاب في هذه الشعبة للطباعة", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    val activity = context.findActivity() ?: run {
+        Toast.makeText(context, "تعذر تشغيل خدمة الطباعة (لم يتم العثور على واجهة النشاط)", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    android.os.Handler(android.os.Looper.getMainLooper()).post {
         try {
-            val teacher = explicitTeacherName ?: resolveTeacherName(context, grade, section, subject, config)
-            val webView = WebView(context)
-            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config, teacher)
-            webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+            val printManager = activity.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+            if (printManager == null) {
+                Toast.makeText(activity, "خدمة الطباعة غير متوفرة في هذا الجهاز", Toast.LENGTH_LONG).show()
+                return@post
+            }
+
+            val teacher = explicitTeacherName ?: resolveTeacherName(activity, grade, section, subject, config)
+            val (resolvedSchool, resolvedDirectorate, resolvedManager) = resolveSchoolInfo(activity, config, teacher)
+            val resolvedColumnSettings = columnSettings ?: try {
+                com.school.system.data.SchoolDatabase.getInstance(activity).dailyColumnDao().getSettingsSync("${grade}_${section}_$subject")
+            } catch (e: Exception) { null }
+
+            val webView = WebView(activity)
+            webView.settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                loadWithOverviewMode = true
+                useWideViewPort = true
+                builtInZoomControls = false
+            }
+
+            val tabName = when (tabIndex) {
+                0 -> "سجل اليومي"
+                1 -> "سجل المدرس"
+                2 -> "سجل الإدارة"
+                else -> "سجل الغيابات"
+            }
+            val jobName = "$tabName - $grade $section - $subject"
+            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config, teacher, includeCover, resolvedSchool, resolvedDirectorate, resolvedColumnSettings, explicitManagerName = resolvedManager)
+
+            Toast.makeText(activity, "جاري تجهيز السجل للطباعة... 🖨️", Toast.LENGTH_SHORT).show()
+
             webView.webViewClient = object : WebViewClient() {
+                private var printed = false
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                    val jobName = "سجل درجات - $subject - $grade ($section)"
-                    val printAdapter = webView.createPrintDocumentAdapter(jobName)
-                    val printAttributes = PrintAttributes.Builder()
-                        .setMediaSize(if (tabIndex == 0) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
-                        .build()
-                    printManager.print(jobName, printAdapter, printAttributes)
+                    if (printed) return
+                    printed = true
+                    try {
+                        val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                        val printAttributes = PrintAttributes.Builder()
+                            .setMediaSize(if (tabIndex == 0) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
+                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                            .build()
+                        printManager.print(jobName, printAdapter, printAttributes)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        Toast.makeText(activity, "خطأ أثناء إرسال أمر الطباعة: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                    Toast.makeText(activity, "خطأ في تهيئة صفحة الطباعة", Toast.LENGTH_SHORT).show()
                 }
             }
+
+            webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "utf-8", null)
         } catch (e: Exception) {
             e.printStackTrace()
+            Toast.makeText(activity, "تعذر بدء عملية الطباعة: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -1724,9 +2320,11 @@ fun shareRegister(
     students: List<com.school.system.data.model.Student>,
     absences: List<com.school.system.data.model.AbsenceRecord>,
     config: com.school.system.data.model.SchoolConfig?,
-    explicitTeacherName: String? = null
+    explicitTeacherName: String? = null,
+    includeCover: Boolean = true,
+    columnSettings: com.school.system.data.model.DailyColumnSetting? = null
 ) {
-    exportAndSharePdfWithNativePdf(context, grade, section, subject, tabIndex, students, absences, config, explicitTeacherName)
+    exportAndSharePdfWithNativePdf(context, grade, section, subject, tabIndex, students, absences, config, explicitTeacherName, includeCover = includeCover, columnSettings = columnSettings)
 }
 
 fun exportAndSharePdfWithNativePdf(
@@ -1738,66 +2336,129 @@ fun exportAndSharePdfWithNativePdf(
     students: List<Student>,
     absences: List<AbsenceRecord>,
     config: SchoolConfig?,
-    explicitTeacherName: String? = null
+    explicitTeacherName: String? = null,
+    includeCover: Boolean = true,
+    columnSettings: DailyColumnSetting? = null
 ) {
-    (context as? Activity)?.runOnUiThread {
-        try {
-            val teacher = explicitTeacherName ?: resolveTeacherName(context, grade, section, subject, config)
-            val html = generateGradesHtml(grade, section, subject, tabIndex, students, absences, config, teacher)
-            val webView = WebView(context)
-            val isLandscape = (tabIndex == 0)
-            val pageWidth = if (isLandscape) 1120 else 792
-            val pageHeight = if (isLandscape) 792 else 1120
+    if (students.isEmpty()) {
+        Toast.makeText(context, "لا توجد أسماء طلاب في هذه الشعبة للتصدير", Toast.LENGTH_SHORT).show()
+        return
+    }
 
-            webView.layout(0, 0, pageWidth, pageHeight)
-            webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+    val activity = context.findActivity() ?: run {
+        Toast.makeText(context, "تعذر العثور على واجهة النشاط للتصدير", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    android.os.Handler(android.os.Looper.getMainLooper()).post {
+        try {
+            val teacher = explicitTeacherName ?: resolveTeacherName(activity, grade, section, subject, config)
+            val (resolvedSchool, resolvedDirectorate, resolvedManager) = resolveSchoolInfo(activity, config, teacher)
+            val resolvedColumnSettings = columnSettings ?: try {
+                com.school.system.data.SchoolDatabase.getInstance(activity).dailyColumnDao().getSettingsSync("${grade}_${section}_$subject")
+            } catch (e: Exception) { null }
+            val tabName = when (tabIndex) {
+                0 -> "سجل اليومي"
+                1 -> "سجل المدرس"
+                2 -> "سجل الإدارة"
+                else -> "سجل الغيابات"
+            }
+            val jobName = "$tabName - $grade $section - $subject"
+
+            Toast.makeText(activity, "جاري تحضير ملف PDF للمشاركة... ⏳", Toast.LENGTH_SHORT).show()
+
+            val webView = WebView(activity)
+            webView.settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                loadWithOverviewMode = true
+                useWideViewPort = true
+                builtInZoomControls = false
+            }
+
+            val html = generateGradesHtml(
+                grade, section, subject, tabIndex, students, absences, config, teacher,
+                includeCover = includeCover, resolvedSchool, resolvedDirectorate, resolvedColumnSettings,
+                explicitManagerName = resolvedManager
+            )
+
+            var isHandled = false
+
+            fun finishProcess(pdfFile: File?) {
+                if (isHandled) return
+                isHandled = true
+                if (pdfFile != null && pdfFile.exists() && pdfFile.length() > 0L) {
+                    shareFile(activity, pdfFile, subject, grade, section)
+                } else {
+                    Toast.makeText(activity, "تعذر إنشاء ملف PDF للمشاركة", Toast.LENGTH_SHORT).show()
+                }
+            }
+
             webView.webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
+                    if (isHandled) return
                     try {
-                        val pdfFile = File(context.cacheDir, "Official_Grade_Register_${System.currentTimeMillis()}.pdf")
-                        
-                        // Measure content height to generate multiple pages
-                        webView.measure(
-                            android.view.View.MeasureSpec.makeMeasureSpec(pageWidth, android.view.View.MeasureSpec.EXACTLY),
-                            android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)
-                        )
-                        val contentH = webView.measuredHeight.coerceAtLeast(pageHeight * 2)
-                        val numPages = Math.ceil(contentH.toDouble() / pageHeight).toInt().coerceAtLeast(2)
+                        val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                        val printAttributes = PrintAttributes.Builder()
+                            .setMediaSize(if (tabIndex == 0) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
+                            .setResolution(PrintAttributes.Resolution("pdf", "pdf", 600, 600))
+                            .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                            .build()
 
-                        val pdfDocument = PdfDocument()
-                        for (i in 0 until numPages) {
-                            val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, i + 1).create()
-                            val page = pdfDocument.startPage(pageInfo)
-                            val canvas = page.canvas
-                            canvas.save()
-                            canvas.translate(0f, (-i * pageHeight).toFloat())
-                            webView.draw(canvas)
-                            canvas.restore()
-                            pdfDocument.finishPage(page)
-                        }
+                        val pdfPrint = PdfPrint(printAttributes)
+                        val fileName = "${tabName}_${grade}_${section}_${System.currentTimeMillis()}.pdf"
+                        pdfPrint.print(webView, printAdapter, activity.cacheDir, fileName, object : PdfPrint.Callback {
+                            override fun onSuccess(file: File) {
+                                finishProcess(file)
+                            }
 
-                        pdfFile.outputStream().use { out ->
-                            pdfDocument.writeTo(out)
-                        }
-                        pdfDocument.close()
-
-                        shareFile(context, pdfFile, subject, grade, section)
+                            override fun onFailure(error: String?) {
+                                if (!isHandled) {
+                                    isHandled = true
+                                    Toast.makeText(activity, "فشل حفظ ملف PDF: $error", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        })
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        Toast.makeText(context, "تعذر إنشاء ملف PDF: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                        if (!isHandled) {
+                            isHandled = true
+                            val msg = e.localizedMessage ?: e.javaClass.simpleName
+                            Toast.makeText(activity, "خطأ أثناء إنشاء ملف PDF: $msg", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
+                override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                    if (!isHandled) {
+                        isHandled = true
+                        Toast.makeText(activity, "خطأ في تهيئة صفحة PDF للمشاركة", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
+
+            webView.loadDataWithBaseURL("file:///android_asset/", html, "text/html", "utf-8", null)
+
+            // مهلة أمان قصوى لحماية العملية
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (!isHandled) {
+                    isHandled = true
+                    Toast.makeText(activity, "استغرقت عملية إعداد PDF وقتاً أطول من المتوقع", Toast.LENGTH_SHORT).show()
+                }
+            }, 10000)
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(context, "تعذر إنشاء ملف PDF: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(activity, "تعذر إنشاء ملف PDF: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 }
 
-
 fun shareFile(context: Context, pdfFile: File, subject: String, grade: String, section: String) {
     try {
+        if (!pdfFile.exists() || pdfFile.length() == 0L) {
+            Toast.makeText(context, "ملف PDF غير متوفر للمشاركة", Toast.LENGTH_SHORT).show()
+            return
+        }
         val uri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.provider",
@@ -1807,11 +2468,17 @@ fun shareFile(context: Context, pdfFile: File, subject: String, grade: String, s
             type = "application/pdf"
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
             putExtra(android.content.Intent.EXTRA_SUBJECT, "سجل الدرجات الرسمي - $subject - $grade ($section)")
+            putExtra(android.content.Intent.EXTRA_TEXT, "سجل درجات وأسماء شعبة $grade ($section) - مادة $subject بصيغة PDF الرسمية.")
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(android.content.Intent.createChooser(shareIntent, "مشاركة سجل الدرجات (PDF) عبر:"))
+        val chooser = android.content.Intent.createChooser(shareIntent, "مشاركة سجل الدرجات (PDF) عبر:").apply {
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(chooser)
     } catch (e: Exception) {
         e.printStackTrace()
+        Toast.makeText(context, "تعذر مشاركة السجل: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -1823,61 +2490,292 @@ fun generateGradesHtml(
     students: List<com.school.system.data.model.Student>,
     absences: List<com.school.system.data.model.AbsenceRecord>,
     config: com.school.system.data.model.SchoolConfig?,
-    explicitTeacherName: String? = null
+    explicitTeacherName: String? = null,
+    includeCover: Boolean = true,
+    explicitSchoolName: String? = null,
+    explicitDirectorateName: String? = null,
+    columnSettings: com.school.system.data.model.DailyColumnSetting? = null,
+    explicitManagerName: String? = null,
+    onlyCover: Boolean = false
 ): String {
-    val schoolName = config?.schoolName?.takeIf { it.isNotBlank() } ?: "مدرسة التميز للبنين"
-    val directorate = config?.directorateName?.takeIf { it.isNotBlank() } ?: "المديرية العامة للتربية"
-    val teacherName = explicitTeacherName?.takeIf { it.isNotBlank() }
-        ?: config?.managerName?.takeIf { it.isNotBlank() }
-        ?: "مدرس المادة"
+    val isInvalid = { s: String? ->
+        s.isNullOrBlank() || s == "المدرسة الذكية" || s == "مدرسة التميز للبنين" || s == "مدرسة سحابية" || s == "سجل مستقل (أوفلاين)" || s == "مدرسة مرتبطة" || s == "المدرسة" || s == "school_01"
+    }
+    // إذا لم يكتب اسماً للمدرسة يترك اسم المدرسة فارغاً
+    val schoolName = explicitSchoolName?.trim()?.takeIf { !isInvalid(it) }
+        ?: config?.schoolName?.trim()?.takeIf { !isInvalid(it) }
+        ?: ""
+    val directorate = explicitDirectorateName?.trim()?.takeIf { it.isNotBlank() }
+        ?: config?.directorateName?.trim()?.takeIf { it.isNotBlank() }
+        ?: "المديرية العامة للتربية"
+    val cleanExplicitTeacher = sanitizeRoleName(explicitTeacherName)
+    val teacherName = cleanExplicitTeacher
+
+    // حل مشكلة تكرار اسم الأستاذ في مكان المدير
+    var cleanManagerName = sanitizeRoleName(explicitManagerName)
+    if (cleanManagerName.isBlank()) {
+        val cfgMgr = sanitizeRoleName(config?.managerName)
+        if (cfgMgr.isNotBlank() && (teacherName.isBlank() || !cfgMgr.equals(teacherName, ignoreCase = true)) && !cfgMgr.contains("مدرس") && !cfgMgr.contains("أستاذ")) {
+            cleanManagerName = cfgMgr
+        }
+    } else if (teacherName.isNotBlank() && cleanManagerName.equals(teacherName, ignoreCase = true)) {
+        cleanManagerName = ""
+    }
+    
+    // عنوان السجل يكون فقط سجل اليومي وسجل المدرس اسمه فقط سجل المدرس وكذلك سجل الإدارة
     val tabName = when (tabIndex) {
-        0 -> "سِجِلّ اليَوْمِي وَالأَنْشِطَةِ الصَّفِّيَّة"
-        1 -> "سِجِلّ دَرَجَاتِ المُدَرِّس (المُدْرَج التَّفْصِيلِي)"
-        2 -> "سِجِلّ الإِدَارَةِ العَام وَشِيتِ النَّتَائِج المَرْكَزِي"
-        else -> "سِجِلّ حُضُورِ وَغِيَابَاتِ الطُّلاب"
+        0 -> "سجل اليومي"
+        1 -> "سجل المدرس"
+        2 -> "سجل الإدارة"
+        else -> "سجل الغيابات"
+    }
+
+    // وإذا لم يكتب درجات اترك مكان الدرجات فارغاً
+    fun fmtGrade(v: Float?): String {
+        if (v == null || v <= 0f) return ""
+        return if (v % 1f == 0f) v.toInt().toString() else "%.1f".format(java.util.Locale.US, v)
+    }
+
+    fun fmtAvg(list: List<Float>?): String {
+        if (list.isNullOrEmpty()) return ""
+        val nonZero = list.filter { it > 0f }
+        if (nonZero.isEmpty()) return ""
+        val avg = nonZero.average().toFloat()
+        return if (avg % 1f == 0f) avg.toInt().toString() else "%.1f".format(java.util.Locale.US, avg)
     }
 
     val isSpecial = isSpecialSubject(subject)
+
+    // Build Daily Register (tabIndex == 0) columns matching Android app
+    // بالنسبة للعلميات يقسم الشهر الأول إلى عمودين يومي وتحريري (+ معدل ش1)
+    // وفي اللغات والتربية الإسلامية يقسم الشهر الأول إلى الأعمدة التي يخصصها الأستاذ في التطبيق وبنفس التسميات التي يختارها
+    val m1Cols: List<Pair<Int, String>> = if (isSpecial) {
+        val named = (0..4).mapNotNull { i ->
+            val name = columnSettings?.columnNames?.getOrNull(i)?.trim()
+            if (!name.isNullOrBlank()) Pair(i, name) else null
+        }
+        val maxMarkIdx = (0..4).indexOfLast { i -> students.any { (it.marks.m1Daily.getOrNull(i) ?: 0f) > 0f } }
+        val count = maxOf(1, maxOf(named.maxOfOrNull { it.first } ?: -1, maxMarkIdx) + 1)
+        (0 until count).map { i ->
+            val custom = columnSettings?.columnNames?.getOrNull(i)?.trim()
+            val label = if (!custom.isNullOrBlank()) custom else if (count == 1) "شفهي" else "شفهي ${i + 1}"
+            Pair(i, label)
+        }
+    } else emptyList()
+
+    val m2Cols: List<Pair<Int, String>> = if (isSpecial) {
+        val named = (0..4).mapNotNull { i ->
+            val name = columnSettings?.columnNames?.getOrNull(5 + i)?.trim()
+            if (!name.isNullOrBlank()) Pair(i, name) else null
+        }
+        val maxMarkIdx = (0..4).indexOfLast { i -> students.any { (it.marks.m2Daily.getOrNull(i) ?: 0f) > 0f } }
+        val count = maxOf(1, maxOf(named.maxOfOrNull { it.first } ?: -1, maxMarkIdx) + 1)
+        (0 until count).map { i ->
+            val custom = columnSettings?.columnNames?.getOrNull(5 + i)?.trim()
+            val label = if (!custom.isNullOrBlank()) custom else if (count == 1) "شفهي" else "شفهي ${i + 1}"
+            Pair(i, label)
+        }
+    } else emptyList()
+
+    val midtermOralCols: List<Pair<Int, String>> = if (isSpecial) {
+        val maxMarkIdx = (0..4).indexOfLast { i -> students.any { (it.marks.midtermOral.getOrNull(i) ?: 0f) > 0f } }
+        val count = maxOf(1, maxMarkIdx + 1)
+        (0 until count).map { i ->
+            Pair(i, if (count == 1) "شفهي" else "شفهي ${i + 1}")
+        }
+    } else emptyList()
+
+    val m3Cols: List<Pair<Int, String>> = if (isSpecial) {
+        val named = (0..4).mapNotNull { i ->
+            val name = columnSettings?.columnNames?.getOrNull(10 + i)?.trim()
+            if (!name.isNullOrBlank()) Pair(i, name) else null
+        }
+        val maxMarkIdx = (0..4).indexOfLast { i -> students.any { (it.marks.m3Daily.getOrNull(i) ?: 0f) > 0f } }
+        val count = maxOf(1, maxOf(named.maxOfOrNull { it.first } ?: -1, maxMarkIdx) + 1)
+        (0 until count).map { i ->
+            val custom = columnSettings?.columnNames?.getOrNull(10 + i)?.trim()
+            val label = if (!custom.isNullOrBlank()) custom else if (count == 1) "شفهي" else "شفهي ${i + 1}"
+            Pair(i, label)
+        }
+    } else emptyList()
+
+    val m4Cols: List<Pair<Int, String>> = if (isSpecial) {
+        val named = (0..4).mapNotNull { i ->
+            val name = columnSettings?.columnNames?.getOrNull(15 + i)?.trim()
+            if (!name.isNullOrBlank()) Pair(i, name) else null
+        }
+        val maxMarkIdx = (0..4).indexOfLast { i -> students.any { (it.marks.m4Daily.getOrNull(i) ?: 0f) > 0f } }
+        val count = maxOf(1, maxOf(named.maxOfOrNull { it.first } ?: -1, maxMarkIdx) + 1)
+        (0 until count).map { i ->
+            val custom = columnSettings?.columnNames?.getOrNull(15 + i)?.trim()
+            val label = if (!custom.isNullOrBlank()) custom else if (count == 1) "شفهي" else "شفهي ${i + 1}"
+            Pair(i, label)
+        }
+    } else emptyList()
+
+    val finalOralCols: List<Pair<Int, String>> = if (isSpecial) {
+        val maxMarkIdx = (0..4).indexOfLast { i -> students.any { (it.marks.finalOral.getOrNull(i) ?: 0f) > 0f } }
+        val count = maxOf(1, maxMarkIdx + 1)
+        (0 until count).map { i ->
+            Pair(i, if (count == 1) "شفهي" else "شفهي ${i + 1}")
+        }
+    } else emptyList()
+
+    val m1ColSpan = if (!isSpecial) 3 else (m1Cols.size + (if (m1Cols.size > 1) 1 else 0) + 2)
+    val m2ColSpan = if (!isSpecial) 3 else (m2Cols.size + (if (m2Cols.size > 1) 1 else 0) + 2)
+    val midtermColSpan = if (!isSpecial) 1 else (midtermOralCols.size + (if (midtermOralCols.size > 1) 1 else 0) + 2)
+    val m3ColSpan = if (!isSpecial) 3 else (m3Cols.size + (if (m3Cols.size > 1) 1 else 0) + 2)
+    val m4ColSpan = if (!isSpecial) 3 else (m4Cols.size + (if (m4Cols.size > 1) 1 else 0) + 2)
+    val finalColSpan = if (!isSpecial) 1 else (finalOralCols.size + (if (finalOralCols.size > 1) 1 else 0) + 2)
+
     val rowsHtml = java.lang.StringBuilder()
     students.forEachIndexed { index, student ->
         val marks = student.marks
         val totalAbs = student.historicalAbsences + absences.count { it.studentId == student.id }
-        val d2Formatted = if (marks.finalWrittenD2 == null || marks.finalWrittenD2 == 0f) "-" else if (isSpecial) (marks.finalOral.sum() + marks.finalWrittenD2!!).toInt().toString() else marks.finalWrittenD2!!.toInt().toString()
+        val d2Formatted = when {
+            marks.finalWrittenD2 == null || marks.finalWrittenD2 == 0f -> ""
+            isSpecial -> fmtGrade(marks.finalOral.sum() + marks.finalWrittenD2!!)
+            else -> fmtGrade(marks.finalWrittenD2)
+        }
+        val scoreStr = if (marks.latestRecordedScore() > 0f) fmtGrade(marks.latestRecordedScore()) else ""
+
         rowsHtml.append("<tr class='data-row'>")
         rowsHtml.append("<td class='seq-col'>${index + 1}</td>")
         rowsHtml.append("<td class='name-col'>${student.fullName}</td>")
 
         if (tabIndex == 0) {
-            rowsHtml.append("<td class='cell-data'>${marks.m1Daily.average().toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m1Written}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m2Daily.average().toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m2Written}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m3Daily.average().toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m3Written}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m4Daily.average().toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m4Written}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.midtermOral.average().toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.midtermScore}</td>")
+            // Month 1
+            if (!isSpecial) {
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m1Daily.firstOrNull())}</td>")
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m1Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #eff6ff;'>${fmtGrade(marks.m1MonthAvg)}</td>")
+            } else {
+                m1Cols.forEach { col ->
+                    rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m1Daily.getOrNull(col.first))}</td>")
+                }
+                if (m1Cols.size > 1) {
+                    val vals = m1Cols.mapNotNull { marks.m1Daily.getOrNull(it.first) }.filter { it > 0f }
+                    rowsHtml.append("<td class='cell-data'>${fmtAvg(vals)}</td>")
+                }
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m1Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #eff6ff;'>${fmtGrade(marks.m1MonthAvg)}</td>")
+            }
+
+            // Month 2
+            if (!isSpecial) {
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m2Daily.firstOrNull())}</td>")
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m2Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #f5f3ff;'>${fmtGrade(marks.m2MonthAvg)}</td>")
+            } else {
+                m2Cols.forEach { col ->
+                    rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m2Daily.getOrNull(col.first))}</td>")
+                }
+                if (m2Cols.size > 1) {
+                    val vals = m2Cols.mapNotNull { marks.m2Daily.getOrNull(it.first) }.filter { it > 0f }
+                    rowsHtml.append("<td class='cell-data'>${fmtAvg(vals)}</td>")
+                }
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m2Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #f5f3ff;'>${fmtGrade(marks.m2MonthAvg)}</td>")
+            }
+
+            // Term 1
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #fef3c7;'>${fmtGrade(marks.term1Avg)}</td>")
+
+            // Midterm
+            if (!isSpecial) {
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.midtermScore)}</td>")
+            } else {
+                midtermOralCols.forEach { col ->
+                    rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.midtermOral.getOrNull(col.first))}</td>")
+                }
+                if (midtermOralCols.size > 1) {
+                    val vals = midtermOralCols.mapNotNull { marks.midtermOral.getOrNull(it.first) }.filter { it > 0f }
+                    rowsHtml.append("<td class='cell-data'>${fmtAvg(vals)}</td>")
+                }
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.midtermScore)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #ccfbf1;'>${fmtGrade(marks.midtermFinalGrade)}</td>")
+            }
+
+            // Month 3
+            if (!isSpecial) {
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m3Daily.firstOrNull())}</td>")
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m3Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #eff6ff;'>${fmtGrade(marks.m3MonthAvg)}</td>")
+            } else {
+                m3Cols.forEach { col ->
+                    rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m3Daily.getOrNull(col.first))}</td>")
+                }
+                if (m3Cols.size > 1) {
+                    val vals = m3Cols.mapNotNull { marks.m3Daily.getOrNull(it.first) }.filter { it > 0f }
+                    rowsHtml.append("<td class='cell-data'>${fmtAvg(vals)}</td>")
+                }
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m3Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #eff6ff;'>${fmtGrade(marks.m3MonthAvg)}</td>")
+            }
+
+            // Month 4
+            if (!isSpecial) {
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m4Daily.firstOrNull())}</td>")
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m4Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #f5f3ff;'>${fmtGrade(marks.m4MonthAvg)}</td>")
+            } else {
+                m4Cols.forEach { col ->
+                    rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m4Daily.getOrNull(col.first))}</td>")
+                }
+                if (m4Cols.size > 1) {
+                    val vals = m4Cols.mapNotNull { marks.m4Daily.getOrNull(it.first) }.filter { it > 0f }
+                    rowsHtml.append("<td class='cell-data'>${fmtAvg(vals)}</td>")
+                }
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m4Written)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #f5f3ff;'>${fmtGrade(marks.m4MonthAvg)}</td>")
+            }
+
+            // Term 2
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #fef3c7;'>${fmtGrade(marks.term2Avg)}</td>")
+
+            // Annual Pursuit
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #1e3a8a; background: #ffedd5;'>${fmtGrade(marks.annualAverage)}</td>")
+
+            // Final Exam
+            if (!isSpecial) {
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.finalWrittenD1)}</td>")
+            } else {
+                finalOralCols.forEach { col ->
+                    rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.finalOral.getOrNull(col.first))}</td>")
+                }
+                if (finalOralCols.size > 1) {
+                    val vals = finalOralCols.mapNotNull { marks.finalOral.getOrNull(it.first) }.filter { it > 0f }
+                    rowsHtml.append("<td class='cell-data'>${fmtAvg(vals)}</td>")
+                }
+                rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.finalWrittenD1)}</td>")
+                rowsHtml.append("<td class='cell-data' style='font-weight: bold; background: #d1fae5;'>${fmtGrade(marks.finalExamTotal)}</td>")
+            }
+
+            // Round 2
+            rowsHtml.append("<td class='cell-data'>$d2Formatted</td>")
+
+            // Final Score
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d; background: #e0e7ff;'>$scoreStr</td>")
         } else if (tabIndex == 1) {
-            rowsHtml.append("<td class='cell-data'>${marks.m1MonthAvg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m2MonthAvg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold;'>${marks.term1Avg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.midtermFinalGrade.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m3MonthAvg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.m4MonthAvg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold;'>${marks.term2Avg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #1e3a8a;'>${marks.annualAverage.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.finalExamTotal.toInt()}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m1MonthAvg)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m2MonthAvg)}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold;'>${fmtGrade(marks.term1Avg)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.midtermFinalGrade)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m3MonthAvg)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.m4MonthAvg)}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold;'>${fmtGrade(marks.term2Avg)}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #1e3a8a;'>${fmtGrade(marks.annualAverage)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.finalExamTotal)}</td>")
             rowsHtml.append("<td class='cell-data'>$d2Formatted</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>${marks.latestRecordedScoreInt()}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>$scoreStr</td>")
         } else if (tabIndex == 2) {
-            rowsHtml.append("<td class='cell-data'>${marks.term1Avg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.midtermFinalGrade.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.term2Avg.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #1e3a8a;'>${marks.annualAverage.toInt()}</td>")
-            rowsHtml.append("<td class='cell-data'>${marks.finalExamTotal.toInt()}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.term1Avg)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.midtermFinalGrade)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.term2Avg)}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #1e3a8a;'>${fmtGrade(marks.annualAverage)}</td>")
+            rowsHtml.append("<td class='cell-data'>${fmtGrade(marks.finalExamTotal)}</td>")
             rowsHtml.append("<td class='cell-data'>$d2Formatted</td>")
-            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>${marks.latestRecordedScoreInt()}</td>")
+            rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: #15803d;'>$scoreStr</td>")
         } else {
             rowsHtml.append("<td class='cell-data' style='font-weight: bold; color: ${if (totalAbs > 3) "#dc2626" else "#0f172a"};'>$totalAbs</td>")
             rowsHtml.append("<td class='cell-data'>${marks.status}</td>")
@@ -1885,25 +2783,79 @@ fun generateGradesHtml(
         rowsHtml.append("</tr>")
     }
 
+    val dailySubHeaders = java.lang.StringBuilder()
+    // Month 1
+    if (!isSpecial) {
+        dailySubHeaders.append("<th class='cell-header'>يومي</th><th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش1</th>")
+    } else {
+        m1Cols.forEach { dailySubHeaders.append("<th class='cell-header'>${it.second}</th>") }
+        if (m1Cols.size > 1) dailySubHeaders.append("<th class='cell-header'>م.شفهي</th>")
+        dailySubHeaders.append("<th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش1</th>")
+    }
+    // Month 2
+    if (!isSpecial) {
+        dailySubHeaders.append("<th class='cell-header'>يومي</th><th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش2</th>")
+    } else {
+        m2Cols.forEach { dailySubHeaders.append("<th class='cell-header'>${it.second}</th>") }
+        if (m2Cols.size > 1) dailySubHeaders.append("<th class='cell-header'>م.شفهي</th>")
+        dailySubHeaders.append("<th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش2</th>")
+    }
+    // Midterm
+    if (!isSpecial) {
+        dailySubHeaders.append("<th class='cell-header'>درجة نصف</th>")
+    } else {
+        midtermOralCols.forEach { dailySubHeaders.append("<th class='cell-header'>${it.second}</th>") }
+        if (midtermOralCols.size > 1) dailySubHeaders.append("<th class='cell-header'>م.شفهي</th>")
+        dailySubHeaders.append("<th class='cell-header'>تحريري</th><th class='cell-header'>درجة نصف</th>")
+    }
+    // Month 3
+    if (!isSpecial) {
+        dailySubHeaders.append("<th class='cell-header'>يومي</th><th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش3</th>")
+    } else {
+        m3Cols.forEach { dailySubHeaders.append("<th class='cell-header'>${it.second}</th>") }
+        if (m3Cols.size > 1) dailySubHeaders.append("<th class='cell-header'>م.شفهي</th>")
+        dailySubHeaders.append("<th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش3</th>")
+    }
+    // Month 4
+    if (!isSpecial) {
+        dailySubHeaders.append("<th class='cell-header'>يومي</th><th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش4</th>")
+    } else {
+        m4Cols.forEach { dailySubHeaders.append("<th class='cell-header'>${it.second}</th>") }
+        if (m4Cols.size > 1) dailySubHeaders.append("<th class='cell-header'>م.شفهي</th>")
+        dailySubHeaders.append("<th class='cell-header'>تحريري</th><th class='cell-header'>معدل ش4</th>")
+    }
+    // Final Exam
+    if (!isSpecial) {
+        dailySubHeaders.append("<th class='cell-header'>تحريري د1</th>")
+    } else {
+        finalOralCols.forEach { dailySubHeaders.append("<th class='cell-header'>${it.second}</th>") }
+        if (finalOralCols.size > 1) dailySubHeaders.append("<th class='cell-header'>م.شفهي</th>")
+        dailySubHeaders.append("<th class='cell-header'>تحريري د1</th><th class='cell-header'>مجموع د1</th>")
+    }
+
     val tableHeader = when (tabIndex) {
         0 -> """
-            <tr style='background: #f1f5f9; font-weight: bold;'>
-                <th class='cell-header seq-col'>ت</th>
-                <th class='cell-header name-col'>اسم الطالب</th>
-                <th class='cell-header'>يومي1</th>
-                <th class='cell-header'>تحريري1</th>
-                <th class='cell-header'>يومي2</th>
-                <th class='cell-header'>تحريري2</th>
-                <th class='cell-header'>يومي3</th>
-                <th class='cell-header'>تحريري3</th>
-                <th class='cell-header'>يومي4</th>
-                <th class='cell-header'>تحريري4</th>
-                <th class='cell-header'>يومي نصف</th>
-                <th class='cell-header'>تحريري نصف</th>
+            <tr style='background: #e2e8f0; font-weight: 900;'>
+                <th rowspan='2' class='cell-header seq-col'>ت</th>
+                <th rowspan='2' class='cell-header name-col'>اسم الطالب</th>
+                <th colspan='$m1ColSpan' class='cell-header' style='background: #1e3a8a !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>الشهر الأول</th>
+                <th colspan='$m2ColSpan' class='cell-header' style='background: #5b21b6 !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>الشهر الثاني</th>
+                <th rowspan='2' class='cell-header' style='background: #b45309 !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>فص1</th>
+                <th colspan='$midtermColSpan' class='cell-header' style='background: #0f766e !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>نصف السنة</th>
+                <th colspan='$m3ColSpan' class='cell-header' style='background: #1e3a8a !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>الشهر الثالث</th>
+                <th colspan='$m4ColSpan' class='cell-header' style='background: #5b21b6 !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>الشهر الرابع</th>
+                <th rowspan='2' class='cell-header' style='background: #b45309 !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>فص2</th>
+                <th rowspan='2' class='cell-header' style='background: #c2410c !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>السعي</th>
+                <th colspan='$finalColSpan' class='cell-header' style='background: #047857 !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>الامتحان النهائي</th>
+                <th rowspan='2' class='cell-header' style='background: #334155 !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>د2</th>
+                <th rowspan='2' class='cell-header' style='background: #312e81 !important; color: #ffffff !important; border: 1.2px solid #000000 !important;'>الدرجة النهائية</th>
+            </tr>
+            <tr style='background: #f1f5f9; font-weight: 900;'>
+                $dailySubHeaders
             </tr>
         """
         1 -> """
-            <tr style='background: #f1f5f9; font-weight: bold;'>
+            <tr style='background: #e2e8f0; font-weight: 900;'>
                 <th class='cell-header seq-col'>ت</th>
                 <th class='cell-header name-col'>اسم الطالب</th>
                 <th class='cell-header'>معدل ش1</th>
@@ -1920,7 +2872,7 @@ fun generateGradesHtml(
             </tr>
         """
         2 -> """
-            <tr style='background: #f1f5f9; font-weight: bold;'>
+            <tr style='background: #e2e8f0; font-weight: 900;'>
                 <th class='cell-header seq-col'>ت</th>
                 <th class='cell-header name-col'>اسم الطالب</th>
                 <th class='cell-header'>معدل الفصل 1</th>
@@ -1933,7 +2885,7 @@ fun generateGradesHtml(
             </tr>
         """
         else -> """
-            <tr style='background: #f1f5f9; font-weight: bold;'>
+            <tr style='background: #e2e8f0; font-weight: 900;'>
                 <th class='cell-header seq-col'>ت</th>
                 <th class='cell-header name-col'>اسم الطالب</th>
                 <th class='cell-header'>مجموع الغيابات</th>
@@ -1942,11 +2894,11 @@ fun generateGradesHtml(
         """
     }
 
-    val cellPad = if (tabIndex == 0) "3px 1px" else if (tabIndex == 1) "4px 2px" else "5px 3px"
-    val headerPad = if (tabIndex == 0) "4px 1px" else if (tabIndex == 1) "5px 2px" else "6px 3px"
-    val cellFontSize = if (tabIndex == 0) "8px" else if (tabIndex == 1) "8px" else "9.5px"
-    val headerFontSize = if (tabIndex == 0) "7.5px" else if (tabIndex == 1) "7.5px" else "9px"
-    val nameFontSize = if (tabIndex == 0) "8.5px" else if (tabIndex == 1) "8.5px" else "10px"
+    val cellPad = if (tabIndex == 0) "5px 2px" else "6px 3px"
+    val headerPad = if (tabIndex == 0) "6px 2px" else "7px 3px"
+    val cellFontSize = if (tabIndex == 0) "12px" else "13px"
+    val headerFontSize = if (tabIndex == 0) "11px" else "12px"
+    val nameFontSize = if (tabIndex == 0) "15.5px" else "16.5px"
 
     val progHtmlStats = calculateProgressiveStats(students)
     val totalSt = progHtmlStats.totalStudents
@@ -1960,270 +2912,335 @@ fun generateGradesHtml(
         <html dir="rtl" lang="ar">
         <head>
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@400;700;900&display=swap');
                 @page {
                     size: ${if (tabIndex == 0) "A4 landscape" else "A4 portrait"};
-                    margin: 6mm 6mm;
+                    margin: 0;
                 }
                 * {
                     box-sizing: border-box;
                 }
-                body {
+                html, body {
                     font-family: 'Tajawal', 'Amiri', 'Segoe UI', Tahoma, sans-serif;
                     margin: 0;
                     padding: 0;
                     background: #ffffff;
                     color: #0f172a;
                     direction: rtl;
+                    width: 100%;
                     -webkit-print-color-adjust: exact !important;
                     print-color-adjust: exact !important;
                 }
 
-                /* Page 1: Official Front Cover Page */
+                /* Front Cover Page - 3D Geometric Layout - Strictly Standalone Page */
                 .cover-page {
-                    page-break-after: always;
-                    break-after: page;
-                    width: 100%;
-                    height: ${if (tabIndex == 0) "192mm" else "275mm"};
+                    page-break-before: avoid !important;
+                    break-before: avoid !important;
+                    page-break-after: always !important;
+                    break-after: page !important;
+                    page-break-inside: avoid !important;
+                    break-inside: avoid !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    min-height: 100vh !important;
+                    max-height: 100vh !important;
+                    box-sizing: border-box;
+                    padding: ${if (tabIndex == 0) "10px 18px" else "18px 22px"} !important;
+                    margin: 0 !important;
+                    overflow: hidden;
                     display: flex;
+                    flex-direction: column;
                     justify-content: center;
                     align-items: center;
-                    box-sizing: border-box;
-                    padding: 2mm;
                 }
                 .outer-frame {
-                    width: 100%;
-                    height: 100%;
-                    border: 4px double #1e3a8a;
-                    border-radius: 16px;
-                    padding: 4px;
+                    width: 98% !important;
+                    max-width: ${if (tabIndex == 0) "1040px" else "750px"} !important;
+                    height: 96% !important;
+                    max-height: ${if (tabIndex == 0) "730px" else "1050px"} !important;
+                    border-radius: 18px;
+                    padding: 6px;
                     box-sizing: border-box;
-                    background: #fafaf9;
+                    background: linear-gradient(145deg, #ffffff, #f1f5f9);
+                    box-shadow: 
+                        0 20px 40px -10px rgba(15, 23, 42, 0.25),
+                        0 0 0 1px rgba(255, 255, 255, 0.9) inset,
+                        0 0 0 4px #1e3a8a,
+                        0 0 0 7px #b45309,
+                        0 0 0 9px #1e3a8a;
+                    display: flex;
+                    flex-direction: column;
+                    margin: auto !important;
+                    position: relative;
                 }
                 .inner-frame {
                     width: 100%;
                     height: 100%;
                     border: 2px solid #b45309;
                     border-radius: 12px;
-                    padding: ${if (tabIndex == 0) "10px 24px" else "24px 20px"};
+                    padding: ${if (tabIndex == 0) "8px 24px" else "18px 24px"};
                     box-sizing: border-box;
+                    background: radial-gradient(circle at 50% 50%, #ffffff 0%, #fafaf9 70%, #f5f5f4 100%);
+                    box-shadow: 
+                        inset 0 3px 8px rgba(0, 0, 0, 0.08),
+                        inset 0 0 0 1px rgba(180, 83, 9, 0.2);
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                     align-items: center;
                     text-align: center;
                     position: relative;
-                    background: radial-gradient(circle at center, #ffffff 65%, #f8fafc 100%);
                 }
                 .corner {
                     position: absolute;
-                    font-size: 24px;
+                    font-size: ${if (tabIndex == 0) "18px" else "22px"};
                     color: #b45309;
                     line-height: 1;
-                    font-weight: bold;
+                    font-weight: 900;
+                    text-shadow: 1px 2px 3px rgba(0, 0, 0, 0.25), 0 0 1px #d97706;
                 }
-                .c-tr { top: 8px; right: 10px; }
-                .c-tl { top: 8px; left: 10px; }
-                .c-br { bottom: 8px; right: 10px; }
-                .c-bl { bottom: 8px; left: 10px; }
+                .c-tr { top: 8px; right: 12px; }
+                .c-tl { top: 8px; left: 12px; }
+                .c-br { bottom: 8px; right: 12px; }
+                .c-bl { bottom: 8px; left: 12px; }
 
-                .header-box {
-                    width: 100%;
-                }
+                .header-box { width: 100%; }
                 .country-title {
-                    font-size: ${if (tabIndex == 0) "18px" else "22px"};
+                    font-size: ${if (tabIndex == 0) "22px" else "26px"};
                     font-weight: 900;
                     color: #1e3a8a;
                     margin: 0;
+                    text-shadow: 0 1px 2px rgba(30, 58, 138, 0.25);
                     letter-spacing: 0.5px;
                 }
                 .ministry-title {
-                    font-size: ${if (tabIndex == 0) "12.5px" else "14px"};
+                    font-size: ${if (tabIndex == 0) "13px" else "15px"};
                     font-weight: bold;
                     color: #475569;
                     margin: 2px 0 0 0;
                 }
                 .school-title {
-                    font-size: ${if (tabIndex == 0) "15px" else "18px"};
+                    font-size: ${if (tabIndex == 0) "17px" else "21px"};
                     font-weight: 900;
                     color: #0f172a;
-                    margin: 4px 0 0 0;
+                    margin: 2px 0 0 0;
+                    min-height: 20px;
+                    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
                 }
 
                 .ornate-line {
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    width: 75%;
-                    margin: ${if (tabIndex == 0) "4px auto" else "10px auto"};
+                    width: 70%;
+                    margin: ${if (tabIndex == 0) "2px auto" else "6px auto"};
                 }
                 .line-segment {
                     flex: 1;
-                    height: 1.5px;
-                    background: linear-gradient(to right, transparent, #b45309, transparent);
+                    height: 2px;
+                    background: linear-gradient(to right, transparent, #b45309, #d97706, #b45309, transparent);
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
                 }
                 .line-emblem {
                     padding: 0 10px;
                     color: #b45309;
                     font-size: 13px;
-                    font-weight: bold;
+                    font-weight: 900;
+                    text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
                 }
 
                 .main-title-box {
                     width: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
                     margin: ${if (tabIndex == 0) "2px 0" else "6px 0"};
                 }
-                .register-badge {
+                .title-banner {
+                    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #1e3a8a 100%);
+                    color: #ffffff !important;
+                    border-radius: 12px;
+                    padding: ${if (tabIndex == 0) "4px 32px" else "8px 44px"};
+                    border: 2px solid #fbbf24;
+                    box-shadow: 
+                        0 8px 18px -2px rgba(30, 58, 138, 0.4),
+                        0 3px 6px -1px rgba(0, 0, 0, 0.15),
+                        inset 0 1px 2px rgba(255, 255, 255, 0.5),
+                        inset 0 -2px 4px rgba(0, 0, 0, 0.3);
                     display: inline-block;
-                    background: #1e3a8a;
-                    color: #ffffff;
-                    font-size: ${if (tabIndex == 0) "11.5px" else "13px"};
-                    font-weight: bold;
-                    padding: 3px 18px;
-                    border-radius: 20px;
-                    margin-bottom: 4px;
-                    box-shadow: 0 2px 4px rgba(30, 58, 138, 0.18);
                 }
                 .register-title {
-                    font-size: ${if (tabIndex == 0) "24px" else "30px"};
+                    font-size: ${if (tabIndex == 0) "24px" else "32px"};
                     font-weight: 900;
-                    color: #1e3a8a;
-                    margin: 2px 0;
+                    color: #ffffff !important;
+                    margin: 0;
                     font-family: 'Amiri', 'Tajawal', serif;
-                    text-shadow: 0 1px 1px rgba(0,0,0,0.05);
+                    text-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+                    letter-spacing: 0.5px;
                 }
                 .academic-year {
-                    font-size: ${if (tabIndex == 0) "13px" else "15px"};
+                    font-size: ${if (tabIndex == 0) "12.5px" else "14.5px"};
                     font-weight: bold;
-                    color: #b45309;
-                    margin: 2px 0 0 0;
+                    color: #92400e;
+                    margin: 4px 0 0 0;
+                    text-shadow: 0 1px 1px rgba(255,255,255,0.8);
                 }
 
                 .info-cards-grid {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
-                    gap: ${if (tabIndex == 0) "10px" else "14px"};
-                    width: 94%;
-                    margin: ${if (tabIndex == 0) "6px auto" else "14px auto"};
+                    gap: ${if (tabIndex == 0) "8px" else "14px"};
+                    width: 95%;
+                    margin: ${if (tabIndex == 0) "4px auto" else "10px auto"};
                 }
                 .info-card {
-                    background: #ffffff;
+                    background: linear-gradient(145deg, #ffffff, #f8fafc);
                     border: 1.5px solid #cbd5e1;
                     border-top: 4px solid #1e3a8a;
                     border-radius: 12px;
-                    padding: ${if (tabIndex == 0) "8px 6px" else "12px 10px"};
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+                    padding: ${if (tabIndex == 0) "5px 10px" else "10px 14px"};
                     display: flex;
                     flex-direction: column;
                     align-items: center;
                     justify-content: center;
+                    box-shadow: 
+                        0 8px 16px -2px rgba(0, 0, 0, 0.1),
+                        0 3px 6px -2px rgba(0, 0, 0, 0.05),
+                        inset 0 1px 0 rgba(255, 255, 255, 1);
                 }
                 .card-label {
-                    font-size: ${if (tabIndex == 0) "10.5px" else "12px"};
+                    font-size: ${if (tabIndex == 0) "11px" else "13px"};
                     font-weight: bold;
                     color: #64748b;
-                    margin-bottom: 4px;
+                    margin-bottom: 2px;
                 }
                 .card-val {
-                    font-size: ${if (tabIndex == 0) "15px" else "17px"};
+                    font-size: ${if (tabIndex == 0) "15px" else "18px"};
                     font-weight: 900;
                     color: #0f172a;
+                    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
                 }
-                .val-subject {
-                    color: #b45309;
-                    font-size: ${if (tabIndex == 0) "17px" else "20px"};
-                }
-                .val-teacher {
-                    color: #1e3a8a;
-                    font-size: ${if (tabIndex == 0) "14px" else "16px"};
-                }
+                .val-subject { color: #b45309; }
+                .val-teacher { color: #1e3a8a; }
 
                 .cover-bottom {
                     display: flex;
-                    justify-content: space-between;
-                    align-items: flex-end;
-                    width: 90%;
-                    margin-top: ${if (tabIndex == 0) "2px" else "8px"};
-                    padding-top: ${if (tabIndex == 0) "2px" else "8px"};
+                    justify-content: space-around;
+                    align-items: center;
+                    width: 92%;
+                    margin-top: ${if (tabIndex == 0) "4px" else "10px"};
+                    margin-bottom: ${if (tabIndex == 0) "2px" else "6px"};
                 }
-                .sig-col {
+                .sig-card {
+                    background: linear-gradient(145deg, #ffffff, #f8fafc);
+                    border: 1.5px solid #e2e8f0;
+                    border-radius: 12px;
+                    box-shadow: 
+                        0 6px 12px -2px rgba(0, 0, 0, 0.08),
+                        inset 0 1px 0 #ffffff;
+                    padding: ${if (tabIndex == 0) "5px 16px" else "8px 22px"};
+                    width: 42%;
                     text-align: center;
-                    width: 28%;
                 }
                 .sig-title {
-                    font-size: 11.5px;
+                    font-size: ${if (tabIndex == 0) "12px" else "14px"};
                     font-weight: bold;
                     color: #475569;
-                    margin-bottom: 3px;
                 }
                 .sig-name {
-                    font-size: 12.5px;
+                    font-size: ${if (tabIndex == 0) "14.5px" else "17px"};
                     font-weight: 900;
                     color: #0f172a;
-                    margin-bottom: 6px;
+                    margin-top: 2px;
+                    min-height: 20px;
                 }
                 .sig-dots {
                     color: #94a3b8;
-                    font-size: 11px;
-                    letter-spacing: 2px;
-                }
-                .seal-circle {
-                    width: ${if (tabIndex == 0) "60px" else "75px"};
-                    height: ${if (tabIndex == 0) "60px" else "75px"};
-                    border: 2px dashed #b45309;
-                    border-radius: 50%;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    color: #b45309;
-                    font-size: 10.5px;
-                    font-weight: bold;
-                    background: #fffbeb;
+                    font-size: ${if (tabIndex == 0) "11px" else "12.5px"};
+                    margin-top: 2px;
                 }
 
-                /* Page 2+: Grades Table Page */
+                /* Official Table Page - Always Starts On Next Page */
                 .table-page {
-                    page-break-before: always;
-                    break-before: page;
-                    padding-top: 2mm;
+                    page-break-before: always !important;
+                    break-before: page !important;
+                    width: 100%;
+                    box-sizing: border-box;
+                    padding: ${if (tabIndex == 0) "8px 12px" else "12px 14px"};
+                }
+                .official-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-bottom: 2px solid #1e3a8a;
+                    padding-bottom: 3px;
+                    margin-bottom: 3px;
                 }
                 table {
                     width: 100%;
                     border-collapse: collapse;
                     text-align: center;
                     table-layout: auto;
-                    margin-top: 10px;
+                    margin-top: 2px;
+                    page-break-inside: auto;
+                    border: 1.5px solid #000000 !important;
+                }
+                tr {
+                    page-break-inside: avoid;
+                    break-inside: avoid;
                 }
                 th, td {
-                    border: 1px solid #cbd5e1;
+                    border: 1.2px solid #000000 !important;
                     box-sizing: border-box;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 .seq-col {
-                    width: 24px;
-                    font-weight: bold;
-                    font-size: $headerFontSize;
+                    width: 28px;
+                    font-weight: 900 !important;
+                    font-size: ${if (tabIndex == 0) "12px" else "13px"};
+                    padding: 3px 2px;
+                    color: #000000 !important;
                 }
                 .name-col {
                     text-align: right;
-                    font-weight: bold;
-                    padding-right: 4px !important;
-                    font-size: $nameFontSize;
+                    font-weight: 900 !important;
+                    padding-right: 8px !important;
+                    padding-left: 6px !important;
+                    font-size: $nameFontSize !important;
                     white-space: nowrap;
+                    color: #000000 !important;
+                    min-width: ${if (tabIndex == 0) "150px" else "165px"};
+                    letter-spacing: -0.2px;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 .cell-data {
-                    font-size: $cellFontSize;
-                    padding: $cellPad;
+                    font-size: $cellFontSize !important;
+                    padding: $cellPad !important;
+                    color: #000000 !important;
+                    font-weight: 900 !important;
+                    border: 1.2px solid #000000 !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 .cell-header {
-                    background-color: #f1f5f9;
-                    font-weight: bold;
-                    font-size: $headerFontSize;
-                    padding: $headerPad;
+                    background-color: #e2e8f0 !important;
+                    font-weight: 900 !important;
+                    font-size: $headerFontSize !important;
+                    padding: $headerPad !important;
+                    color: #000000 !important;
+                    border: 1.2px solid #000000 !important;
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
                 }
                 .data-row:nth-child(even) {
-                    background-color: #f8fafc;
+                    background-color: #f1f5f9;
+                }
+                .data-row:nth-child(odd) {
+                    background-color: #ffffff;
                 }
                 .stats-bar {
                     display: flex;
@@ -2231,23 +3248,28 @@ fun generateGradesHtml(
                     background-color: #f8fafc;
                     border: 1px solid #e2e8f0;
                     border-radius: 6px;
-                    padding: 5px 10px;
-                    margin-bottom: 8px;
-                    font-size: 11px;
+                    padding: 3px 8px;
+                    margin-top: 6px;
+                    margin-bottom: 4px;
+                    font-size: 9.5px;
                     font-weight: bold;
+                    page-break-inside: avoid;
+                    break-inside: avoid;
                 }
                 .signatures {
-                    margin-top: 25px;
+                    margin-top: 8px;
                     display: grid;
                     grid-template-columns: 1fr 1fr;
                     text-align: center;
                     font-weight: bold;
-                    font-size: 11px;
+                    font-size: 10px;
+                    page-break-inside: avoid;
+                    break-inside: avoid;
                 }
             </style>
         </head>
         <body>
-            <!-- Page 1: Official Front Cover Page (ورقة الواجهة المنفردة) -->
+            ${if (includeCover) """
             <div class="cover-page">
                 <div class="outer-frame">
                     <div class="inner-frame">
@@ -2259,7 +3281,7 @@ fun generateGradesHtml(
                         <div class="header-box">
                             <h1 class="country-title">جمهورية العراق</h1>
                             <h2 class="ministry-title">وزارة التربية • ${directorate}</h2>
-                            <h3 class="school-title">${schoolName}</h3>
+                            ${if (schoolName.isNotBlank()) """<h3 class="school-title">${schoolName}</h3>""" else """<h3 class="school-title" style="visibility: hidden;">&nbsp;</h3>"""}
                         </div>
 
                         <div class="ornate-line">
@@ -2269,8 +3291,9 @@ fun generateGradesHtml(
                         </div>
 
                         <div class="main-title-box">
-                            <span class="register-badge">وثيقة وسجل درجات رسمي</span>
-                            <h1 class="register-title">${tabName}</h1>
+                            <div class="title-banner">
+                                <h1 class="register-title">${tabName}</h1>
+                            </div>
                             <div class="academic-year">للعام الدراسي ( 2025 – 2026 م )</div>
                         </div>
 
@@ -2285,44 +3308,41 @@ fun generateGradesHtml(
                             </div>
                             <div class="info-card">
                                 <span class="card-label">مدرس المادة المحترم</span>
-                                <span class="card-val val-teacher">${teacherName}</span>
+                                <span class="card-val val-teacher">${if (teacherName.isNotBlank()) teacherName else "..................."}</span>
                             </div>
                         </div>
 
                         <div class="cover-bottom">
-                            <div class="sig-col">
+                            <div class="sig-card">
                                 <div class="sig-title">أستاذ المادة</div>
-                                <div class="sig-name">${teacherName}</div>
+                                <div class="sig-name">${if (teacherName.isNotBlank()) teacherName else "&nbsp;"}</div>
                                 <div class="sig-dots">التوقيع: ...................</div>
                             </div>
 
-                            <div class="seal-circle">
-                                <span>الختم الرسمي</span>
-                                <small>للمدرسة</small>
-                            </div>
-
-                            <div class="sig-col">
-                                <div class="sig-title">مدير المدرسة</div>
-                                <div class="sig-name">${config?.managerName?.takeIf { it.isNotBlank() } ?: "مدير المدرسة"}</div>
+                            <div class="sig-card">
+                                <div class="sig-title">إدارة المدرسة</div>
+                                <div class="sig-name">${if (cleanManagerName.isNotBlank()) cleanManagerName else "&nbsp;"}</div>
                                 <div class="sig-dots">التوقيع: ...................</div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
+            """ else ""}
 
-            <!-- Page 2+: Grades Table Page -->
+            ${if (!onlyCover) """
+            <!-- Grades Table Page -->
             <div class="table-page">
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 8px; margin-bottom: 8px;">
+                <div class="official-header">
                     <div>
-                        <span style="font-weight: 900; font-size: 13px; color: #1e3a8a;">${schoolName}</span><br>
-                        <span style="font-size: 10px; color: #64748b;">${directorate}</span>
+                        ${if (schoolName.isNotBlank()) """<span style="font-weight: 900; font-size: 12px; color: #1e3a8a;">${schoolName}</span><br>""" else ""}
+                        <span style="font-size: 9.5px; color: #64748b;">${directorate}</span>
                     </div>
                     <div style="text-align: center;">
-                        <span style="font-weight: bold; font-size: 14px;">كشف الدرجات الرسمي - ${tabName}</span><br>
-                        <span style="font-size: 11px; font-weight: bold; color: #d97706;">المادة: ${subject} | الصف: ${grade} (${section}) | أستاذ المادة: ${teacherName}</span>
+                        <span style="font-weight: 900; font-size: 14px; color: #1e3a8a;">${tabName}</span><br>
+                        <span style="font-size: 10px; font-weight: bold; color: #475569;">المادة: ${subject} | الصف: ${grade} (${section})${if (teacherName.isNotBlank()) " | مدرس المادة: $teacherName" else ""}</span>
                     </div>
-                    <div style="text-align: left; font-size: 10px; color: #64748b;">
+                    <div style="text-align: left; font-size: 9.5px; color: #64748b;">
                         <span>العام الدراسي: 2025-2026</span><br>
                         <span>التاريخ: ${java.time.LocalDate.now()}</span>
                     </div>
@@ -2337,31 +3357,49 @@ fun generateGradesHtml(
                     </tbody>
                 </table>
 
-                <!-- Statistics Summary Bar at the bottom of the page -->
-                <div class="stats-bar" style="margin-top: 15px; margin-bottom: 15px;">
-                    <div style="text-align: center;">
-                        <span style="font-size: 10px; color: #64748b;">عدد الطلاب</span><br>
-                        <span style="font-size: 14px; font-weight: bold; color: #0f172a;">$totalSt</span>
-                    </div>
-                    <div style="text-align: center;">
-                        <span style="font-size: 10px; color: #15803d;">الناجحين</span><br>
-                        <span style="font-size: 14px; font-weight: bold; color: #16a34a;">$passedSt</span>
-                    </div>
-                    <div style="text-align: center;">
-                        <span style="font-size: 10px; color: #b91c1c;">الراسبين</span><br>
-                        <span style="font-size: 14px; font-weight: bold; color: #dc2626;">$failedSt</span>
-                    </div>
-                    <div style="text-align: center;">
-                        <span style="font-size: 10px; color: #047857;">نسبة النجاح ($stageLabel)</span><br>
-                        <span style="font-size: 14px; font-weight: bold; color: #059669;">$passRateVal%</span>
-                    </div>
+                <!-- Statistics Summary Bar -->
+                <div class="stats-bar">
+                    ${if (progHtmlStats.stageName == "لم تُدخل درجات" || totalSt == 0) """
+                        <div style="text-align: center; width: 100%; color: #64748b; font-size: 10px; font-weight: bold;">
+                            عدد الطلاب الكلي: $totalSt طالب &bull; لم يتم رصد أي درجات في هذا السجل بعد
+                        </div>
+                    """ else """
+                        <div>
+                            <span style="color: #64748b;">عدد الطلاب:</span>
+                            <span style="color: #0f172a;">$totalSt</span>
+                        </div>
+                        <div>
+                            <span style="color: #15803d;">الناجحين:</span>
+                            <span style="color: #16a34a;">$passedSt</span>
+                        </div>
+                        <div>
+                            <span style="color: #b91c1c;">المكملين / الراسبين:</span>
+                            <span style="color: #dc2626;">$failedSt</span>
+                        </div>
+                        <div>
+                            <span style="color: #1d4ed8;">نسبة النجاح:</span>
+                            <span style="color: #2563eb;">$passRateVal%</span>
+                        </div>
+                        <div>
+                            <span style="color: #b45309;">المرحلة الحالية:</span>
+                            <span style="color: #92400e;">$stageLabel</span>
+                        </div>
+                    """}
                 </div>
 
+                <!-- Signatures -->
                 <div class="signatures">
-                    <div>توقيع أستاذ المادة (${teacherName}): .......................................</div>
-                    <div>توقيع وختم مدير المدرسة: .......................................</div>
+                    <div>
+                        <span>مدرس المادة${if (teacherName.isNotBlank()) ": $teacherName" else ""}</span><br><br>
+                        <span>التوقيع: .......................................</span>
+                    </div>
+                    <div>
+                        <span>إدارة المدرسة${if (cleanManagerName.isNotBlank()) ": $cleanManagerName" else ""}</span><br><br>
+                        <span>الختم والتوقيع الرسمي: .......................................</span>
+                    </div>
                 </div>
             </div>
+            """ else ""}
         </body>
         </html>
     """.trimIndent()
@@ -2380,10 +3418,11 @@ fun AdminRegisterTable(
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val hScroll = rememberScrollState()
     val cellW = 58.dp
-    val nameW = 115.dp
+    val nameW = 135.dp
     val seqW = 28.dp
     val rowH = 40.dp
     val fontSize = 10.sp
+    val nameFontSize = 13.sp
     val labelFontSize = 8.5.sp
 
     val duplicateNames = remember(students) {
@@ -2399,7 +3438,7 @@ fun AdminRegisterTable(
         ) {
             // Fixed Columns (ثابت: التسلسل ثم اسم الطالب)
             PaperHeaderCell("ت", seqW, rowH * 2, fontSize)
-            PaperHeaderCell("اسم الطالب", nameW, rowH * 2, fontSize)
+            PaperHeaderCell("اسم الطالب", nameW, rowH * 2, 11.5.sp)
 
             // Scrollable Columns (متحركة بالسحب: أعمدة الدرجات)
             Row(
@@ -2454,7 +3493,7 @@ fun AdminRegisterTable(
                         text = std.fullName, 
                         width = nameW, 
                         height = rowH, 
-                        fontSize = fontSize, 
+                        fontSize = nameFontSize, 
                         textColor = if (isDuplicate) Color(0xFFDC2626) else null, 
                         backgroundColor = rowBg, 
                         textAlign = TextAlign.Start,
@@ -2494,10 +3533,11 @@ fun TeacherRegisterTable(
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val hScroll = rememberScrollState()
     val cellW = 52.dp
-    val nameW = 115.dp
+    val nameW = 135.dp
     val seqW = 28.dp
     val rowH = 40.dp
     val fontSize = 9.5.sp
+    val nameFontSize = 13.sp
     val labelFontSize = 8.5.sp
 
     val isM1Locked = !isEditable || (gradeLocks["m1"] == true)
@@ -2520,7 +3560,7 @@ fun TeacherRegisterTable(
         ) {
             // Fixed Columns (ثابت: التسلسل ثم اسم الطالب)
             PaperHeaderCell("ت", seqW, rowH * 2, fontSize)
-            PaperHeaderCell("اسم الطالب", nameW, rowH * 2, fontSize)
+            PaperHeaderCell("اسم الطالب", nameW, rowH * 2, 11.5.sp)
 
             // Scrollable Columns (متحركة بالسحب: أعمدة الدرجات)
             Row(
@@ -2579,7 +3619,7 @@ fun TeacherRegisterTable(
                         text = std.fullName, 
                         width = nameW, 
                         height = rowH, 
-                        fontSize = fontSize, 
+                        fontSize = nameFontSize, 
                         textColor = if (isDuplicate) Color(0xFFDC2626) else null, 
                         backgroundColor = rowBg, 
                         textAlign = TextAlign.Start,
@@ -2625,10 +3665,11 @@ fun DailyRegisterTable(
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val hScroll = rememberScrollState()
     val cellW = 44.dp
-    val nameW = 115.dp
+    val nameW = 135.dp
     val seqW = 28.dp
     val rowH = 40.dp
     val fontSize = 9.5.sp
+    val nameFontSize = 13.sp
     val labelFontSize = 8.sp
 
     val isM1Locked = !isEditable || (gradeLocks["m1"] == true)
@@ -2638,12 +3679,57 @@ fun DailyRegisterTable(
     val isM4Locked = !isEditable || (gradeLocks["m4"] == true)
     val isFinalLocked = !isEditable || (gradeLocks["final"] == true)
 
-    var m1Count by remember { mutableIntStateOf(1) }
-    var m2Count by remember { mutableIntStateOf(1) }
-    var m3Count by remember { mutableIntStateOf(1) }
-    var m4Count by remember { mutableIntStateOf(1) }
-    var midtermOralCount by remember { mutableIntStateOf(1) }
-    var finalOralCount by remember { mutableIntStateOf(1) }
+    val initialM1Count = remember(settings, students, isSpecial) {
+        if (!isSpecial) 1 else {
+            val maxNamed = (0..4).indexOfLast { settings.columnNames.getOrElse(it) { "" }.isNotBlank() }
+            val maxWithMark = (0..4).indexOfLast { i -> students.any { it.marks.m1Daily.getOrElse(i) { 0f } > 0f } }
+            maxOf(1, maxOf(maxNamed, maxWithMark) + 1)
+        }
+    }
+    var m1Count by remember(initialM1Count) { mutableIntStateOf(initialM1Count) }
+
+    val initialM2Count = remember(settings, students, isSpecial) {
+        if (!isSpecial) 1 else {
+            val maxNamed = (0..4).indexOfLast { settings.columnNames.getOrElse(5 + it) { "" }.isNotBlank() }
+            val maxWithMark = (0..4).indexOfLast { i -> students.any { it.marks.m2Daily.getOrElse(i) { 0f } > 0f } }
+            maxOf(1, maxOf(maxNamed, maxWithMark) + 1)
+        }
+    }
+    var m2Count by remember(initialM2Count) { mutableIntStateOf(initialM2Count) }
+
+    val initialM3Count = remember(settings, students, isSpecial) {
+        if (!isSpecial) 1 else {
+            val maxNamed = (0..4).indexOfLast { settings.columnNames.getOrElse(10 + it) { "" }.isNotBlank() }
+            val maxWithMark = (0..4).indexOfLast { i -> students.any { it.marks.m3Daily.getOrElse(i) { 0f } > 0f } }
+            maxOf(1, maxOf(maxNamed, maxWithMark) + 1)
+        }
+    }
+    var m3Count by remember(initialM3Count) { mutableIntStateOf(initialM3Count) }
+
+    val initialM4Count = remember(settings, students, isSpecial) {
+        if (!isSpecial) 1 else {
+            val maxNamed = (0..4).indexOfLast { settings.columnNames.getOrElse(15 + it) { "" }.isNotBlank() }
+            val maxWithMark = (0..4).indexOfLast { i -> students.any { it.marks.m4Daily.getOrElse(i) { 0f } > 0f } }
+            maxOf(1, maxOf(maxNamed, maxWithMark) + 1)
+        }
+    }
+    var m4Count by remember(initialM4Count) { mutableIntStateOf(initialM4Count) }
+
+    val initialMidtermOralCount = remember(students, isSpecial) {
+        if (!isSpecial) 1 else {
+            val maxWithMark = (0..4).indexOfLast { i -> students.any { it.marks.midtermOral.getOrElse(i) { 0f } > 0f } }
+            maxOf(1, maxWithMark + 1)
+        }
+    }
+    var midtermOralCount by remember(initialMidtermOralCount) { mutableIntStateOf(initialMidtermOralCount) }
+
+    val initialFinalOralCount = remember(students, isSpecial) {
+        if (!isSpecial) 1 else {
+            val maxWithMark = (0..4).indexOfLast { i -> students.any { it.marks.finalOral.getOrElse(i) { 0f } > 0f } }
+            maxOf(1, maxWithMark + 1)
+        }
+    }
+    var finalOralCount by remember(initialFinalOralCount) { mutableIntStateOf(initialFinalOralCount) }
 
     val duplicateNames = remember(students) {
         students.groupBy { it.fullName }.filter { it.value.size > 1 }.keys
@@ -2658,7 +3744,7 @@ fun DailyRegisterTable(
         ) {
             // Fixed Columns (ثابت: التسلسل ثم اسم الطالب)
             PaperHeaderCell("ت", seqW, rowH * 2, fontSize)
-            PaperHeaderCell("اسم الطالب", nameW, rowH * 2, fontSize)
+            PaperHeaderCell("اسم الطالب", nameW, rowH * 2, 11.5.sp)
 
             // Scrollable Columns (متحركة بالسحب: أعمدة الدرجات)
             Row(
@@ -2670,32 +3756,54 @@ fun DailyRegisterTable(
                     // Row 1: Top Group Headers with Distinct Themes
                     Row {
                         // 1. الشهر الأول (Blue Group)
-                        PaperHeaderCellWithAdd(
-                            text = if (isM1Locked) "الشهر الأول 🔒" else "الشهر الأول", 
-                            width = cellW * (m1Count + 3), 
-                            height = rowH, 
-                            fontSize = fontSize,
-                            textColor = Color.White,
-                            backgroundColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A),
-                            onAdd = { if (!isM1Locked && m1Count < 5) m1Count++ }, 
-                            onRemove = { if (!isM1Locked && m1Count > 1) m1Count-- },
-                            canAdd = !isM1Locked && m1Count < 5,
-                            canRemove = !isM1Locked && m1Count > 1
-                        )
+                        if (isSpecial) {
+                            PaperHeaderCellWithAdd(
+                                text = if (isM1Locked) "الشهر الأول 🔒" else "الشهر الأول", 
+                                width = cellW * (m1Count + 3), 
+                                height = rowH, 
+                                fontSize = fontSize,
+                                textColor = Color.White,
+                                backgroundColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A),
+                                onAdd = { if (!isM1Locked && m1Count < 5) m1Count++ }, 
+                                onRemove = { if (!isM1Locked && m1Count > 1) m1Count-- },
+                                canAdd = !isM1Locked && m1Count < 5,
+                                canRemove = !isM1Locked && m1Count > 1
+                            )
+                        } else {
+                            PaperHeaderCell(
+                                text = if (isM1Locked) "الشهر الأول 🔒" else "الشهر الأول", 
+                                width = cellW * 3, 
+                                height = rowH, 
+                                fontSize = fontSize, 
+                                textColor = Color.White, 
+                                backgroundColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A)
+                            )
+                        }
 
                         // 2. الشهر الثاني (Purple Group)
-                        PaperHeaderCellWithAdd(
-                            text = if (isM2Locked) "الشهر الثاني 🔒" else "الشهر الثاني", 
-                            width = cellW * (m2Count + 3), 
-                            height = rowH, 
-                            fontSize = fontSize,
-                            textColor = Color.White,
-                            backgroundColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6),
-                            onAdd = { if (!isM2Locked && m2Count < 5) m2Count++ }, 
-                            onRemove = { if (!isM2Locked && m2Count > 1) m2Count-- },
-                            canAdd = !isM2Locked && m2Count < 5,
-                            canRemove = !isM2Locked && m2Count > 1
-                        )
+                        if (isSpecial) {
+                            PaperHeaderCellWithAdd(
+                                text = if (isM2Locked) "الشهر الثاني 🔒" else "الشهر الثاني", 
+                                width = cellW * (m2Count + 3), 
+                                height = rowH, 
+                                fontSize = fontSize,
+                                textColor = Color.White,
+                                backgroundColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6),
+                                onAdd = { if (!isM2Locked && m2Count < 5) m2Count++ }, 
+                                onRemove = { if (!isM2Locked && m2Count > 1) m2Count-- },
+                                canAdd = !isM2Locked && m2Count < 5,
+                                canRemove = !isM2Locked && m2Count > 1
+                            )
+                        } else {
+                            PaperHeaderCell(
+                                text = if (isM2Locked) "الشهر الثاني 🔒" else "الشهر الثاني", 
+                                width = cellW * 3, 
+                                height = rowH, 
+                                fontSize = fontSize, 
+                                textColor = Color.White, 
+                                backgroundColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6)
+                            )
+                        }
 
                         // 3. الفصل الأول (Amber Group)
                         PaperHeaderCell("فص1", cellW, rowH, fontSize, textColor = Color.White, backgroundColor = Color(0xFFB45309))
@@ -2726,32 +3834,54 @@ fun DailyRegisterTable(
                         }
                         
                         // 5. الشهر الثالث (Blue Group)
-                        PaperHeaderCellWithAdd(
-                            text = if (isM3Locked) "الشهر الثالث 🔒" else "الشهر الثالث", 
-                            width = cellW * (m3Count + 3), 
-                            height = rowH, 
-                            fontSize = fontSize,
-                            textColor = Color.White,
-                            backgroundColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A),
-                            onAdd = { if (!isM3Locked && m3Count < 5) m3Count++ }, 
-                            onRemove = { if (!isM3Locked && m3Count > 1) m3Count-- },
-                            canAdd = !isM3Locked && m3Count < 5,
-                            canRemove = !isM3Locked && m3Count > 1
-                        )
+                        if (isSpecial) {
+                            PaperHeaderCellWithAdd(
+                                text = if (isM3Locked) "الشهر الثالث 🔒" else "الشهر الثالث", 
+                                width = cellW * (m3Count + 3), 
+                                height = rowH, 
+                                fontSize = fontSize,
+                                textColor = Color.White,
+                                backgroundColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A),
+                                onAdd = { if (!isM3Locked && m3Count < 5) m3Count++ }, 
+                                onRemove = { if (!isM3Locked && m3Count > 1) m3Count-- },
+                                canAdd = !isM3Locked && m3Count < 5,
+                                canRemove = !isM3Locked && m3Count > 1
+                            )
+                        } else {
+                            PaperHeaderCell(
+                                text = if (isM3Locked) "الشهر الثالث 🔒" else "الشهر الثالث", 
+                                width = cellW * 3, 
+                                height = rowH, 
+                                fontSize = fontSize, 
+                                textColor = Color.White, 
+                                backgroundColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A)
+                            )
+                        }
 
                         // 6. الشهر الرابع (Purple Group)
-                        PaperHeaderCellWithAdd(
-                            text = if (isM4Locked) "الشهر الرابع 🔒" else "الشهر الرابع", 
-                            width = cellW * (m4Count + 3), 
-                            height = rowH, 
-                            fontSize = fontSize,
-                            textColor = Color.White,
-                            backgroundColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6),
-                            onAdd = { if (!isM4Locked && m4Count < 5) m4Count++ }, 
-                            onRemove = { if (!isM4Locked && m4Count > 1) m4Count-- },
-                            canAdd = !isM4Locked && m4Count < 5,
-                            canRemove = !isM4Locked && m4Count > 1
-                        )
+                        if (isSpecial) {
+                            PaperHeaderCellWithAdd(
+                                text = if (isM4Locked) "الشهر الرابع 🔒" else "الشهر الرابع", 
+                                width = cellW * (m4Count + 3), 
+                                height = rowH, 
+                                fontSize = fontSize,
+                                textColor = Color.White,
+                                backgroundColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6),
+                                onAdd = { if (!isM4Locked && m4Count < 5) m4Count++ }, 
+                                onRemove = { if (!isM4Locked && m4Count > 1) m4Count-- },
+                                canAdd = !isM4Locked && m4Count < 5,
+                                canRemove = !isM4Locked && m4Count > 1
+                            )
+                        } else {
+                            PaperHeaderCell(
+                                text = if (isM4Locked) "الشهر الرابع 🔒" else "الشهر الرابع", 
+                                width = cellW * 3, 
+                                height = rowH, 
+                                fontSize = fontSize, 
+                                textColor = Color.White, 
+                                backgroundColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6)
+                            )
+                        }
 
                         // 7. الفصل الثاني والسعي (Amber & Orange Groups)
                         PaperHeaderCell("فص2", cellW, rowH, fontSize, textColor = Color.White, backgroundColor = Color(0xFFB45309))
@@ -2790,26 +3920,40 @@ fun DailyRegisterTable(
                     // Row 2: Sub-headers Under Each Month / Section
                     Row {
                         // Month 1 Subheaders
-                        repeat(m1Count) { i ->
-                            val colName = settings.columnNames.getOrElse(i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else null) { 
-                                if (!isM1Locked) onEditHeader(i) 
+                        if (isSpecial) {
+                            repeat(m1Count) { i ->
+                                val defaultName = if (m1Count == 1) "شفهي" else "شفهي ${i+1}"
+                                val colName = settings.columnNames.getOrElse(i) { "" }.ifBlank { defaultName }
+                                EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else null) { 
+                                    if (!isM1Locked) onEditHeader(i) 
+                                }
                             }
+                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("معدل ش1", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
+                        } else {
+                            PaperHeaderCell("يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("معدل ش1", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM1Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
-                        PaperHeaderCell("معدل ش1", cellW, rowH, labelFontSize, backgroundColor = if (isM1Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM1Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
                         
                         // Month 2 Subheaders
-                        repeat(m2Count) { i ->
-                            val colName = settings.columnNames.getOrElse(5 + i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else null) { 
-                                if (!isM2Locked) onEditHeader(5 + i) 
+                        if (isSpecial) {
+                            repeat(m2Count) { i ->
+                                val defaultName = if (m2Count == 1) "شفهي" else "شفهي ${i+1}"
+                                val colName = settings.columnNames.getOrElse(5 + i) { "" }.ifBlank { defaultName }
+                                EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else null) { 
+                                    if (!isM2Locked) onEditHeader(5 + i) 
+                                }
                             }
+                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("معدل ش2", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6))
+                        } else {
+                            PaperHeaderCell("يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("معدل ش2", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6))
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM2Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
-                        PaperHeaderCell("معدل ش2", cellW, rowH, labelFontSize, backgroundColor = if (isM2Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM2Locked) Color(0xFF475569) else Color(0xFF5B21B6))
                         
                         // Term 1 Subheader
                         PaperHeaderCell("معدل ف1", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFFEF3C7), textColor = Color(0xFFB45309))
@@ -2827,26 +3971,40 @@ fun DailyRegisterTable(
                         }
                         
                         // Month 3 Subheaders
-                        repeat(m3Count) { i ->
-                            val colName = settings.columnNames.getOrElse(10 + i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else null) { 
-                                if (!isM3Locked) onEditHeader(10 + i) 
+                        if (isSpecial) {
+                            repeat(m3Count) { i ->
+                                val defaultName = if (m3Count == 1) "شفهي" else "شفهي ${i+1}"
+                                val colName = settings.columnNames.getOrElse(10 + i) { "" }.ifBlank { defaultName }
+                                EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else null) { 
+                                    if (!isM3Locked) onEditHeader(10 + i) 
+                                }
                             }
+                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("معدل ش3", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
+                        } else {
+                            PaperHeaderCell("يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
+                            PaperHeaderCell("معدل ش3", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFE2E8F0) else Color(0xFFDBEAFE), textColor = if (isM3Locked) Color(0xFF64748B) else Color(0xFF1E3A8A))
-                        PaperHeaderCell("معدل ش3", cellW, rowH, labelFontSize, backgroundColor = if (isM3Locked) Color(0xFFCBD5E1) else Color(0xFFBFDBFE), textColor = if (isM3Locked) Color(0xFF475569) else Color(0xFF1E3A8A))
                         
                         // Month 4 Subheaders
-                        repeat(m4Count) { i ->
-                            val colName = settings.columnNames.getOrElse(15 + i) { "يومية ${i+1}" }
-                            EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else null) { 
-                                if (!isM4Locked) onEditHeader(15 + i) 
+                        if (isSpecial) {
+                            repeat(m4Count) { i ->
+                                val defaultName = if (m4Count == 1) "شفهي" else "شفهي ${i+1}"
+                                val colName = settings.columnNames.getOrElse(15 + i) { "" }.ifBlank { defaultName }
+                                EditableHeaderCell(colName, cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else null) { 
+                                    if (!isM4Locked) onEditHeader(15 + i) 
+                                }
                             }
+                            PaperHeaderCell("م.شفهي", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("معدل ش4", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6))
+                        } else {
+                            PaperHeaderCell("يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
+                            PaperHeaderCell("معدل ش4", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6))
                         }
-                        PaperHeaderCell("م.يومي", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
-                        PaperHeaderCell("تحريري", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFE2E8F0) else Color(0xFFEDE9FE), textColor = if (isM4Locked) Color(0xFF64748B) else Color(0xFF5B21B6))
-                        PaperHeaderCell("معدل ش4", cellW, rowH, labelFontSize, backgroundColor = if (isM4Locked) Color(0xFFCBD5E1) else Color(0xFFDDD6FE), textColor = if (isM4Locked) Color(0xFF475569) else Color(0xFF5B21B6))
                         
                         // Term 2 & Annual Subheaders
                         PaperHeaderCell("معدل ف2", cellW, rowH, labelFontSize, backgroundColor = Color(0xFFFEF3C7), textColor = Color(0xFFB45309))
@@ -2894,7 +4052,7 @@ fun DailyRegisterTable(
                         text = std.fullName, 
                         width = nameW, 
                         height = rowH, 
-                        fontSize = fontSize, 
+                        fontSize = nameFontSize, 
                         textColor = if (isDuplicate) Color(0xFFDC2626) else null, 
                         backgroundColor = rowBg, 
                         textAlign = TextAlign.Start,
@@ -2908,32 +4066,54 @@ fun DailyRegisterTable(
                             .horizontalScroll(hScroll)
                     ) {
                         // Month 1 Data Cells
-                        repeat(m1Count) { i ->
-                            val v = m.m1Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM1Locked) { valNew -> 
-                                val nl = m.m1Daily.toMutableList()
-                                while (nl.size < 5) nl.add(0f)
-                                nl[i] = valNew
-                                onUpdateMarks(std, m.copy(m1Daily = nl)) 
+                        if (isSpecial) {
+                            repeat(m1Count) { i ->
+                                val v = m.m1Daily.getOrElse(i) { 0f }
+                                PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM1Locked) { valNew -> 
+                                    val nl = m.m1Daily.toMutableList()
+                                    while (nl.size < 5) nl.add(0f)
+                                    nl[i] = valNew
+                                    onUpdateMarks(std, m.copy(m1Daily = nl)) 
+                                }
                             }
+                            PaperTableCell(m.m1Daily.take(m1Count).sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
+                            PaperInputCell(m.m1Written, cellW, rowH, fontSize, isEditable = !isM1Locked) { onUpdateMarks(std, m.copy(m1Written = it)) }
+                            PaperTableCell(m.m1MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
+                        } else {
+                            val v = m.m1Daily.firstOrNull() ?: 0f
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM1Locked) { valNew ->
+                                val nl = m.m1Daily.toMutableList()
+                                if (nl.isEmpty()) nl.add(valNew) else nl[0] = valNew
+                                onUpdateMarks(std, m.copy(m1Daily = nl))
+                            }
+                            PaperInputCell(m.m1Written, cellW, rowH, fontSize, isEditable = !isM1Locked) { onUpdateMarks(std, m.copy(m1Written = it)) }
+                            PaperTableCell(m.m1MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
                         }
-                        PaperTableCell(m.m1Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m1Written, cellW, rowH, fontSize, isEditable = !isM1Locked) { onUpdateMarks(std, m.copy(m1Written = it)) }
-                        PaperTableCell(m.m1MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
                         
                         // Month 2 Data Cells
-                        repeat(m2Count) { i ->
-                            val v = m.m2Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM2Locked) { valNew -> 
-                                val nl = m.m2Daily.toMutableList()
-                                while (nl.size < 5) nl.add(0f)
-                                nl[i] = valNew
-                                onUpdateMarks(std, m.copy(m2Daily = nl)) 
+                        if (isSpecial) {
+                            repeat(m2Count) { i ->
+                                val v = m.m2Daily.getOrElse(i) { 0f }
+                                PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM2Locked) { valNew -> 
+                                    val nl = m.m2Daily.toMutableList()
+                                    while (nl.size < 5) nl.add(0f)
+                                    nl[i] = valNew
+                                    onUpdateMarks(std, m.copy(m2Daily = nl)) 
+                                }
                             }
+                            PaperTableCell(m.m2Daily.take(m2Count).sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
+                            PaperInputCell(m.m2Written, cellW, rowH, fontSize, isEditable = !isM2Locked) { onUpdateMarks(std, m.copy(m2Written = it)) }
+                            PaperTableCell(m.m2MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
+                        } else {
+                            val v = m.m2Daily.firstOrNull() ?: 0f
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM2Locked) { valNew ->
+                                val nl = m.m2Daily.toMutableList()
+                                if (nl.isEmpty()) nl.add(valNew) else nl[0] = valNew
+                                onUpdateMarks(std, m.copy(m2Daily = nl))
+                            }
+                            PaperInputCell(m.m2Written, cellW, rowH, fontSize, isEditable = !isM2Locked) { onUpdateMarks(std, m.copy(m2Written = it)) }
+                            PaperTableCell(m.m2MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
                         }
-                        PaperTableCell(m.m2Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m2Written, cellW, rowH, fontSize, isEditable = !isM2Locked) { onUpdateMarks(std, m.copy(m2Written = it)) }
-                        PaperTableCell(m.m2MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
                         
                         // Term 1 Data Cell
                         PaperTableCell(m.term1Avg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFFEF3C7).copy(alpha = 0.5f))
@@ -2949,7 +4129,7 @@ fun DailyRegisterTable(
                                     onUpdateMarks(std, m.copy(midtermOral = nl)) 
                                 }
                             }
-                            PaperTableCell(m.midtermOral.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
+                            PaperTableCell(m.midtermOral.take(midtermOralCount).sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
                             PaperInputCell(m.midtermScore, cellW, rowH, fontSize, isEditable = !isMidtermLocked) { onUpdateMarks(std, m.copy(midtermScore = it)) }
                             PaperTableCell(m.midtermFinalGrade.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFCCFBF1).copy(alpha = 0.5f))
                         } else {
@@ -2957,32 +4137,54 @@ fun DailyRegisterTable(
                         }
                         
                         // Month 3 Data Cells
-                        repeat(m3Count) { i ->
-                            val v = m.m3Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM3Locked) { valNew -> 
-                                val nl = m.m3Daily.toMutableList()
-                                while (nl.size < 5) nl.add(0f)
-                                nl[i] = valNew
-                                onUpdateMarks(std, m.copy(m3Daily = nl)) 
+                        if (isSpecial) {
+                            repeat(m3Count) { i ->
+                                val v = m.m3Daily.getOrElse(i) { 0f }
+                                PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM3Locked) { valNew -> 
+                                    val nl = m.m3Daily.toMutableList()
+                                    while (nl.size < 5) nl.add(0f)
+                                    nl[i] = valNew
+                                    onUpdateMarks(std, m.copy(m3Daily = nl)) 
+                                }
                             }
+                            PaperTableCell(m.m3Daily.take(m3Count).sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
+                            PaperInputCell(m.m3Written, cellW, rowH, fontSize, isEditable = !isM3Locked) { onUpdateMarks(std, m.copy(m3Written = it)) }
+                            PaperTableCell(m.m3MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
+                        } else {
+                            val v = m.m3Daily.firstOrNull() ?: 0f
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM3Locked) { valNew ->
+                                val nl = m.m3Daily.toMutableList()
+                                if (nl.isEmpty()) nl.add(valNew) else nl[0] = valNew
+                                onUpdateMarks(std, m.copy(m3Daily = nl))
+                            }
+                            PaperInputCell(m.m3Written, cellW, rowH, fontSize, isEditable = !isM3Locked) { onUpdateMarks(std, m.copy(m3Written = it)) }
+                            PaperTableCell(m.m3MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
                         }
-                        PaperTableCell(m.m3Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m3Written, cellW, rowH, fontSize, isEditable = !isM3Locked) { onUpdateMarks(std, m.copy(m3Written = it)) }
-                        PaperTableCell(m.m3MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFDBEAFE).copy(alpha = 0.5f))
                         
                         // Month 4 Data Cells
-                        repeat(m4Count) { i ->
-                            val v = m.m4Daily.getOrElse(i) { 0f }
-                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM4Locked) { valNew -> 
-                                val nl = m.m4Daily.toMutableList()
-                                while (nl.size < 5) nl.add(0f)
-                                nl[i] = valNew
-                                onUpdateMarks(std, m.copy(m4Daily = nl)) 
+                        if (isSpecial) {
+                            repeat(m4Count) { i ->
+                                val v = m.m4Daily.getOrElse(i) { 0f }
+                                PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM4Locked) { valNew -> 
+                                    val nl = m.m4Daily.toMutableList()
+                                    while (nl.size < 5) nl.add(0f)
+                                    nl[i] = valNew
+                                    onUpdateMarks(std, m.copy(m4Daily = nl)) 
+                                }
                             }
+                            PaperTableCell(m.m4Daily.take(m4Count).sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
+                            PaperInputCell(m.m4Written, cellW, rowH, fontSize, isEditable = !isM4Locked) { onUpdateMarks(std, m.copy(m4Written = it)) }
+                            PaperTableCell(m.m4MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
+                        } else {
+                            val v = m.m4Daily.firstOrNull() ?: 0f
+                            PaperInputCell(v, cellW, rowH, fontSize, isEditable = !isM4Locked) { valNew ->
+                                val nl = m.m4Daily.toMutableList()
+                                if (nl.isEmpty()) nl.add(valNew) else nl[0] = valNew
+                                onUpdateMarks(std, m.copy(m4Daily = nl))
+                            }
+                            PaperInputCell(m.m4Written, cellW, rowH, fontSize, isEditable = !isM4Locked) { onUpdateMarks(std, m.copy(m4Written = it)) }
+                            PaperTableCell(m.m4MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
                         }
-                        PaperTableCell(m.m4Daily.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
-                        PaperInputCell(m.m4Written, cellW, rowH, fontSize, isEditable = !isM4Locked) { onUpdateMarks(std, m.copy(m4Written = it)) }
-                        PaperTableCell(m.m4MonthAvg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFEDE9FE).copy(alpha = 0.5f))
                         
                         // Term 2 & Annual Average Data Cells
                         PaperTableCell(m.term2Avg.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFFEF3C7).copy(alpha = 0.5f))
@@ -2999,7 +4201,7 @@ fun DailyRegisterTable(
                                     onUpdateMarks(std, m.copy(finalOral = nl)) 
                                 }
                             }
-                            PaperTableCell(m.finalOral.sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
+                            PaperTableCell(m.finalOral.take(finalOralCount).sum().toInt().toString(), cellW, rowH, fontSize, backgroundColor = rowBg)
                             PaperInputCell(m.finalWrittenD1, cellW, rowH, fontSize, isEditable = !isFinalLocked) { onUpdateMarks(std, m.copy(finalWrittenD1 = it)) }
                             PaperTableCell(m.finalExamTotal.toInt().toString(), cellW, rowH, fontSize, isBold = true, backgroundColor = Color(0xFFD1FAE5).copy(alpha = 0.5f))
                         } else {
@@ -3037,13 +4239,13 @@ fun PaperHeaderCell(
     } else {
         textColor ?: currentTheme.tableHeaderTextColor
     }
-    val borderColor = currentTheme.tableBorderColor
+    val borderColor = if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFF475569)
 
     Box(
         modifier = Modifier
             .width(width)
             .height(height)
-            .border(0.5.dp, borderColor)
+            .border(0.8.dp, borderColor)
             .background(effectiveBg)
             .padding(horizontal = 2.dp),
         contentAlignment = Alignment.Center
@@ -3215,11 +4417,13 @@ fun PaperTableCell(
     onLongClick: (() -> Unit)? = null
 ) {
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
+    val isName = (textAlign == TextAlign.Start || textAlign == TextAlign.Right)
+    val effectiveFontSize = if (isName && fontSize.value < 13f) 13.sp else fontSize
     val effectiveTextColor = if (currentTheme.isDark) {
         if (textColor == Color(0xFFDC2626) || textColor == Color.Red) Color(0xFFF87171)
         else currentTheme.textPrimaryColor
     } else {
-        textColor ?: Color(0xFF0F172A)
+        textColor ?: (if (isName) Color(0xFF000000) else Color(0xFF0F172A))
     }
     val effectiveBg = if (currentTheme.isDark) {
         if (backgroundColor == currentTheme.tableAltCellBg) currentTheme.tableAltCellBg
@@ -3227,7 +4431,7 @@ fun PaperTableCell(
     } else {
         backgroundColor ?: currentTheme.tableCellBg
     }
-    val borderColor = currentTheme.tableBorderColor
+    val borderColor = if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFF64748B)
 
     val clickModifier = when {
         onLongClick != null -> Modifier.combinedClickable(
@@ -3242,21 +4446,21 @@ fun PaperTableCell(
         modifier = Modifier
             .width(width)
             .height(height)
-            .border(0.5.dp, borderColor)
+            .border(0.8.dp, borderColor)
             .background(effectiveBg)
             .then(clickModifier)
             .padding(start = 3.dp, end = 2.dp),
-        contentAlignment = if (textAlign == TextAlign.Start || textAlign == TextAlign.Right) Alignment.CenterStart else Alignment.Center
+        contentAlignment = if (isName) Alignment.CenterStart else Alignment.Center
     ) {
         Text(
             text = text,
-            fontSize = fontSize,
-            fontWeight = if (isBold) FontWeight.Black else FontWeight.Medium,
+            fontSize = effectiveFontSize,
+            fontWeight = if (isBold || isName) FontWeight.Black else FontWeight.Bold,
             color = effectiveTextColor,
             textAlign = textAlign,
             maxLines = 2,
             softWrap = true,
-            lineHeight = (fontSize.value + 2.5f).sp
+            lineHeight = (effectiveFontSize.value + 3.5f).sp
         )
     }
 }
@@ -3353,10 +4557,11 @@ fun AbsencesRegisterTable(
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val date = try { java.time.LocalDate.parse(selectedDate) } catch (e: Exception) { java.time.LocalDate.now() }
     val cellW = 110.dp
-    val nameW = 115.dp
+    val nameW = 135.dp
     val seqW = 28.dp
     val rowH = 44.dp
     val fontSize = 10.5.sp
+    val nameFontSize = 13.sp
 
     val duplicateNames = remember(students) {
         students.groupBy { it.fullName }.filter { it.value.size > 1 }.keys
@@ -3428,7 +4633,7 @@ fun AbsencesRegisterTable(
             ) {
                 // Fixed Columns (ثابت: التسلسل ثم اسم الطالب)
                 PaperHeaderCell("ت", seqW, 40.dp, fontSize)
-                PaperHeaderCell("اسم الطالب", nameW, 40.dp, fontSize)
+                PaperHeaderCell("اسم الطالب", nameW, 40.dp, 11.5.sp)
 
                 // Scrollable Columns (متحركة بالسحب)
                 Row(
@@ -3466,7 +4671,7 @@ fun AbsencesRegisterTable(
                             text = std.fullName, 
                             width = nameW, 
                             height = rowH, 
-                            fontSize = fontSize, 
+                            fontSize = nameFontSize, 
                             textColor = if (isDuplicate) Color(0xFFDC2626) else null,
                             backgroundColor = rowBg,
                             textAlign = TextAlign.Start,

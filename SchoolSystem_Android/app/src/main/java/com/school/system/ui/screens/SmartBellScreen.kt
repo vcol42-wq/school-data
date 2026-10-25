@@ -1,9 +1,11 @@
 package com.school.system.ui.screens
 
 import android.app.TimePickerDialog
+import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
 import android.net.Uri
+import org.json.JSONArray
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -290,6 +292,31 @@ fun BellConfigurationScreen(
     onApplyAuto: () -> Unit
 ) {
     val context = LocalContext.current
+    var showCustomTimingsDialog by remember { mutableStateOf(false) }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    val prefs = remember(context, refreshKey) { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
+    val customLessons = remember(showCustomTimingsDialog, refreshKey) {
+        try {
+            val raw = prefs.getString("custom_lesson_durations", null)
+            if (!raw.isNullOrEmpty()) {
+                val arr = JSONArray(raw)
+                (0 until arr.length()).map { arr.getInt(it) }
+            } else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+    val customBreaks = remember(showCustomTimingsDialog, refreshKey) {
+        try {
+            val raw = prefs.getString("custom_break_durations", null)
+            if (!raw.isNullOrEmpty()) {
+                val arr = JSONArray(raw)
+                (0 until arr.length()).map { arr.getInt(it) }
+            } else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+    val startHourStr = remember(config.bellStartHour, config.bellStartMinute) {
+        String.format(Locale.US, "%02d:%02d", config.bellStartHour, config.bellStartMinute)
+    }
+
     val ringtonePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -457,6 +484,59 @@ fun BellConfigurationScreen(
                     )
                 }
 
+                // Advanced Timing Customization & Merge Lessons (0 min break)
+                Surface(
+                    color = Color(0xFFF0FDF4),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Tune, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("تخصيص متقدم ودمج الحصص (0د)", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color(0xFF166534))
+                            }
+                            Surface(
+                                color = Color(0xFFDCFCE7),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(
+                                    "ميزة الدمج 🔗",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF15803D),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            "تعديل مدة كل حصة واستراحة بشكل مستقل، أو جعل مدة الاستراحة 0 دقيقة لدمج درسين متتاليين كدرس واحد.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF166534),
+                            lineHeight = 16.sp
+                        )
+                        Button(
+                            onClick = { showCustomTimingsDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("تعديل أوقات الحصص والفرص والدمج ⏱️", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+
                 // Ringtone picker
                 Surface(
                     color = Color(0xFFF8FAFC),
@@ -503,6 +583,31 @@ fun BellConfigurationScreen(
             Icon(Icons.Default.AutoMode, contentDescription = null)
             Spacer(Modifier.width(8.dp))
             Text("تطبيق وحساب المواعيد لجميع الأيام ⚡", fontWeight = FontWeight.Black, fontSize = 14.sp)
+        }
+
+        if (showCustomTimingsDialog) {
+            ScheduleTimingsDialog(
+                initialStartHour = startHourStr,
+                initialLessonDur = config.bellLessonDuration,
+                initialBreakDur = config.bellBreakDuration,
+                initialCustomLessons = customLessons,
+                initialCustomBreaks = customBreaks,
+                onDismiss = { showCustomTimingsDialog = false },
+                onSave = { newStartHour, newLessons, newBreaks ->
+                    saveTimingPreferences(context, newStartHour, newLessons, newBreaks) {
+                        val parts = newStartHour.split(":")
+                        val sh = parts.getOrNull(0)?.toIntOrNull() ?: config.bellStartHour
+                        val sm = parts.getOrNull(1)?.toIntOrNull() ?: config.bellStartMinute
+                        val avgL = newLessons.firstOrNull() ?: config.bellLessonDuration
+                        val avgB = newBreaks.firstOrNull() ?: config.bellBreakDuration
+                        onUpdateSettings(sh, sm, avgL, avgB, config.bellRingtoneUri)
+                        onApplyAuto()
+                        refreshKey++
+                        showCustomTimingsDialog = false
+                        Toast.makeText(context, "تم حفظ وتطبيق التوقيتات المخصصة ودمج الحصص بنجاح ⚡", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
         }
     }
 }

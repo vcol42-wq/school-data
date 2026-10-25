@@ -552,6 +552,8 @@ export async function exportSchoolDataWithProgress(
         if (parsed.breakDurationMinutes) timingConfig.breakDurationMinutes = Number(parsed.breakDurationMinutes);
         if (parsed.customLessonDurations) timingConfig.customLessonDurations = parsed.customLessonDurations;
         if (parsed.customBreakDurations) timingConfig.customBreakDurations = parsed.customBreakDurations;
+        if (parsed.managerName) timingConfig.manager_name = parsed.managerName;
+        if (parsed.directorateName) timingConfig.directorate_name = parsed.directorateName;
       }
     } catch (_) {}
 

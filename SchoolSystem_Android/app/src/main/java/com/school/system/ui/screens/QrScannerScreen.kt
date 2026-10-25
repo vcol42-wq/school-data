@@ -72,7 +72,7 @@ fun parseScannedDetails(raw: String): ScannedQrDetails {
             }
             ScannedQrDetails(
                 badgeTitle = badgeTitle,
-                teacherName = if (isPrincipal) "المدير / الإشراف العام" else if (isStudent) "طالب / ولي أمر" else tName,
+                teacherName = if (isPrincipal) "" else if (isStudent) "طالب / ولي أمر" else tName,
                 code = pCode,
                 schoolId = sId,
                 schoolName = sName
@@ -111,7 +111,7 @@ fun parseScannedDetails(raw: String): ScannedQrDetails {
         val sId = parts.getOrNull(2)?.trim() ?: ""
         return ScannedQrDetails(
             badgeTitle = "👑 بطاقة المدير / الإشراف العام",
-            teacherName = "مدير المدرسة / المشرف العام",
+            teacherName = "",
             code = code,
             schoolId = sId
         )

@@ -80,9 +80,9 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
             val dayName = WidgetScheduleHelper.getEffectiveDayArabic(context)
             views.setTextViewText(R.id.strip_header_day, dayName)
 
-            val upcoming = WidgetScheduleHelper.calculateUpcomingTeacherLesson(context)
+            val currentActiveLesson = WidgetScheduleHelper.getCurrentActiveLessonNumber(context)
             val isViewingRealToday = (dayName == WidgetScheduleHelper.getRealCurrentDayArabic())
-            val activeLessonNum = if (upcoming.isOngoing && isViewingRealToday) upcoming.lessonNumber else 0
+            val activeLessonNum = if (isViewingRealToday) currentActiveLesson else 0
 
             val lessons = WidgetScheduleHelper.getTodayTeacherLessons(context)
             val lessonsByNum = lessons.associateBy { it.lessonNumber }
@@ -114,20 +114,28 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(classViewId, cleanCls)
 
                     if (i == activeLessonNum) {
-                        views.setTextColor(subjViewId, Color.WHITE)
-                        views.setTextColor(classViewId, Color.parseColor("#FEF08A"))
-                        views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_teacher_highlight_bg)
+                        views.setTextColor(subjViewId, Color.parseColor("#FEF08A"))
+                        views.setTextColor(classViewId, Color.WHITE)
+                        views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_active_teacher_cell_bg)
                     } else {
                         views.setTextColor(subjViewId, Color.WHITE)
                         views.setTextColor(classViewId, Color.parseColor("#E0F2FE"))
                         views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                     }
                 } else {
-                    views.setTextViewText(subjViewId, "شاغر")
-                    views.setTextViewText(classViewId, "-")
-                    views.setTextColor(subjViewId, Color.parseColor("#CBD5E1"))
-                    views.setTextColor(classViewId, Color.parseColor("#94A3B8"))
-                    views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_item_bg)
+                    if (i == activeLessonNum) {
+                        views.setTextViewText(subjViewId, "شاغر")
+                        views.setTextViewText(classViewId, "الآن")
+                        views.setTextColor(subjViewId, Color.parseColor("#34D399"))
+                        views.setTextColor(classViewId, Color.parseColor("#FEF08A"))
+                        views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_active_cell_bg)
+                    } else {
+                        views.setTextViewText(subjViewId, "شاغر")
+                        views.setTextViewText(classViewId, "-")
+                        views.setTextColor(subjViewId, Color.parseColor("#94A3B8"))
+                        views.setTextColor(classViewId, Color.parseColor("#64748B"))
+                        views.setInt(colViewId, "setBackgroundResource", R.drawable.widget_item_bg)
+                    }
                 }
             }
 

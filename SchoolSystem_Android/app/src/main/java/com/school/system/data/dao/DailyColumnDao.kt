@@ -9,6 +9,9 @@ interface DailyColumnDao {
     @Query("SELECT * FROM daily_column_settings WHERE id = :id")
     fun getSettings(id: String): Flow<DailyColumnSetting?>
 
+    @Query("SELECT * FROM daily_column_settings WHERE id = :id")
+    fun getSettingsSync(id: String): DailyColumnSetting?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSetting(setting: DailyColumnSetting)
 }

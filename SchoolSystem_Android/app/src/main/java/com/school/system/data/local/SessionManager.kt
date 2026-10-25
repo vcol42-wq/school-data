@@ -19,17 +19,25 @@ class SessionManager(context: Context) {
     )
 
     // حفظ بيانات المدرسة المختارة
-    fun saveSchoolSession(schoolId: String, schoolCode: String, schoolName: String) {
-        sharedPreferences.edit()
+    fun saveSchoolSession(schoolId: String, schoolCode: String, schoolName: String, managerName: String? = null) {
+        val editor = sharedPreferences.edit()
             .putString("KEY_SCHOOL_ID", schoolId)
             .putString("KEY_SCHOOL_CODE", schoolCode)
             .putString("KEY_SCHOOL_NAME", schoolName)
-            .apply()
+        if (!managerName.isNullOrBlank()) {
+            editor.putString("KEY_MANAGER_NAME", managerName)
+        }
+        editor.apply()
+    }
+
+    fun saveManagerName(managerName: String) {
+        sharedPreferences.edit().putString("KEY_MANAGER_NAME", managerName).apply()
     }
 
     fun getSchoolId(): String? = sharedPreferences.getString("KEY_SCHOOL_ID", null)
     fun getSchoolCode(): String? = sharedPreferences.getString("KEY_SCHOOL_CODE", null)
     fun getSchoolName(): String? = sharedPreferences.getString("KEY_SCHOOL_NAME", null)
+    fun getManagerName(): String? = sharedPreferences.getString("KEY_MANAGER_NAME", null)
 
     fun isSchoolConfigured(): Boolean = getSchoolId() != null
 

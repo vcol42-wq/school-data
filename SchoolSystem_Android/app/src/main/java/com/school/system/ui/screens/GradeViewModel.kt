@@ -43,7 +43,8 @@ class GradeViewModel @Inject constructor(
     private val syncManager: SyncManager,
     private val secureKeyStorage: SecureKeyStorage,
     private val gradesRepository: GradesRepository,
-    private val syncRepository: SyncRepository
+    private val syncRepository: SyncRepository,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
     val config = configDao.getConfig().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
@@ -535,6 +536,76 @@ class GradeViewModel @Inject constructor(
                 onComplete("تمت المزامنة بنجاح وأرشفة غيابات ما قبل 30 يوم!")
             } else {
                 onComplete("فشلت المزامنة!")
+            }
+        }
+    }
+
+    /**
+     * جلب معلومات المدرسة الرسمية واسم المدير من السحابة وتحديثها في الذاكرة المحلية
+     */
+    fun refreshSchoolIdentityFromCloud(onResult: ((Boolean, String?) -> Unit)? = null) {
+        viewModelScope.launch {
+            try {
+                val identity = syncRepository.fetchSchoolIdentityFromCloud()
+                if (identity != null) {
+                    val currentCfg = configDao.getConfig().first() ?: SchoolConfig()
+                    val isInvalidName = { s: String? ->
+                        s.isNullOrBlank() || s == "المدرسة الذكية" || s == "مدرسة التميز للبنين" || s == "مدرسة سحابية" || s == "سجل مستقل (أوفلاين)" || s == "مدرسة مرتبطة" || s == "المدرسة" || s == "school_01"
+                    }
+                    val validSchoolName = if (!isInvalidName(identity.schoolName)) identity.schoolName else currentCfg.schoolName
+                    val validDir = identity.directorateName.ifBlank { currentCfg.directorateName }
+                    val validManager = identity.managerName.ifBlank { "" }
+
+                    val finalManager = if (validManager.isNotBlank() && validManager != currentCfg.syncSealToken) {
+                        validManager
+                    } else if (currentCfg.managerName.isNotBlank() && currentCfg.managerName != currentCfg.syncSealToken) {
+                        currentCfg.managerName
+                    } else {
+                        ""
+                    }
+
+                    configDao.saveConfig(
+                        currentCfg.copy(
+                            schoolName = validSchoolName,
+                            directorateName = validDir,
+                            managerName = finalManager
+                        )
+                    )
+
+                    val prefs = context.getSharedPreferences("diyala_school_prefs", android.content.Context.MODE_PRIVATE)
+                    prefs.edit().apply {
+                        if (validSchoolName.isNotBlank()) putString("school_name", validSchoolName)
+                        if (validDir.isNotBlank()) putString("directorate_name", validDir)
+                        if (finalManager.isNotBlank()) putString("manager_name", finalManager)
+                        apply()
+                    }
+
+                    val bossPrefs = context.getSharedPreferences("the_boss_prefs", android.content.Context.MODE_PRIVATE)
+                    bossPrefs.edit().apply {
+                        if (validSchoolName.isNotBlank()) putString("school_name", validSchoolName)
+                        if (validDir.isNotBlank()) putString("directorate_name", validDir)
+                        if (finalManager.isNotBlank()) putString("manager_name", finalManager)
+                        apply()
+                    }
+
+                    try {
+                        val sessionManager = com.school.system.data.local.SessionManager(context)
+                        if (validSchoolName.isNotBlank()) {
+                            sessionManager.saveSchoolSession(
+                                schoolId = currentCfg.schoolId.ifBlank { identity.schoolId },
+                                schoolCode = currentCfg.pairingCode.ifBlank { identity.pairingCode },
+                                schoolName = validSchoolName,
+                                managerName = finalManager
+                            )
+                        }
+                    } catch (_: Exception) {}
+
+                    onResult?.invoke(true, "تم تحديث بيانات المدرسة والمدير من السحابة بنجاح: $validSchoolName ✓")
+                } else {
+                    onResult?.invoke(false, "لم يتم العثور على معلومات مدرسة على السحابة")
+                }
+            } catch (e: Exception) {
+                onResult?.invoke(false, e.localizedMessage)
             }
         }
     }

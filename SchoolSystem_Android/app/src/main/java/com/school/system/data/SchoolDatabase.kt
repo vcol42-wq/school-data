@@ -31,4 +31,22 @@ abstract class SchoolDatabase : RoomDatabase() {
     abstract fun classPackageDao(): ClassPackageDao
     abstract fun absenceDao(): AbsenceDao
     abstract fun lessonAlarmDao(): LessonAlarmDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: SchoolDatabase? = null
+
+        fun getInstance(context: android.content.Context): SchoolDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = androidx.room.Room.databaseBuilder(
+                    context.applicationContext,
+                    SchoolDatabase::class.java,
+                    "school_db"
+                ).fallbackToDestructiveMigrationOnDowngrade(true)
+                    .build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
 }

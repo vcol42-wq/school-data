@@ -130,6 +130,14 @@ data class SupabaseSchoolDto(
     val config: Map<String, Any>? = null
 )
 
+data class CloudSchoolIdentity(
+    val schoolId: String,
+    val schoolName: String,
+    val directorateName: String,
+    val managerName: String,
+    val pairingCode: String
+)
+
 data class SupabaseScheduleDto(
     val id: String,
     val schedule_map: Map<String, Any>?
@@ -922,12 +930,22 @@ class SyncRepository @Inject constructor(
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
 
-            // 1. Fetch School Name from Supabase
-            var schoolName = "مدرسة سحابية"
+            // 1. Fetch School Name & Manager info from Supabase
+            val prevConfig = configDao.getConfig().first()
+            var schoolName = prevConfig?.schoolName?.takeIf { it.isNotBlank() && it != "مدرسة سحابية" && it != "سجل مستقل (أوفلاين)" } ?: "المدرسة الذكية"
+            var cloudManagerName = ""
+            var cloudDirectorateName = ""
             try {
                 val schoolRes = api.getSchools(apiKey, authHeader, schoolId, "eq.$schoolId")
                 if (schoolRes.isSuccessful && !schoolRes.body().isNullOrEmpty()) {
-                    schoolName = schoolRes.body()!!.first().name
+                    val sDto = schoolRes.body()!!.first()
+                    val fetched = sDto.name.trim()
+                    if (fetched.isNotBlank() && fetched != "مدرسة سحابية") {
+                        schoolName = fetched
+                    }
+                    val cfg = sDto.config ?: emptyMap()
+                    cloudManagerName = (cfg["manager_name"] ?: cfg["managerName"] ?: cfg["principal_name"] ?: cfg["school_manager"])?.toString()?.trim() ?: ""
+                    cloudDirectorateName = (cfg["directorate_name"] ?: cfg["directorate"] ?: cfg["directorateName"])?.toString()?.trim() ?: ""
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1127,11 +1145,19 @@ class SyncRepository @Inject constructor(
             if (matchedTeacher != null) {
                 // Save settings in Room database config
                 val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+                val finalManagerName = if (cloudManagerName.isNotBlank() && !cloudManagerName.equals(matchedTeacher.name, ignoreCase = true)) {
+                    cloudManagerName
+                } else if (currentConfig.managerName.isNotBlank() && !currentConfig.managerName.equals(matchedTeacher.name, ignoreCase = true)) {
+                    currentConfig.managerName
+                } else {
+                    ""
+                }
                 configDao.saveConfig(
                     currentConfig.copy(
                         schoolId = schoolId,
                         schoolName = schoolName,
-                        managerName = matchedTeacher.name,
+                        directorateName = cloudDirectorateName.ifBlank { currentConfig.directorateName },
+                        managerName = finalManagerName,
                         syncSealToken = matchedTeacher.id, // Stores verified Teacher ID
                         cloudUrl = url,
                         cloudKey = apiKey,
@@ -1140,6 +1166,26 @@ class SyncRepository @Inject constructor(
                         isActivated = true
                     )
                 )
+
+                try {
+                    val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                    prefs.edit()
+                        .putString("school_name", schoolName)
+                        .putString("directorate_name", cloudDirectorateName.ifBlank { currentConfig.directorateName })
+                        .putString("manager_name", finalManagerName)
+                        .putString("teacher_name", matchedTeacher.name)
+                        .apply()
+
+                    val bossPrefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                    bossPrefs.edit()
+                        .putString("school_name", schoolName)
+                        .putString("directorate_name", cloudDirectorateName.ifBlank { currentConfig.directorateName })
+                        .putString("manager_name", finalManagerName)
+                        .putString("teacher_name", matchedTeacher.name)
+                        .apply()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
 
                 // Register presence in join_requests in Supabase
                 try {
@@ -2646,6 +2692,49 @@ class SyncRepository @Inject constructor(
             Result.success(code)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    /**
+     * جلب معلومات المدرسة الرسمية واسم المدير والمديرية مباشرة من السحابة
+     */
+    suspend fun fetchSchoolIdentityFromCloud(targetSchoolId: String? = null): CloudSchoolIdentity? {
+        return try {
+            val conf = configDao.getConfig().first() ?: return null
+            val schoolId = targetSchoolId?.trim()?.takeIf { it.isNotEmpty() } ?: conf.schoolId.trim()
+            if (schoolId.isEmpty() || schoolId == "school_01") return null
+
+            val (url, apiKey) = resolveCredentials(conf.cloudUrl, conf.cloudKey)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+
+            val resp = api.getSchools(
+                apiKey = apiKey,
+                auth = authHeader,
+                schoolId = schoolId,
+                idFilter = "eq.$schoolId"
+            )
+            if (resp.isSuccessful) {
+                val s = resp.body()?.firstOrNull() ?: return null
+                val schoolName = s.name.trim()
+                val cfg = s.config ?: emptyMap()
+                val managerName = (cfg["manager_name"] ?: cfg["managerName"] ?: cfg["principal_name"] ?: cfg["school_manager"])?.toString()?.trim() ?: ""
+                val dirName = (cfg["directorate_name"] ?: cfg["directorate"] ?: cfg["directorateName"])?.toString()?.trim() ?: ""
+                val pairingCode = s.pairing_code.trim()
+
+                CloudSchoolIdentity(
+                    schoolId = s.id,
+                    schoolName = schoolName,
+                    directorateName = dirName,
+                    managerName = managerName,
+                    pairingCode = pairingCode
+                )
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.w("SyncRepository", "fetchSchoolIdentityFromCloud failed: ${e.message}")
+            null
         }
     }
 

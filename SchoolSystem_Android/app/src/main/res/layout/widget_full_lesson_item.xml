@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:background="@drawable/widget_item_bg"
-    android:padding="10dp"
+    android:padding="12dp"
     android:gravity="center_vertical">
 
     <!-- Class, Subject & Teacher Info -->
@@ -28,22 +28,22 @@
                 android:layout_height="wrap_content"
                 android:text="الرياضيات"
                 android:textColor="#F8FAFC"
-                android:textSize="13sp"
+                android:textSize="15sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/item_teacher_badge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
+                android:layout_marginStart="8dp"
                 android:background="@drawable/widget_teacher_badge_bg"
-                android:paddingStart="6dp"
-                android:paddingEnd="6dp"
-                android:paddingTop="2dp"
-                android:paddingBottom="2dp"
+                android:paddingStart="7dp"
+                android:paddingEnd="7dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
                 android:text="⭐ حصتك"
                 android:textColor="#FFFFFF"
-                android:textSize="10sp"
+                android:textSize="11.5sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
         </LinearLayout>
@@ -54,8 +54,8 @@
             android:layout_height="wrap_content"
             android:text="الصف الخامس (أ) • أ. محمد علي"
             android:textColor="#94A3B8"
-            android:textSize="11sp"
-            android:layout_marginTop="2dp" />
+            android:textSize="12.5sp"
+            android:layout_marginTop="3dp" />
     </LinearLayout>
 
     <!-- Lesson Badge -->
@@ -64,13 +64,13 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:background="@drawable/widget_badge_bg"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="4dp"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="5dp"
+        android:paddingBottom="5dp"
         android:text="الحصة 1"
         android:textColor="#FFFFFF"
-        android:textSize="11sp"
+        android:textSize="13sp"
         android:textStyle="bold" />
 
 </LinearLayout>

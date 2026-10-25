@@ -265,6 +265,23 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun saveSchoolIdentity(schoolName: String, directorateName: String, managerName: String) {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: SchoolConfig()
+            val cleanSchool = schoolName.trim()
+            val cleanDir = directorateName.trim()
+            val cleanMgr = managerName.trim()
+            configDao.saveConfig(current.copy(
+                schoolName = cleanSchool,
+                directorateName = cleanDir,
+                managerName = if (cleanMgr.isNotBlank()) cleanMgr else current.managerName
+            ))
+            if (cleanSchool.isNotBlank()) {
+                schoolRepository.updateSchoolLocally(current.schoolId, current.pairingCode, cleanSchool)
+            }
+        }
+    }
+
     fun getSavedSupervisorCode(): String? = secureKeyStorage.getSupervisorCode()
 
     fun setSupervisorMode(enabled: Boolean, code: String, onResult: (Boolean, String) -> Unit) {
@@ -506,6 +523,8 @@ fun SettingsScreen(
     var teacherEmail by remember { mutableStateOf("") }
     var teacherSubject by remember { mutableStateOf(prefs.getString("teacher_subject", "اللغة العربية") ?: "اللغة العربية") }
     var schoolGender by remember { mutableStateOf(prefs.getString("school_gender", "بنين") ?: "بنين") }
+    var schoolNameInput by remember { mutableStateOf(prefs.getString("school_name", "") ?: "") }
+    var directorateInput by remember { mutableStateOf(prefs.getString("directorate_name", "المديرية العامة لتربية ديالى") ?: "المديرية العامة لتربية ديالى") }
 
     var supervisorCodeInput by remember { mutableStateOf(viewModel.getSavedSupervisorCode() ?: "") }
     var isSupervisorMode by remember { mutableStateOf(false) }
@@ -526,6 +545,12 @@ fun SettingsScreen(
     LaunchedEffect(config) {
         config?.let { 
             if (it.managerName.isNotBlank()) teacherName = it.managerName
+            if (it.schoolName.isNotBlank() && it.schoolName != "مدرسة سحابية" && it.schoolName != "سجل مستقل (أوفلاين)") {
+                schoolNameInput = it.schoolName
+            }
+            if (it.directorateName.isNotBlank()) {
+                directorateInput = it.directorateName
+            }
             teacherEmail = it.userEmail
             geminiApiKeyInput = it.geminiApiKey
             isAiEnabled = it.isAiActivated
@@ -815,6 +840,91 @@ fun SettingsScreen(
                                 modifier = Modifier.padding(10.dp)
                             )
                         }
+                    }
+                }
+            }
+
+            // CARD 1.5: هوية المدرسة الرسمية وترويسة الطباعة
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.School,
+                                    contentDescription = null,
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("بيانات وهوية المدرسة الرسمية (للترويسة والطباعة) 🏫", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = Color(0xFF0F172A))
+                            Text("تحديد وتعديل اسم المدرسة والمديرية في سجلات الطباعة والـ PDF", fontSize = 11.sp, color = Color(0xFF64748B))
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = schoolNameInput,
+                        onValueChange = { 
+                            schoolNameInput = it 
+                            prefs.edit().putString("school_name", it.trim()).apply()
+                        },
+                        label = { Text("اسم المدرسة الرسمي 🏫") },
+                        placeholder = { Text("اكتب اسم مدرستك الرسمي") },
+                        leadingIcon = { Icon(Icons.Default.School, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = directorateInput,
+                        onValueChange = { 
+                            directorateInput = it 
+                            prefs.edit().putString("directorate_name", it.trim()).apply()
+                        },
+                        label = { Text("المديرية العامة للتربية 🏛️") },
+                        placeholder = { Text("مثال: المديرية العامة لتربية ديالى") },
+                        leadingIcon = { Icon(Icons.Default.AccountBalance, null, tint = Color(0xFF0284C7), modifier = Modifier.size(20.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            val cleanSchool = schoolNameInput.trim()
+                            val cleanDir = directorateInput.trim()
+                            if (cleanSchool.isNotBlank()) {
+                                viewModel.saveSchoolIdentity(cleanSchool, cleanDir, teacherName)
+                                prefs.edit()
+                                    .putString("school_name", cleanSchool)
+                                    .putString("directorate_name", cleanDir)
+                                    .apply()
+                                Toast.makeText(context, "تم حفظ وتثبيت اسم المدرسة في الطباعة: $cleanSchool ✓", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "يرجى كتابة اسم المدرسة", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(46.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("حفظ وتثبيت اسم المدرسة في الطباعة 💾", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
                     }
                 }
             }

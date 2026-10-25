@@ -108,10 +108,21 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
                 R.id.header_lesson_4, R.id.header_lesson_5, R.id.header_lesson_6
             )
 
+            val currentActiveLesson = WidgetScheduleHelper.getCurrentActiveLessonNumber(context)
+            val isViewingRealToday = (currentDayName == WidgetScheduleHelper.getRealCurrentDayArabic())
+            val activeLessonNum = if (isViewingRealToday) currentActiveLesson else 0
+
             for (i in 1..6) {
                 val timingText = WidgetScheduleHelper.calculateLessonTiming(i, startHourStr, lessonDur, breakDur, isShort = true)
                 val startTime = timingText.split("-").getOrNull(0)?.trim() ?: ""
                 views.setTextViewText(headerIds[i - 1], "$i\n$startTime")
+                if (i == activeLessonNum) {
+                    views.setTextColor(headerIds[i - 1], Color.parseColor("#FEF08A"))
+                    views.setInt(headerIds[i - 1], "setBackgroundColor", Color.parseColor("#065F46"))
+                } else {
+                    views.setTextColor(headerIds[i - 1], Color.WHITE)
+                    views.setInt(headerIds[i - 1], "setBackgroundColor", Color.TRANSPARENT)
+                }
             }
 
             // Service Intent for RemoteViews ListView

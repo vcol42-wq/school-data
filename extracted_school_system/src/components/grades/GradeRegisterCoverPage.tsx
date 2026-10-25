@@ -84,21 +84,16 @@ export const GradeRegisterCoverPage: React.FC<GradeRegisterCoverPageProps> = ({
         </div>
       </div>
 
-      {/* Official Signatures & Seal */}
-      <div className="flex items-end justify-between w-11/12 mx-auto pt-8 border-t border-slate-200/80 text-xs font-bold text-slate-700">
-        <div className="text-center w-1/3">
+      {/* Official Signatures */}
+      <div className="flex items-end justify-around w-11/12 mx-auto pt-8 border-t border-slate-200/80 text-xs font-bold text-slate-700">
+        <div className="text-center w-5/12">
           <p className="text-slate-500 mb-1">أستاذ المادة</p>
           <p className="font-black text-slate-900 text-sm mb-4">{displayTeacher}</p>
           <p className="text-slate-400">التوقيع: .....................</p>
         </div>
 
-        <div className="w-20 h-20 rounded-full border-2 border-dashed border-amber-600 flex flex-col items-center justify-center text-amber-800 bg-amber-50/50 shadow-inner">
-          <span className="text-[10px] font-black">الختم الرسمي</span>
-          <span className="text-[9px]">للمدرسة</span>
-        </div>
-
-        <div className="text-center w-1/3">
-          <p className="text-slate-500 mb-1">مدير المدرسة</p>
+        <div className="text-center w-5/12">
+          <p className="text-slate-500 mb-1">إدارة المدرسة</p>
           <p className="font-black text-slate-900 text-sm mb-4">الإدارة المدرسية</p>
           <p className="text-slate-400">التوقيع: .....................</p>
         </div>

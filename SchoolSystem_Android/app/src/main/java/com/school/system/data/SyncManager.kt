@@ -20,7 +20,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 class SyncManager @Inject constructor(
     private val configDao: ConfigDao,
     private val studentDao: StudentDao,
-    private val packageDao: ClassPackageDao,
+    val packageDao: ClassPackageDao,
     private val absenceDao: AbsenceDao,
     private val syncRepository: SyncRepository,
     private val schoolRepository: SchoolRepository,
@@ -99,6 +99,9 @@ class SyncManager @Inject constructor(
             var teacherName = ""
             var isPrincipal = false
 
+            var schoolName = ""
+            var directorateName = ""
+
             if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
                 val gson = com.google.gson.Gson()
                 val mapType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
@@ -109,6 +112,8 @@ class SyncManager @Inject constructor(
                 schoolId = data["schoolId"]?.toString() ?: data["school_id"]?.toString() ?: data["id"]?.toString() ?: schoolId
                 pairingCode = data["pairingCode"]?.toString() ?: data["pairing_code"]?.toString() ?: pairingCode
                 teacherName = data["teacherName"]?.toString() ?: data["teacher_name"]?.toString() ?: data["name"]?.toString() ?: ""
+                schoolName = data["schoolName"]?.toString() ?: data["school_name"]?.toString() ?: ""
+                directorateName = data["directorateName"]?.toString() ?: data["directorate_name"]?.toString() ?: ""
 
                 val roleStr = data["role"]?.toString() ?: ""
                 if (roleStr.equals("principal", ignoreCase = true) || roleStr.equals("supervisor", ignoreCase = true)) {
@@ -141,7 +146,7 @@ class SyncManager @Inject constructor(
                 if (secondPart != null && secondPart.startsWith("SCH-", ignoreCase = true)) {
                     schoolId = secondPart
                 }
-                teacherName = "مدير المدرسة / المشرف العام"
+                teacherName = ""
                 isPrincipal = true
             } else if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
                 url = trimmed
@@ -161,14 +166,19 @@ class SyncManager @Inject constructor(
                         cloudUrl = url,
                         cloudKey = apiKey,
                         schoolId = schoolId,
+                        schoolName = if (schoolName.isNotBlank()) schoolName else currentConfig.schoolName,
+                        directorateName = if (directorateName.isNotBlank()) directorateName else currentConfig.directorateName,
                         pairingCode = pairingCode,
                         role = "supervisor",
-                        managerName = if (teacherName.isNotBlank()) teacherName else "مدير المدرسة / الإشراف العام",
+                        managerName = if (teacherName.isNotBlank() && !teacherName.contains("مدير") && !teacherName.contains("مشرف") && !teacherName.contains("إشراف") && !teacherName.contains("اشراف")) teacherName else "",
                         syncSealToken = if (currentConfig.syncSealToken.isNullOrEmpty()) "__supervisor__" else currentConfig.syncSealToken,
                         isVerified = true,
                         isActivated = true
                     )
                 )
+                if (schoolName.isNotBlank()) {
+                    schoolRepository.updateSchoolLocally(schoolId, pairingCode, schoolName)
+                }
                 if (schoolId.isNotBlank() && schoolId != "school_01") {
                     try {
                         syncRepository.downloadRoster(
@@ -188,10 +198,15 @@ class SyncManager @Inject constructor(
                     cloudUrl = url,
                     cloudKey = apiKey,
                     schoolId = schoolId,
+                    schoolName = if (schoolName.isNotBlank()) schoolName else currentConfig.schoolName,
+                    directorateName = if (directorateName.isNotBlank()) directorateName else currentConfig.directorateName,
                     pairingCode = pairingCode,
                     isVerified = false
                 )
             )
+            if (schoolName.isNotBlank()) {
+                schoolRepository.updateSchoolLocally(schoolId, pairingCode, schoolName)
+            }
 
             // Auto-verify with school: if only pairingCode was provided, search school by code
             val pairRes = if (schoolId == "school_01" || schoolId.isEmpty() || pairingCode.isNotBlank()) {
@@ -542,7 +557,7 @@ class SyncManager @Inject constructor(
                 schoolName = school.name,
                 pairingCode = clean,
                 role = "supervisor",
-                managerName = "مدير المدرسة / الإشراف العام",
+                managerName = "",
                 syncSealToken = if (currentConfig.syncSealToken.isNullOrEmpty()) "__supervisor__" else currentConfig.syncSealToken,
                 isVerified = true,
                 isActivated = true
