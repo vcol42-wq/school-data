@@ -2612,13 +2612,19 @@ fun StudentDirectivesCardUnderTimetable(
     val clipboardManager = LocalClipboardManager.current
     var isExpanded by remember { mutableStateOf(false) }
 
-    // Auto-expand automatically when directives arrive or update
+    // تفعيل التوسيع التلقائي فقط للرسائل الجديدة (أقل من 3 مرات)
+    val eligibleDirectives = remember(directives) {
+        com.example.theboss.data.DirectiveDisplayManager.filterForAutoDisplay(context, directives)
+    }
     val directivesFingerprint = remember(directives) {
         directives.map { it.id }.sorted().joinToString(",")
     }
     LaunchedEffect(directivesFingerprint) {
-        if (directives.isNotEmpty()) {
+        if (eligibleDirectives.isNotEmpty()) {
             isExpanded = true
+            eligibleDirectives.forEach {
+                com.example.theboss.data.DirectiveDisplayManager.incrementViewCount(context, it.id.toString())
+            }
         }
     }
 

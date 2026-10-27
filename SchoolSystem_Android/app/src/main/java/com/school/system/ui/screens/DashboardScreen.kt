@@ -61,6 +61,7 @@ fun DashboardScreen(
     var showSummonDialog by remember { mutableStateOf(false) }
     var showSelectClassesDialog by remember { mutableStateOf(false) }
     var showSupervisorDirectivesDialog by remember { mutableStateOf(false) }
+    var showDirectivesArchiveDialog by remember { mutableStateOf(false) }
     var showClearAllClassesConfirmDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
@@ -107,6 +108,32 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    // Archive of Directives (أرشيف توجيهات ورسائل الإدارة) - أيقونة كتاب صغيرة في الأعلى 📖
+                    Box(contentAlignment = Alignment.TopEnd) {
+                        IconButton(onClick = { showDirectivesArchiveDialog = true }) {
+                            Icon(
+                                Icons.Default.MenuBook,
+                                contentDescription = "أرشيف توجيهات ورسائل الإدارة 📖",
+                                tint = currentTheme.primaryColor
+                            )
+                        }
+                        if (directives.isNotEmpty()) {
+                            val hasUnread = remember(directives) {
+                                directives.any { d ->
+                                    com.school.system.data.DirectiveDisplayManager.getViewCount(context, d.id) < 3
+                                }
+                            }
+                            if (hasUnread) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 8.dp, end = 8.dp)
+                                        .size(7.dp)
+                                        .background(Color(0xFFEF4444), CircleShape)
+                                        .border(1.dp, Color.White, CircleShape)
+                                )
+                            }
+                        }
+                    }
                     // Theme Selector 🎨
                     IconButton(onClick = { showThemeDialog = true }) {
                         Icon(Icons.Default.Palette, contentDescription = "تغيير الثيم والمظهر 🎨", tint = currentTheme.primaryColor)
@@ -211,6 +238,8 @@ fun DashboardScreen(
                         }
                     }
 
+
+
                     Spacer(Modifier.weight(1f))
 
                     // Teacher Name Badge
@@ -285,6 +314,8 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
+
+
 
                 Spacer(Modifier.height(4.dp))
 
@@ -397,6 +428,10 @@ fun DashboardScreen(
                 Spacer(Modifier.height(6.dp))
             }
 
+            val autoDisplayDirectives = remember(directives) {
+                com.school.system.data.DirectiveDisplayManager.filterForAutoDisplay(context, directives)
+            }
+
             // 3. قائمة السجلات (مستطيلات محددة ومضللة بلون مختلف عن الأرضية)
             if (packages.isEmpty()) {
                 Box(
@@ -412,10 +447,11 @@ fun DashboardScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(horizontal = 14.dp, vertical = 8.dp)
                     ) {
-                        if (directives.isNotEmpty() && !isDirectivesDismissed) {
+                        if (autoDisplayDirectives.isNotEmpty() && !isDirectivesDismissed) {
                             TeacherDirectivesCard(
-                                directives = directives,
-                                onDismiss = { isDirectivesDismissed = true }
+                                directives = autoDisplayDirectives,
+                                onDismiss = { isDirectivesDismissed = true },
+                                onOpenArchive = { showDirectivesArchiveDialog = true }
                             )
                             Spacer(Modifier.height(14.dp))
                         }
@@ -474,11 +510,12 @@ fun DashboardScreen(
                         .padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    if (directives.isNotEmpty() && !isDirectivesDismissed) {
+                    if (autoDisplayDirectives.isNotEmpty() && !isDirectivesDismissed) {
                         item {
                             TeacherDirectivesCard(
-                                directives = directives,
-                                onDismiss = { isDirectivesDismissed = true }
+                                directives = autoDisplayDirectives,
+                                onDismiss = { isDirectivesDismissed = true },
+                                onOpenArchive = { showDirectivesArchiveDialog = true }
                             )
                         }
                     }
@@ -713,6 +750,15 @@ fun DashboardScreen(
                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                     }
                 }
+            )
+        }
+
+        // Dialog 7.1: أرشيف توجيهات ورسائل الإدارة المدرسية لكافة الكادر
+        if (showDirectivesArchiveDialog) {
+            DirectivesArchiveDialog(
+                directives = directives,
+                onDismiss = { showDirectivesArchiveDialog = false },
+                onDismissAll = { isDirectivesDismissed = true }
             )
         }
 
@@ -2059,11 +2105,22 @@ fun SelectTeacherClassesDialog(
 fun TeacherDirectivesCard(
     directives: List<com.school.system.data.SupabaseDirectiveDto>,
     onDismiss: () -> Unit = {},
+    onOpenArchive: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     var expanded by remember { mutableStateOf(false) }
     val latest = directives.firstOrNull() ?: return
+
+    // تسجيل ظهور الرسالة وحساب عدد المرات (بحد أقصى 3 مرات تلقائياً)
+    LaunchedEffect(latest.id) {
+        com.school.system.data.DirectiveDisplayManager.incrementViewCount(context, latest.id)
+    }
+
+    val displayCount = remember(latest.id) {
+        com.school.system.data.DirectiveDisplayManager.getViewCount(context, latest.id)
+    }
 
     val cardBg = if (currentTheme.isDark) Color(0xFF2D2305) else Color(0xFFFFFBEB)
     val cardBorder = if (currentTheme.isDark) Color(0xFF78350F) else Color(0xFFFDE68A)
@@ -2087,32 +2144,58 @@ fun TeacherDirectivesCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text("📢", fontSize = 16.sp)
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        text = if (directives.size == 1) "توجيه إداري من مدير المدرسة" else "توجيهات الإدارة (${directives.size})",
-                        fontWeight = FontWeight.Bold,
+                        text = if (directives.size == 1) "توجيه إداري عاجل" else "توجيهات الإدارة (${directives.size})",
+                        fontWeight = FontWeight.Black,
                         fontSize = 13.sp,
-                        color = textTitle
+                        color = textTitle,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
+                    Spacer(Modifier.width(6.dp))
+                    Surface(
+                        color = badgeBg,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "ظهور $displayCount/3",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textTitle.copy(alpha = 0.9f),
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
                         color = badgeBg,
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.clickable { expanded = !expanded }
                     ) {
                         Text(
                             text = if (expanded) "طي ▲" else "عرض ▼",
                             fontSize = 11.sp,
                             color = textTitle,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
                     Spacer(Modifier.width(4.dp))
                     IconButton(
-                        onClick = onDismiss,
+                        onClick = {
+                            com.school.system.data.DirectiveDisplayManager.setDismissed(context, latest.id, true)
+                            onDismiss()
+                        },
                         modifier = Modifier.size(26.dp)
                     ) {
                         Icon(
@@ -2154,6 +2237,202 @@ fun TeacherDirectivesCard(
             }
         }
     }
+}
+
+@Composable
+fun DirectivesArchiveDialog(
+    directives: List<com.school.system.data.SupabaseDirectiveDto>,
+    onDismiss: () -> Unit,
+    onDismissAll: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredDirectives = remember(directives, searchQuery) {
+        if (searchQuery.isBlank()) directives
+        else directives.filter { it.title.contains(searchQuery, true) || it.content.contains(searchQuery, true) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text("إغلاق الأرشيف", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            if (directives.isNotEmpty()) {
+                TextButton(
+                    onClick = {
+                        com.school.system.data.DirectiveDisplayManager.dismissAll(context, directives.map { it.id })
+                        onDismissAll()
+                        Toast.makeText(context, "تم تعليم جميع الرسائل كمقروءة ومؤرشفة ✓", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("أرشفة الكل كمقروء ✓", color = Color(0xFF64748B), fontWeight = FontWeight.Bold)
+                }
+            }
+        },
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        color = Color(0xFFFEF3C7),
+                        shape = CircleShape,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("📬", fontSize = 18.sp)
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "أرشيف توجيهات ورسائل الإدارة",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 15.sp,
+                            color = Color(0xFF1E293B)
+                        )
+                        Text(
+                            text = "${directives.size} رسالة وتعميم رسمي",
+                            fontSize = 11.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 440.dp)
+            ) {
+                if (directives.size > 3) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        placeholder = { Text("بحث في الرسائل والتعاميم...", fontSize = 11.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+
+                if (filteredDirectives.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("📭", fontSize = 36.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                if (searchQuery.isNotEmpty()) "لا توجد نتائج مطابقة للبحث" else "لا توجد رسائل أو توجيهات إدارية مؤرشفة",
+                                fontSize = 13.sp,
+                                color = Color(0xFF64748B),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(filteredDirectives) { dir ->
+                            val viewCount = com.school.system.data.DirectiveDisplayManager.getViewCount(context, dir.id)
+                            val isDismissed = com.school.system.data.DirectiveDisplayManager.isDismissed(context, dir.id)
+                            val isFresh = viewCount < 3 && !isDismissed
+
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isFresh) Color(0xFFFFFBEB) else Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, if (isFresh) Color(0xFFFDE68A) else Color(0xFFE2E8F0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = dir.title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = if (isFresh) Color(0xFF92400E) else Color(0xFF1E293B),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Spacer(Modifier.width(6.dp))
+                                        Surface(
+                                            color = if (isFresh) Color(0xFFF59E0B) else Color(0xFFE2E8F0),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isFresh) "جديد ✨" else "مقروء ✓",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isFresh) Color.White else Color(0xFF475569),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = dir.content,
+                                        fontSize = 11.5.sp,
+                                        color = if (isFresh) Color(0xFF451A03) else Color(0xFF334155),
+                                        lineHeight = 16.sp
+                                    )
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text(
+                                            text = if (dir.target_role == "student") "موجه للطلبة وأولياء الأمور" else "موجه للكادر التدريسي",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString("${dir.title}\n${dir.content}"))
+                                                Toast.makeText(context, "تم نسخ نص التوجيه ✓", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.ContentCopy,
+                                                contentDescription = "نسخ",
+                                                tint = Color(0xFF64748B),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
 }
 
 @Composable

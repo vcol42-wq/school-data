@@ -273,20 +273,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Restore Selected School from Cloud
   const handleRestoreFromCloud = async (school: CloudSchoolSummary) => {
-    if (!confirm(`هل أنت متأكد من استعادة بيانات (${school.name}) وربط هذا التطبيق بها؟ سيتم سحب الطلاب والأساتذة والجدول المرتبط بهذه المدرسة.`)) return;
+    // 0. Enforce license verification before cloud restoration
+    const inputKey = prompt(
+      `🔒 حماية أمنية: يرجى إدخال كود تفعيل المنظومة (License Key) المعتمد لمدرسة (${school.name}) للمتابعة واستعادة البيانات:`
+    );
+    if (!inputKey || !inputKey.trim()) {
+      alert('تم إلغاء عملية الاستعادة: لا يمكن استعادة بيانات المدرسة بدون كود التفعيل والترخيص المعتمد.');
+      return;
+    }
+
     setIsRestoringSchool(true);
+    const licRes = await activateDesktopLicense(inputKey.trim().toUpperCase(), school.name);
+    if (!licRes.success) {
+      setIsRestoringSchool(false);
+      alert(`❌ فشل التحقق من الترخيص: ${licRes.message}\nلا يمكنك استرجاع بيانات هذه المدرسة إلا باستخدام كود التفعيل المعتمد والمخصص لها.`);
+      return;
+    }
+
     try {
       const res = await restoreSchoolData(school.id);
       if (res.success) {
-        const studentCode = school.student_pairing_code || res.config?.studentPairingCode || '223344';
-        const principalCode = school.principal_pairing_code || res.config?.principalPairingCode || '334455';
+        const teacherCode = res.config?.pairingCode || res.schoolMeta?.pairing_code || '112233';
+        const studentCode = res.config?.studentPairingCode || '223344';
+        const principalCode = res.config?.principalPairingCode || '334455';
 
         const newConfig = {
           ...config,
           ...(res.config || {}),
           schoolName: school.name,
           schoolId: school.id,
-          pairingCode: school.pairing_code,
+          pairingCode: teacherCode,
           studentPairingCode: studentCode,
           principalPairingCode: principalCode,
           adminEmail: school.admin_email
@@ -299,8 +315,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         if (res.schedule) localStorage.setItem('diyala_school_schedule', JSON.stringify(res.schedule));
 
         localStorage.setItem('diyala_school_id', school.id);
-        localStorage.setItem('diyala_school_pairing_code', school.pairing_code);
-        localStorage.setItem('diyala_pairing_code', school.pairing_code);
+        localStorage.setItem('diyala_school_pairing_code', teacherCode);
+        localStorage.setItem('diyala_pairing_code', teacherCode);
         localStorage.setItem('diyala_student_pairing_code', studentCode);
         localStorage.setItem('diyala_principal_pairing_code', principalCode);
         localStorage.setItem('diyala_admin_email', school.admin_email);
@@ -308,7 +324,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         refreshSupabaseClient(school.id);
         setShowCloudSearchModal(false);
-        alert(`✅ تم استعادة بيانات (${school.name}) بنجاح!\nرمز المدرس: ${school.pairing_code}\nرمز الطالب: ${studentCode}\nرمز المدير: ${principalCode}`);
+        alert(`✅ تم استعادة بيانات (${school.name}) بنجاح.`);
       } else {
         alert('⚠️ فشلت الاستعادة: ' + res.message);
       }
@@ -1197,19 +1213,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700 text-center text-xs">
-                        <div className="bg-indigo-50 dark:bg-indigo-950/40 p-2 rounded-lg border border-indigo-100 dark:border-indigo-900/40">
-                          <span className="block text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">رمز المدرس</span>
-                          <span className="font-mono font-black text-indigo-900 dark:text-indigo-200">{school.pairing_code}</span>
-                        </div>
-                        <div className="bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/40">
-                          <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">رمز الطالب</span>
-                          <span className="font-mono font-black text-emerald-900 dark:text-emerald-200">{school.student_pairing_code || '223344'}</span>
-                        </div>
-                        <div className="bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-100 dark:border-amber-900/40">
-                          <span className="block text-[10px] text-amber-700 dark:text-amber-400 font-bold">رمز المدير</span>
-                          <span className="font-mono font-black text-amber-900 dark:text-amber-200">{school.principal_pairing_code || '334455'}</span>
-                        </div>
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700 text-xs px-1 text-slate-500 font-bold">
+                        <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>الرموز والبيانات مشفرة ومحمية 🔒</span>
+                        </span>
+                        <span className="text-[11px] text-slate-400">يلزم كود التفعيل المعتمد</span>
                       </div>
                     </div>
                   ))

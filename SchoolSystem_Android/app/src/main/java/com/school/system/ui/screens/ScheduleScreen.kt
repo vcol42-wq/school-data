@@ -1037,56 +1037,25 @@ fun WeeklyPersonalScheduleTable(
                                         Column(
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                             verticalArrangement = Arrangement.Center,
-                                            modifier = Modifier.padding(2.dp)
+                                            modifier = Modifier.fillMaxSize().padding(horizontal = 3.dp, vertical = 2.dp)
                                         ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.Center,
-                                                modifier = Modifier.padding(bottom = 1.dp)
-                                            ) {
-                                                if (isRosterDownloaded) {
-                                                    Surface(
-                                                        color = Color(0xFF059669),
-                                                        shape = RoundedCornerShape(3.dp),
-                                                        modifier = Modifier.padding(end = 2.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "📋✓",
-                                                            fontSize = 7.5.sp,
-                                                            fontWeight = FontWeight.Black,
-                                                            color = Color.White,
-                                                            modifier = Modifier.padding(horizontal = 2.5.dp, vertical = 0.5.dp)
-                                                        )
-                                                    }
-                                                } else {
-                                                    Surface(
-                                                        color = Color(0xFF2563EB),
-                                                        shape = RoundedCornerShape(3.dp),
-                                                        modifier = Modifier.padding(end = 2.dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "☁️",
-                                                            fontSize = 7.5.sp,
-                                                            color = Color.White,
-                                                            modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.5.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
                                             Text(
                                                 text = cleanSubj.ifEmpty { "درس مقرر" },
                                                 fontWeight = FontWeight.Black,
                                                 fontSize = 11.5.sp,
                                                 color = if (isRosterDownloaded) Color(0xFF047857) else Color(0xFF1D4ED8),
                                                 maxLines = 1,
+                                                softWrap = false,
                                                 textAlign = TextAlign.Center
                                             )
+                                            Spacer(Modifier.height(1.5.dp))
                                             Text(
                                                 text = cleanCls,
                                                 fontWeight = FontWeight.Bold,
                                                 fontSize = 10.sp,
-                                                color = currentTheme.textPrimaryColor,
+                                                color = currentTheme.textPrimaryColor.copy(alpha = 0.85f),
                                                 maxLines = 1,
+                                                softWrap = false,
                                                 textAlign = TextAlign.Center
                                             )
                                         }
@@ -1318,49 +1287,12 @@ fun GeneralDayScheduleGrid(
                                                 else -> if (isLandscape) 10.5.sp else 11.5.sp
                                             }
 
-                                            Column(
-                                                horizontalAlignment = Alignment.CenterHorizontally,
-                                                verticalArrangement = Arrangement.Center,
-                                                modifier = Modifier.fillMaxSize().padding(1.dp)
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(horizontal = 3.dp, vertical = 2.dp)
                                             ) {
-                                                // صف علامات الحالة والدمج وسجل الدرجات
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.Center,
-                                                    modifier = Modifier.padding(bottom = 1.dp)
-                                                ) {
-                                                    if (isTeacherLesson) {
-                                                        if (isRosterDownloaded) {
-                                                            Surface(
-                                                                color = Color(0xFF059669),
-                                                                shape = RoundedCornerShape(3.dp),
-                                                                modifier = Modifier.padding(end = 2.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = "📋✓",
-                                                                    fontSize = 7.5.sp,
-                                                                    fontWeight = FontWeight.Black,
-                                                                    color = Color.White,
-                                                                    modifier = Modifier.padding(horizontal = 2.5.dp, vertical = 0.5.dp)
-                                                                )
-                                                            }
-                                                        } else {
-                                                            Surface(
-                                                                color = Color(0xFF2563EB),
-                                                                shape = RoundedCornerShape(3.dp),
-                                                                modifier = Modifier.padding(end = 2.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = "☁️",
-                                                                    fontSize = 7.5.sp,
-                                                                    color = Color.White,
-                                                                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.5.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-
                                                 Text(
                                                     text = cleanSubj.ifEmpty { "درس مقرر" },
                                                     fontWeight = FontWeight.Black,

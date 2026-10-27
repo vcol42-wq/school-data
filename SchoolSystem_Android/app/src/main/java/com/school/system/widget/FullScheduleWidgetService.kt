@@ -19,7 +19,9 @@ class FullScheduleWidgetService : RemoteViewsService() {
 
 data class GridClassRow(
     val className: String,
-    val lessons: Map<Int, Pair<String, String>> // lessonNumber -> (subject, teacher)
+    val lessons: Map<Int, Pair<String, String>>, // lessonNumber -> (subject, teacher)
+    val grade: String = "",
+    val section: String = ""
 )
 
 class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
@@ -76,25 +78,38 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
                 views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 12.0f)
             }
 
+            // مطابقة دقيقة محصورة فقط بشعب الأستاذ المحددة والاسم الثنائي
             val isTeacherLesson = if (teacherName.isNotEmpty() && subj != "-") {
-                WidgetScheduleHelper.isLessonMatchingTeacher(teacherName, teacher, subj)
+                WidgetScheduleHelper.isLessonMatchingTeacherStrict(
+                    context = context,
+                    rawGrade = item.grade.ifEmpty { item.className },
+                    rawSection = item.section,
+                    rawSubject = subj,
+                    rawTeacher = teacher,
+                    teacherConfigName = teacherName
+                )
             } else false
 
-            val isCurrentActive = (i == activeLessonNumber)
+            // هل هذا الدرس دخل وقته الآن في هذا اليوم؟
+            val isCurrentActive = (i == activeLessonNumber && activeLessonNumber > 0)
 
             when {
+                // الدرس الحالي الذي دخل وقته الآن وهو حصة للأستاذ المعني
                 isCurrentActive && isTeacherLesson -> {
                     views.setTextColor(cellViewId, Color.parseColor("#FEF08A"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_active_teacher_cell_bg)
                 }
+                // الدرس الحالي الذي دخل وقته الآن لباقي الشعب بالمدرسة
                 isCurrentActive -> {
                     views.setTextColor(cellViewId, Color.parseColor("#FFFFFF"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_active_cell_bg)
                 }
+                // درس الأستاذ في شعبه لكن لم يحن وقته بعد
                 isTeacherLesson -> {
-                    views.setTextColor(cellViewId, Color.WHITE)
+                    views.setTextColor(cellViewId, Color.parseColor("#E0F2FE"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_teacher_card_bg)
                 }
+                // درس اعتيادي
                 else -> {
                     views.setTextColor(cellViewId, Color.parseColor("#F1F5F9"))
                     views.setInt(cellViewId, "setBackgroundResource", R.drawable.widget_item_bg)
@@ -152,13 +167,13 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
 
                                     if (!isOff && (subj.isNotEmpty() || teacher.isNotEmpty())) {
                                         val cleanSubj = WidgetScheduleHelper.cleanSubjectName(subj)
-                                        val cleanTeacher = WidgetScheduleHelper.cleanTeacherFirstName(teacher)
+                                        val cleanTeacher = WidgetScheduleHelper.cleanTeacherTwoPartName(teacher)
                                         lessonMap[i] = cleanSubj to cleanTeacher
                                     }
                                 }
                             }
                             if (className.isNotEmpty()) {
-                                gridRows.add(GridClassRow(className, lessonMap))
+                                gridRows.add(GridClassRow(className, lessonMap, grade, section))
                             }
                         }
                     }

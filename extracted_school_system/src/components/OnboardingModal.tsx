@@ -99,40 +99,38 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
 
   // Restore Existing School
   const handleRestoreSchool = async (school: CloudSchoolSummary) => {
-    // 0. Enforce activation check before restoration
-    if (!isDesktopActivated()) {
-      let keyToVerify = licenseKeyInput.trim();
-      if (!keyToVerify) {
-        const inputKey = prompt(
-          `⚠️ تنبيه أمني: يتطلب تشغيل واستعادة المدرسة (${school.name}) على هذا الحاسوب إدخال كود التفعيل المعتمد.\nمعرّف هذا الحاسوب (Hardware ID): ${fingerprint}\n\nأدخل كود تفعيل المنظومة (License Key):`
-        );
-        if (!inputKey || !inputKey.trim()) {
-          alert('تم إلغاء عملية الاستعادة: يلزم إدخال كود ترخيص وتفعيل معتمد للمنظومة.');
-          return;
-        }
-        keyToVerify = inputKey.trim().toUpperCase();
-      }
-
-      setIsLoading(true);
-      const licRes = await activateDesktopLicense(keyToVerify, school.name);
-      if (!licRes.success) {
-        setIsLoading(false);
-        alert(`❌ فشل التفعيل: ${licRes.message}\nيرجى التواصل مع الدعم الفني للحصول على كود ترخيص صالح لهذا الحاسوب.`);
+    // 0. Enforce STRICT activation check before restoration - ALWAYS require valid key for this school
+    let keyToVerify = licenseKeyInput.trim();
+    if (!keyToVerify) {
+      const inputKey = prompt(
+        `🔒 يلزم إدخال كود التفعيل المعتمد للمدرسة (${school.name}) للمتابعة واستعادة البيانات:\nمعرّف هذا الحاسوب (Hardware ID): ${fingerprint}\n\nأدخل كود تفعيل المنظومة (License Key):`
+      );
+      if (!inputKey || !inputKey.trim()) {
+        alert('تم إلغاء عملية الاستعادة: لا يمكن استعادة بيانات المدرسة بدون كود التفعيل والترخيص المعتمد.');
         return;
       }
-      setIsMachineActivated(true);
+      keyToVerify = inputKey.trim().toUpperCase();
     }
 
     setIsLoading(true);
+    const licRes = await activateDesktopLicense(keyToVerify, school.name);
+    if (!licRes.success) {
+      setIsLoading(false);
+      alert(`❌ فشل التحقق من الترخيص: ${licRes.message}\nلا يمكنك استرجاع بيانات هذه المدرسة إلا باستخدام كود التفعيل المعتمد والمخصص لها.`);
+      return;
+    }
+    setIsMachineActivated(true);
+
     try {
       const restoreResult = await restoreSchoolData(school.id);
       if (restoreResult.success) {
-        const studentCode = school.student_pairing_code || restoreResult.config?.studentPairingCode || '223344';
-        const principalCode = school.principal_pairing_code || restoreResult.config?.principalPairingCode || '334455';
+        const teacherCode = restoreResult.config?.pairingCode || restoreResult.schoolMeta?.pairing_code || '112233';
+        const studentCode = restoreResult.config?.studentPairingCode || '223344';
+        const principalCode = restoreResult.config?.principalPairingCode || '334455';
 
         localStorage.setItem('diyala_school_id', school.id);
-        localStorage.setItem('diyala_school_pairing_code', school.pairing_code);
-        localStorage.setItem('diyala_pairing_code', school.pairing_code);
+        localStorage.setItem('diyala_school_pairing_code', teacherCode);
+        localStorage.setItem('diyala_pairing_code', teacherCode);
         localStorage.setItem('diyala_student_pairing_code', studentCode);
         localStorage.setItem('diyala_principal_pairing_code', principalCode);
         localStorage.setItem('diyala_admin_email', school.admin_email);
@@ -145,7 +143,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
           ...(restoreResult.config || {}),
           schoolName: school.name,
           schoolId: school.id,
-          pairingCode: school.pairing_code,
+          pairingCode: teacherCode,
           studentPairingCode: studentCode,
           principalPairingCode: principalCode,
           adminEmail: school.admin_email,
@@ -154,7 +152,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
           restoredSchedule: restoreResult.schedule
         });
 
-        alert(`✅ تم استعادة بيانات (${school.name}) بنجاح!\nرمز المدرس: ${school.pairing_code} | رمز الطالب: ${studentCode} | رمز المدير: ${principalCode}`);
+        alert(`✅ تم استعادة وتثبيت مدرسة (${school.name}) بنجاح.`);
       } else {
         alert('⚠️ فشل في استعادة البيانات: ' + restoreResult.message);
       }
@@ -641,19 +639,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({ onComplete }) 
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 text-center text-xs">
-                      <div className="bg-indigo-50/80 p-2 rounded-lg border border-indigo-100">
-                        <span className="block text-[10px] text-indigo-600 font-bold">رمز المدرس</span>
-                        <span className="font-mono font-black text-indigo-900">{school.pairing_code}</span>
-                      </div>
-                      <div className="bg-emerald-50/80 p-2 rounded-lg border border-emerald-100">
-                        <span className="block text-[10px] text-emerald-600 font-bold">رمز الطالب</span>
-                        <span className="font-mono font-black text-emerald-900">{school.student_pairing_code || '223344'}</span>
-                      </div>
-                      <div className="bg-amber-50/80 p-2 rounded-lg border border-amber-100">
-                        <span className="block text-[10px] text-amber-700 font-bold">رمز المدير</span>
-                        <span className="font-mono font-black text-amber-900">{school.principal_pairing_code || '334455'}</span>
-                      </div>
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-200 text-xs px-1 text-slate-500 font-bold">
+                      <span className="flex items-center gap-1.5 text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>الرموز والبيانات مشفرة ومحمية بكود التفعيل 🔒</span>
+                      </span>
+                      <span className="text-[11px] text-slate-400">يلزم إدخال كود الترخيص للاستعادة</span>
                     </div>
                   </div>
                 ))

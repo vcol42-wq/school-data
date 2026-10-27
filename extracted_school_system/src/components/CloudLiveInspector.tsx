@@ -427,7 +427,7 @@ export const CloudLiveInspector: React.FC<CloudLiveInspectorProps> = ({
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-black border border-emerald-400/30 mb-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                <span>نظام المزامنة والربط الشفاف Live v5.0</span>
+                <span>نظام المزامنة والربط الشفاف Live v6.4.2 Super Edition</span>
               </div>
               <h1 className="text-2xl font-black tracking-wide">
                 مركز المزامنة وفاحص السحابة المباشر

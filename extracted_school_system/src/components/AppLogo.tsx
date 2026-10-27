@@ -65,16 +65,19 @@ export const AppLogo: React.FC<AppLogoProps> = ({
       {/* App Title Text beside icon */}
       {showText && (
         <div className="flex flex-col text-right leading-tight">
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="font-black text-indigo-600 text-base md:text-lg tracking-wide drop-shadow-sm font-sans">
               The Principal
             </span>
             <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-600 text-white shadow-xs">
               المُدير
             </span>
+            <span className="text-[9.5px] font-mono font-black px-1.5 py-0.5 rounded-md bg-amber-400 text-slate-950 border border-amber-500 shadow-xs" title="إصدار المنظومة v6.4.2 Super Edition">
+              v6.4.2
+            </span>
           </div>
           <span className="text-[11px] text-slate-500 font-bold tracking-normal hidden sm:inline">
-            نظام الإدارة المدرسية الموحد
+            نظام الإدارة المدرسية الموحد • Super Edition
           </span>
         </div>
       )}

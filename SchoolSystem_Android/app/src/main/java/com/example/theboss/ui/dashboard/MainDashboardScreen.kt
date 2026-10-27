@@ -454,15 +454,21 @@ fun MainDashboardScreen(
 @Composable
 private fun StudentDirectivesCard(directives: List<DirectiveDto>) {
     if (directives.isEmpty()) return
+    val context = androidx.compose.ui.platform.LocalContext.current
     var isExpanded by remember { mutableStateOf(false) }
 
-    // Auto-expand automatically when directives arrive or update
+    val eligibleDirectives = remember(directives) {
+        com.example.theboss.data.DirectiveDisplayManager.filterForAutoDisplay(context, directives)
+    }
     val directivesFingerprint = remember(directives) {
         directives.map { it.id }.sorted().joinToString(",")
     }
     LaunchedEffect(directivesFingerprint) {
-        if (directives.isNotEmpty()) {
+        if (eligibleDirectives.isNotEmpty()) {
             isExpanded = true
+            eligibleDirectives.forEach {
+                com.example.theboss.data.DirectiveDisplayManager.incrementViewCount(context, it.id.toString())
+            }
         }
     }
 

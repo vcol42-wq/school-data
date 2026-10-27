@@ -274,9 +274,9 @@ export const MainLauncher: React.FC<MainLauncherProps> = ({
             <LayoutGrid className="w-6 h-6 text-white animate-pulse" />
           </div>
           <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] font-black border border-indigo-100 mb-1">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>منظومة The Principal الموحدة v5.0</span>
+            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-black border border-indigo-200 mb-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>منظومة The Principal الموحدة v6.4.2 Super Edition</span>
             </div>
             <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-wide">
               لوحة التحكم والإدارة المدرسية الشاملة

@@ -653,11 +653,11 @@ export async function searchSchoolsInSupabase(query: string): Promise<CloudSchoo
         return {
           id: s.id,
           name: s.name,
-          admin_email: s.admin_email || '',
-          pairing_code: s.pairing_code,
-          student_pairing_code: cfg.studentPairingCode || cfg.student_pairing_code || '',
-          principal_pairing_code: cfg.principalPairingCode || cfg.principal_pairing_code || '',
-          config: cfg,
+          admin_email: s.admin_email ? `${s.admin_email.substring(0, 3)}***@***` : '',
+          pairing_code: '',
+          student_pairing_code: '',
+          principal_pairing_code: '',
+          config: {},
           created_at: s.created_at
         };
       });
@@ -668,11 +668,11 @@ export async function searchSchoolsInSupabase(query: string): Promise<CloudSchoo
       return {
         id: s.id,
         name: s.name,
-        admin_email: s.admin_email || '',
-        pairing_code: s.pairing_code,
-        student_pairing_code: cfg.studentPairingCode || cfg.student_pairing_code || '',
-        principal_pairing_code: cfg.principalPairingCode || cfg.principal_pairing_code || '',
-        config: cfg,
+        admin_email: s.admin_email ? `${s.admin_email.substring(0, 3)}***@***` : '',
+        pairing_code: '',
+        student_pairing_code: '',
+        principal_pairing_code: '',
+        config: {},
         created_at: s.created_at
       };
     });

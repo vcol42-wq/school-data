@@ -617,9 +617,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-indigo-500" />
-                <span>إصدار التطبيق v2.5</span>
+                <span className="font-bold text-slate-700">إصدار المنظومة v6.4.2 Super Edition</span>
               </div>
-              <span className="text-slate-400 font-mono">Principal</span>
+              <span className="text-indigo-600 font-bold font-mono text-[10px] bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">The Principal</span>
             </div>
 
           </div>

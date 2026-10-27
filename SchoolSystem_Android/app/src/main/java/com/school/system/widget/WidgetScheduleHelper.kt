@@ -133,9 +133,33 @@ object WidgetScheduleHelper {
 
     fun cleanTeacherFirstName(raw: String): String {
         var text = raw.trim()
-        text = text.replace("أ.", "").replace("م.", "").replace("الاستاذ ", "").replace("الأستاذ ", "").replace("أستاذ ", "")
+        text = text.replace("أ.", "").replace("م.", "").replace("الاستاذ ", "").replace("الأستاذ ", "").replace("أستاذ ", "").replace("ست ", "").replace("معلم ", "").replace("مدرس ", "")
         val parts = text.split(" ").filter { it.isNotBlank() }
         return parts.firstOrNull() ?: raw
+    }
+
+    /**
+     * استخراج الاسم الثنائي للأستاذ لحمايته من التطابق الخاطئ عند تشابه الأسماء الأولى (مثل محمد أو أحمد أو علي)
+     */
+    fun cleanTeacherTwoPartName(raw: String): String {
+        var text = raw.trim()
+        text = text.replace("أ.", "")
+            .replace("م.", "")
+            .replace("الاستاذ ", "")
+            .replace("الأستاذ ", "")
+            .replace("أستاذ ", "")
+            .replace("ست ", "")
+            .replace("معلم ", "")
+            .replace("مدرس ", "")
+            .replace("د.", "")
+            .replace("دكتور ", "")
+            .replace("الشيخ ", "")
+        val parts = text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+        return when {
+            parts.size >= 2 -> "${parts[0]} ${parts[1]}"
+            parts.size == 1 -> parts[0]
+            else -> raw.trim()
+        }
     }
 
     fun normArabic(s: String): String {
@@ -146,21 +170,124 @@ object WidgetScheduleHelper {
             .lowercase()
     }
 
+    data class EnrolledClassKey(val gradeNorm: String, val sectionNorm: String, val subjectNorm: String)
+
+    /**
+     * استرجاع الشعب والمواد التي قام الأستاذ باختيارها وتنزيل أسمائها فعلياً إلى جهازه
+     */
+    fun getTeacherEnrolledClasses(context: Context): List<EnrolledClassKey> {
+        val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+        val cached = prefs.getStringSet("cached_teacher_enrolled_classes", null)
+        if (cached != null && cached.isNotEmpty()) {
+            return cached.mapNotNull { item ->
+                val p = item.split("::")
+                if (p.size >= 2) EnrolledClassKey(p[0], p[1], if (p.size > 2) p[2] else "") else null
+            }
+        }
+        return try {
+            val db = com.school.system.data.SchoolDatabase.getInstance(context)
+            val pkgs = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {
+                db.classPackageDao().getAllPackagesList()
+            }
+            if (pkgs.isNotEmpty()) {
+                val list = pkgs.map {
+                    EnrolledClassKey(
+                        gradeNorm = normArabic(cleanClassName(it.grade)),
+                        sectionNorm = normArabic(it.section.trim()),
+                        subjectNorm = normArabic(cleanSubjectName(it.subject))
+                    )
+                }
+                val set = list.map { "${it.gradeNorm}::${it.sectionNorm}::${it.subjectNorm}" }.toSet()
+                prefs.edit().putStringSet("cached_teacher_enrolled_classes", set).apply()
+                list
+            } else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /**
+     * مطابقة دقيقة وذكية لدروس الأستاذ في الودجت:
+     * 1. حصر التضليل بالشعب التي اختارها الأستاذ فقط (Enrolled Classes).
+     * 2. اعتماد الاسم الثنائي للأستاذ لمنع تكرار التضليل عند تشابه الأسماء الأولى.
+     * 3. منع مطابقة اسم الأستاذ مع اسم المادة نهائياً لتفادي خلط المعلمين.
+     */
+    fun isLessonMatchingTeacherStrict(
+        context: Context,
+        rawGrade: String,
+        rawSection: String,
+        rawSubject: String,
+        rawTeacher: String,
+        teacherConfigName: String
+    ): Boolean {
+        val cleanTeacherCfg = cleanTeacherTwoPartName(teacherConfigName)
+        val normTeacherCfg = normArabic(cleanTeacherCfg)
+        if (normTeacherCfg.isEmpty()) return false
+
+        val enrolledClasses = getTeacherEnrolledClasses(context)
+        val rowGradeNorm = normArabic(cleanClassName(rawGrade))
+        val rowSecNorm = normArabic(rawSection.trim())
+        val cellSubjNorm = normArabic(cleanSubjectName(rawSubject))
+        val cellTeacherNorm = normArabic(cleanTeacherTwoPartName(rawTeacher))
+
+        // 1. إذا كان الأستاذ قد نزل شعباً ومواد، نحصر التضليل حتماً في هذه الشعب دون غيرها
+        if (enrolledClasses.isNotEmpty()) {
+            val matchingEnrolledClass = enrolledClasses.firstOrNull { enrolled ->
+                val gradeMatches = rowGradeNorm == enrolled.gradeNorm ||
+                        rowGradeNorm.contains(enrolled.gradeNorm) ||
+                        enrolled.gradeNorm.contains(rowGradeNorm)
+
+                val secMatches = rowSecNorm.equals(enrolled.sectionNorm, ignoreCase = true) ||
+                        (rowSecNorm.isNotEmpty() && enrolled.sectionNorm.isNotEmpty() && rowSecNorm.first() == enrolled.sectionNorm.first())
+
+                gradeMatches && secMatches
+            }
+
+            // إذا كانت هذه الشعبة ليست من شعب الأستاذ المختارة، نرفضها فوراً
+            if (matchingEnrolledClass == null) {
+                return false
+            }
+
+            // داخل الشعبة الخاصة به:
+            // أ) مطابقة الاسم الثنائي للأستاذ
+            if (cellTeacherNorm.isNotEmpty()) {
+                val matchesTwoPart = (cellTeacherNorm == normTeacherCfg) ||
+                        (normTeacherCfg.length >= 4 && cellTeacherNorm.contains(normTeacherCfg)) ||
+                        (cellTeacherNorm.length >= 4 && normTeacherCfg.contains(cellTeacherNorm))
+                if (matchesTwoPart) return true
+            }
+
+            // ب) أو إذا كان اسم المدرس في الخلية فارغاً، نتأكد من تطابق المادة مع المادة المسندة له في هذه الشعبة
+            if (cellSubjNorm.isNotEmpty() && matchingEnrolledClass.subjectNorm.isNotEmpty()) {
+                if (cellSubjNorm == matchingEnrolledClass.subjectNorm ||
+                    cellSubjNorm.contains(matchingEnrolledClass.subjectNorm) ||
+                    matchingEnrolledClass.subjectNorm.contains(cellSubjNorm)
+                ) {
+                    return true
+                }
+            }
+            return false
+        }
+
+        // 2. إذا لم تكن هناك شعب منزلة بعد، نعتمد حصراً على الاسم الثنائي المكتوب في الخلية
+        if (cellTeacherNorm.isNotEmpty()) {
+            return (cellTeacherNorm == normTeacherCfg) ||
+                    (normTeacherCfg.length >= 4 && cellTeacherNorm.contains(normTeacherCfg)) ||
+                    (cellTeacherNorm.length >= 4 && normTeacherCfg.contains(cellTeacherNorm))
+        }
+
+        return false
+    }
+
     fun isLessonMatchingTeacher(input: String, teacher: String, subject: String): Boolean {
-        val q = normArabic(input)
+        val q = normArabic(cleanTeacherTwoPartName(input))
         if (q.isEmpty()) return true
 
-        val normTeacher = normArabic(teacher)
-        val normSubj = normArabic(subject)
-        val cleanTeacher = normArabic(cleanTeacherFirstName(teacher))
-        val cleanSubj = normArabic(cleanSubjectName(subject))
-
-        return normTeacher.contains(q) ||
-               normSubj.contains(q) ||
-               cleanTeacher.contains(q) ||
-               cleanSubj.contains(q) ||
-               (normTeacher.length >= 3 && q.contains(normTeacher)) ||
-               (cleanTeacher.length >= 3 && q.contains(cleanTeacher))
+        val normTeacher = normArabic(cleanTeacherTwoPartName(teacher))
+        if (normTeacher.isNotEmpty()) {
+            return normTeacher == q || (q.length >= 4 && normTeacher.contains(q)) || (normTeacher.length >= 4 && q.contains(normTeacher))
+        }
+        return false
     }
 
     val SCHOOL_DAYS = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
@@ -373,7 +500,7 @@ object WidgetScheduleHelper {
                                 val isOff = lessonObj?.get("isOff") as? Boolean ?: false
 
                                 if (!isOff && (subjRaw.isNotEmpty() || teacherRaw.isNotEmpty())) {
-                                    if (isLessonMatchingTeacher(teacherNameInput, teacherRaw, subjRaw)) {
+                                    if (isLessonMatchingTeacherStrict(context, grade, section, subjRaw, teacherRaw, teacherNameInput)) {
                                         lessonsByNumber[i] = className to cleanSubjectName(subjRaw)
                                     }
                                 }
@@ -388,7 +515,7 @@ object WidgetScheduleHelper {
                         lessonsList.forEachIndexed { idx, item ->
                             val itemStr = item?.toString() ?: ""
                             if (itemStr.isNotEmpty() && itemStr != "-") {
-                                if (isLessonMatchingTeacher(teacherNameInput, "", itemStr)) {
+                                if (isLessonMatchingTeacherStrict(context, className, "", itemStr, "", teacherNameInput)) {
                                     lessonsByNumber[idx + 1] = className to cleanSubjectName(itemStr)
                                 }
                             }
@@ -544,6 +671,10 @@ object WidgetScheduleHelper {
      */
     fun updateAllWidgets(context: Context) {
         try {
+            // مسح الكاش لإعادة قراءة شعب الأستاذ المحدثة فوراً
+            context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                .edit().remove("cached_teacher_enrolled_classes").apply()
+
             val intentDaily = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
                 action = DailyScheduleWidgetProvider.ACTION_REFRESH_WIDGET
             }

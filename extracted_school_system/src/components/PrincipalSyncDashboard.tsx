@@ -376,7 +376,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
               </div>
               <div>
                 <h1 className="text-3xl font-black text-white tracking-tight">مركز القيادة والمزامنة السحابية</h1>
-                <p className="text-blue-100 font-bold mt-1 opacity-80">النسخة المحدثة v6.0 Super Edition (تخصيص حصري وسقف 60 طالباً)</p>
+                <p className="text-blue-100 font-bold mt-1 opacity-80">النسخة المحدثة v6.4.2 Super Edition (تخصيص حصري وسقف 60 طالباً)</p>
               </div>
             </div>
 

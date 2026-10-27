@@ -23,6 +23,9 @@ class SyncService : Service() {
     @Inject
     lateinit var packageDao: ClassPackageDao
 
+    @Inject
+    lateinit var syncRepository: SyncRepository
+
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var syncJob: Job? = null
 
@@ -43,6 +46,12 @@ class SyncService : Service() {
                         for (pkg in packages) {
                             val success = syncManager.syncGrades(pkg.grade, pkg.section, pkg.subject)
                             Log.d("SyncService", "Synced class: ${pkg.grade}-${pkg.section} [${pkg.subject}] - success = $success")
+                        }
+                        // Check for new directives and broadcast notification
+                        try {
+                            syncRepository.fetchAndNotifyDirectives(config.schoolId)
+                        } catch (e: Exception) {
+                            Log.e("SyncService", "Directives background fetch error: ${e.message}")
                         }
                     } else {
                         Log.d("SyncService", "SyncService bypassed - school config not activated, verified, or cloudUrl empty")

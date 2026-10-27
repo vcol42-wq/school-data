@@ -110,7 +110,14 @@ class ScheduleWidgetFactory(private val context: Context) : RemoteViewsService.R
 
                                     if (!isOff && (subj.isNotEmpty() || teacher.isNotEmpty())) {
                                         val isTeacherLesson = if (teacherName.isNotEmpty()) {
-                                            teacher.lowercase().contains(teacherName) || subj.lowercase().contains(teacherName)
+                                            WidgetScheduleHelper.isLessonMatchingTeacherStrict(
+                                                context = context,
+                                                rawGrade = grade,
+                                                rawSection = section,
+                                                rawSubject = subj,
+                                                rawTeacher = teacher,
+                                                teacherConfigName = teacherName
+                                            )
                                         } else {
                                             true
                                         }
