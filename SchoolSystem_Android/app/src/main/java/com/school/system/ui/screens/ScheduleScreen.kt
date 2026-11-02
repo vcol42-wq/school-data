@@ -582,7 +582,7 @@ fun ScheduleScreen(
                                     }
                                 }
                             }
-                        } else if (breakAfter != null && breakAfter > 0) {
+                        } else if ((breakAfter ?: 0) > 0) {
                             Surface(
                                 color = Color(0xFFFFFBEB),
                                 border = BorderStroke(1.dp, Color(0xFFFDE68A)),
@@ -1680,7 +1680,7 @@ fun PersonalLessonCardRtl(
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
-                } else if (breakAfter != null && breakAfter > 0) {
+                } else if ((breakAfter ?: 0) > 0) {
                     Surface(
                         color = Color(0xFFFFFBEB),
                         border = BorderStroke(1.dp, Color(0xFFFDE68A)),

@@ -75,6 +75,20 @@
                 android:resource="@xml/full_schedule_widget_info" />
         </receiver>
 
+        <receiver
+            android:name=".widget.DailyScheduleWidgetProvider"
+            android:exported="true"
+            android:label="جدول الحصص اليومي">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.school.system.widget.ACTION_REFRESH" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/daily_schedule_widget_info" />
+        </receiver>
+
         <service
             android:name=".widget.FullScheduleWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"

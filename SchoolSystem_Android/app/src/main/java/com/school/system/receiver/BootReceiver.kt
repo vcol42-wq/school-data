@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.school.system.data.BellManager
+import com.school.system.widget.WidgetScheduleHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,12 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             CoroutineScope(Dispatchers.IO).launch {
                 bellManager.scheduleAllAlarms()
+            }
+            try {
+                WidgetScheduleHelper.updateAllWidgets(context)
+                WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(context)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

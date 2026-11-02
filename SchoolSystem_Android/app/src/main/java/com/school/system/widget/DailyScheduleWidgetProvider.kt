@@ -23,6 +23,7 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId)
         }
+        WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(context)
     }
 
     override fun onAppWidgetOptionsChanged(
@@ -62,6 +63,7 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
             for (appWidgetId in appWidgetIds) {
                 updateAppWidget(context, appWidgetManager, appWidgetId)
             }
+            WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(context)
         }
     }
 

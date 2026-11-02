@@ -24,6 +24,7 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             updateAppWidget(context, appWidgetManager, appWidgetId)
         }
+        WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(context)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -37,6 +38,15 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             for (appWidgetId in appWidgetIds) {
                 updateAppWidget(context, appWidgetManager, appWidgetId)
             }
+            WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(context)
+
+            // تحديث الودجت الأفقي اليومي معاً
+            try {
+                val dailyIntent = Intent(context, DailyScheduleWidgetProvider::class.java).apply {
+                    action = DailyScheduleWidgetProvider.ACTION_REFRESH_WIDGET
+                }
+                context.sendBroadcast(dailyIntent)
+            } catch (_: Exception) {}
         } else if (intent.action == ACTION_SELECT_DAY) {
             val dayIdx = intent.getIntExtra(EXTRA_DAY_INDEX, 0)
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
@@ -50,6 +60,7 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             for (appWidgetId in appWidgetIds) {
                 updateAppWidget(context, appWidgetManager, appWidgetId)
             }
+            WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(context)
         }
     }
 

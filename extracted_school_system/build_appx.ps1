@@ -78,3 +78,6 @@ foreach ($f in $setupFiles) {
     $sizeMB = [math]::Round($f.Length / 1MB, 2)
     Write-Host "SUCCESS: Exported $($f.Name) ($sizeMB MB)"
 }
+
+# Clean temporary staging directory after successful build
+Remove-Item -Path "app_staging" -Recurse -Force -ErrorAction SilentlyContinue

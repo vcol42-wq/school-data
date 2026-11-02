@@ -35,12 +35,20 @@ class SyncService : Service() {
         startPeriodicSync()
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (syncJob?.isActive != true) {
+            startPeriodicSync()
+        }
+        return START_NOT_STICKY
+    }
+
     private fun startPeriodicSync() {
+        syncJob?.cancel()
         syncJob = serviceScope.launch {
             while (isActive) {
                 try {
                     val config = configDao.getConfig().first()
-                    if (config != null && config.isActivated && config.isVerified && config.cloudUrl.isNotEmpty() && config.schoolId.isNotBlank() && config.schoolId != "school_01") {
+                    if (config != null && (config.isActivated || config.isVerified) && config.schoolId.isNotBlank() && config.schoolId != "school_01") {
                         Log.d("SyncService", "SyncService background execution - syncing all classes")
                         val packages = packageDao.getAllPackagesList()
                         for (pkg in packages) {
@@ -54,8 +62,10 @@ class SyncService : Service() {
                             Log.e("SyncService", "Directives background fetch error: ${e.message}")
                         }
                     } else {
-                        Log.d("SyncService", "SyncService bypassed - school config not activated, verified, or cloudUrl empty")
+                        Log.d("SyncService", "SyncService bypassed - school config not activated or verified")
                     }
+                } catch (c: CancellationException) {
+                    throw c
                 } catch (e: Exception) {
                     Log.e("SyncService", "Error during periodic sync cycle: ${e.localizedMessage}")
                 }

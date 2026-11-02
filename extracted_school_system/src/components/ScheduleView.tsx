@@ -367,11 +367,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const daysList: DayOfWeek[] = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس'];
 
   // Current day's rows
-  const currentDayRows = sortSectionsList(scheduleMap[selectedDay] || []);
+  const currentDayRows: ClassScheduleRow[] = sortSectionsList<ClassScheduleRow>(scheduleMap[selectedDay] || []);
 
   // Calculate start and end times for all 6 lesson slots & breaks in 12-Hour format (ص/م)
   const calculateSlotTimings = () => {
-    const timings: { type: 'lesson' | 'break'; name: string; start: string; end: string; slotNum?: number }[] = [];
+    const timings: { type: 'lesson' | 'break'; name: string; start: string; end: string; slotNum?: number; dur?: number; startMin: number; endMin: number }[] = [];
     
     const [startH, startM] = (config.schoolStartHour || '08:00').split(':').map(Number);
     let currentTotalMinutes = (startH || 8) * 60 + (startM || 0);
@@ -394,7 +394,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
     const getBreakDur = (idx: number) => {
       if (config.customBreakDurations && config.customBreakDurations[idx] !== undefined) {
-        return Math.max(0, Number(config.customBreakDurations[idx]));
+        const n = Number(config.customBreakDurations[idx]);
+        // Guard against NaN/invalid values so the break slot is never dropped (prevents header column shift)
+        return Number.isFinite(n) ? Math.max(0, n) : (Number(config.breakDurationMinutes) || 0);
       }
       return Number(config.breakDurationMinutes) || 10;
     };
@@ -411,22 +413,23 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         name: `الدرس ${i}`,
         start: lessonStart,
         end: lessonEnd,
-        slotNum: i
+        startMin: currentTotalMinutes - lDur, endMin: currentTotalMinutes, slotNum: i
       });
 
       // Break (after lessons 1 to 5)
       if (i < 6) {
         const bDur = getBreakDur(i - 1);
-        if (bDur > 0) {
+        if (true) {
           const breakStart = formatTime12(currentTotalMinutes);
           currentTotalMinutes += bDur;
           const breakEnd = formatTime12(currentTotalMinutes);
 
           timings.push({
             type: 'break',
-            name: `${bDur} د`,
+            name: bDur === 0 ? 'دمج' : `${bDur} د`,
+            dur: bDur,
             start: breakStart,
-            end: breakEnd
+            end: breakEnd, startMin: currentTotalMinutes - bDur, endMin: currentTotalMinutes
           });
         }
       }
@@ -438,10 +441,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const slotTimings = calculateSlotTimings();
   const activeTiming = activeSlotIndex === null ? null : slotTimings[activeSlotIndex];
   const activeRemainingSeconds = activeTiming
-    ? Math.max(0, Math.floor(((
-      Number(activeTiming.end.split(':')[0]) * 3600 +
-      Number(activeTiming.end.split(':')[1]) * 60
-    ) - (scheduleNow.getHours() * 3600 + scheduleNow.getMinutes() * 60 + scheduleNow.getSeconds()))))
+    ? Math.max(0, Math.floor(activeTiming.endMin * 60 - (scheduleNow.getHours() * 3600 + scheduleNow.getMinutes() * 60 + scheduleNow.getSeconds())))
+
+
+
     : 0;
   const formatScheduleCountdown = (seconds: number) =>
     `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
@@ -456,10 +459,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       let activeIdx: number | null = null;
 
       slotTimings.forEach((slot, idx) => {
-        const [sH, sM] = slot.start.split(':').map(Number);
-        const [eH, eM] = slot.end.split(':').map(Number);
-        const startTotal = sH * 60 + sM;
-        const endTotal = eH * 60 + eM;
+        // 12h labels (ص/م) are display-only; use numeric minutes for comparisons
+        if (slot.endMin <= slot.startMin) return; // merged (0-min) break
+        const startTotal = slot.startMin;
+        const endTotal = slot.endMin;
 
         if (currentMin >= startTotal && currentMin < endTotal) {
           activeIdx = idx;
@@ -606,7 +609,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
     setScheduleMap(prev => ({
       ...prev,
-      [selectedDay]: sortSectionsList([...(prev[selectedDay] || []), newRow])
+      [selectedDay]: sortSectionsList<ClassScheduleRow>([...(prev[selectedDay] || []), newRow])
     }));
 
     setShowAddRowModal(false);
@@ -824,10 +827,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   <th 
                     key={i} 
                     className={`py-2 px-1 rounded-xl font-black text-xs ${
-                      activeSlotIndex === i ? 'bg-amber-400 text-slate-950 font-black animate-pulse' : st.type === 'break' ? 'bg-pink-600 text-white' : ''
+                      activeSlotIndex === i ? 'bg-amber-400 text-slate-950 font-black animate-pulse' : st.type === 'break' ? (st.dur === 0 ? 'bg-pink-200 text-pink-950 font-bold text-[11px]' : 'bg-pink-600 text-white') : ''
                     }`}
                   >
-                    {st.start} - {st.end}
+                    {st.type === 'break' && st.dur === 0 ? 'دمج' : (
+                      <span className={`flex flex-col items-center leading-tight whitespace-nowrap ${st.type === 'break' ? 'text-[9px]' : ''}`} dir="ltr">
+                        <span>{st.start}</span>
+                        <span className="opacity-80">{st.end}</span>
+                      </span>
+                    )}
                   </th>
                 ))}
                 <th className="py-2 px-1 w-10 font-black rounded-xl text-center">إجراء</th>
@@ -842,31 +850,31 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   {customLessonNames.lesson1 || 'الدرس الأول'} ({config.customLessonDurations?.[0] || config.lessonDurationMinutes} د)
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 1 ? 'bg-amber-400 text-slate-950' : ''}`}>
-                  {(config.customBreakDurations?.[0] !== undefined ? config.customBreakDurations[0] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[0] ?? config.breakDurationMinutes} د`}
+                  {slotTimings[1]?.name}
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-cyan-200 text-cyan-950 font-black ${activeSlotIndex === 2 ? 'bg-amber-400 text-slate-950' : ''}`}>
                   {customLessonNames.lesson2 || 'الدرس الثاني'} ({config.customLessonDurations?.[1] || config.lessonDurationMinutes} د)
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 3 ? 'bg-amber-400 text-slate-950' : ''}`}>
-                  {(config.customBreakDurations?.[1] !== undefined ? config.customBreakDurations[1] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[1] ?? config.breakDurationMinutes} د`}
+                  {slotTimings[3]?.name}
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-amber-200 text-amber-950 font-black ${activeSlotIndex === 4 ? 'bg-amber-400 text-slate-950' : ''}`}>
                   {customLessonNames.lesson3 || 'الدرس الثالث'} ({config.customLessonDurations?.[2] || config.lessonDurationMinutes} د)
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 5 ? 'bg-amber-400 text-slate-950' : ''}`}>
-                  {(config.customBreakDurations?.[2] !== undefined ? config.customBreakDurations[2] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[2] ?? config.breakDurationMinutes} د`}
+                  {slotTimings[5]?.name}
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-emerald-200 text-emerald-950 font-black ${activeSlotIndex === 6 ? 'bg-amber-400 text-slate-950' : ''}`}>
                   {customLessonNames.lesson4 || 'الدرس الرابع'} ({config.customLessonDurations?.[3] || config.lessonDurationMinutes} د)
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 7 ? 'bg-amber-400 text-slate-950' : ''}`}>
-                  {(config.customBreakDurations?.[3] !== undefined ? config.customBreakDurations[3] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[3] ?? config.breakDurationMinutes} د`}
+                  {slotTimings[7]?.name}
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-indigo-200 text-indigo-950 font-black ${activeSlotIndex === 8 ? 'bg-amber-400 text-slate-950' : ''}`}>
                   {customLessonNames.lesson5 || 'الدرس الخامس'} ({config.customLessonDurations?.[4] || config.lessonDurationMinutes} د)
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-pink-200 text-pink-950 font-black text-[11px] ${activeSlotIndex === 9 ? 'bg-amber-400 text-slate-950' : ''}`}>
-                  {(config.customBreakDurations?.[4] !== undefined ? config.customBreakDurations[4] : config.breakDurationMinutes) === 0 ? 'دمج' : `${config.customBreakDurations?.[4] ?? config.breakDurationMinutes} د`}
+                  {slotTimings[9]?.name}
                 </th>
                 <th className={`py-2 px-1 rounded-xl bg-rose-200 text-rose-950 font-black ${activeSlotIndex === 10 ? 'bg-amber-400 text-slate-950' : ''}`}>
                   {customLessonNames.lesson6 || 'الدرس السادس'} ({config.customLessonDurations?.[5] || config.lessonDurationMinutes} د)
@@ -907,7 +915,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 1 */}
-                    <BreakCell isActive={activeSlotIndex === 1} durationMinutes={config.customBreakDurations?.[0] ?? config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 1} durationMinutes={slotTimings[1]?.dur} />
 
                     {/* Lesson 2 */}
                     <LessonCell
@@ -918,7 +926,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 2 */}
-                    <BreakCell isActive={activeSlotIndex === 3} durationMinutes={config.customBreakDurations?.[1] ?? config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 3} durationMinutes={slotTimings[3]?.dur} />
 
                     {/* Lesson 3 */}
                     <LessonCell
@@ -929,7 +937,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 3 */}
-                    <BreakCell isActive={activeSlotIndex === 5} durationMinutes={config.customBreakDurations?.[2] ?? config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 5} durationMinutes={slotTimings[5]?.dur} />
 
                     {/* Lesson 4 */}
                     <LessonCell
@@ -940,7 +948,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 4 */}
-                    <BreakCell isActive={activeSlotIndex === 7} durationMinutes={config.customBreakDurations?.[3] ?? config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 7} durationMinutes={slotTimings[7]?.dur} />
 
                     {/* Lesson 5 */}
                     <LessonCell
@@ -951,7 +959,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     />
 
                     {/* Break 5 */}
-                    <BreakCell isActive={activeSlotIndex === 9} durationMinutes={config.customBreakDurations?.[4] ?? config.breakDurationMinutes} />
+                    <BreakCell isActive={activeSlotIndex === 9} durationMinutes={slotTimings[9]?.dur} />
 
                     {/* Lesson 6 */}
                     <LessonCell
@@ -1848,7 +1856,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                       if (l < 6) {
                         const bDur = tempBreakDurations[l - 1] ?? 10;
-                        if (bDur > 0) {
+                        if (Number(bDur) > 0) {
                           const bSt = f12(curMin);
                           curMin += bDur;
                           const bEn = f12(curMin);
@@ -1974,10 +1982,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     <th 
                       key={i} 
                       className={`py-2 px-1 rounded-xl font-black text-[11px] ${
-                        st.type === 'break' ? 'bg-pink-600 text-white' : 'bg-sky-800 text-white'
+                        st.type === 'break' ? (st.dur === 0 ? 'bg-pink-200 text-pink-950 font-bold' : 'bg-pink-600 text-white') : 'bg-sky-800 text-white'
                       }`}
                     >
-                      {st.start} - {st.end}
+                      {st.type === 'break' && st.dur === 0 ? 'دمج' : (
+                      <span className={`flex flex-col items-center leading-tight whitespace-nowrap ${st.type === 'break' ? 'text-[9px]' : ''}`} dir="ltr">
+                        <span>{st.start}</span>
+                        <span className="opacity-80">{st.end}</span>
+                      </span>
+                    )}
                     </th>
                   ))}
                 </tr>
@@ -2061,7 +2074,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                             {idx < 5 && (
                               <td className="p-0.5 align-middle bg-[#e6f4f1] text-center w-8">
                                 <div className="py-1 rounded-xl bg-pink-100 text-pink-950 border border-pink-300 text-[10px] font-black flex items-center justify-center min-h-[54px]">
-                                  {config.breakDurationMinutes}د
+                                  {slotTimings[idx * 2 + 1]?.name}
                                 </div>
                               </td>
                             )}

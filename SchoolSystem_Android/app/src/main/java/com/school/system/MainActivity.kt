@@ -13,6 +13,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.school.system.data.SyncService
 import com.school.system.ui.theme.SchoolSystemTheme
+import com.school.system.widget.WidgetScheduleHelper
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -39,6 +40,14 @@ class MainActivity : FragmentActivity() {
         try {
             val syncServiceIntent = Intent(this, SyncService::class.java)
             startService(syncServiceIntent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        // Initialize and schedule exact lesson widgets updates
+        try {
+            WidgetScheduleHelper.updateAllWidgets(this)
+            WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(this)
         } catch (e: Exception) {
             e.printStackTrace()
         }

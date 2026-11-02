@@ -1781,7 +1781,7 @@ export const SmartScheduleGeneratorView: React.FC<SmartScheduleGeneratorViewProp
                           st.type === 'break' ? 'bg-pink-600 text-white' : 'bg-sky-800 text-white'
                         }`}
                       >
-                        {st.start} - {st.end}
+                        {st.type === 'break' && st.start === st.end ? 'دمج' : `${st.start} - ${st.end}`}
                       </th>
                     ));
                   })()}
