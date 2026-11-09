@@ -5,7 +5,14 @@ import androidx.navigation.compose.rememberNavController
 import com.school.system.ui.navigation.SchoolSystemNavHost
 
 @Composable
-fun SchoolSystemApp() {
+fun SchoolSystemApp(
+    isAppLockEnabled: Boolean,
+    onAppLockEnabledChange: (Boolean) -> Unit
+) {
     val navController = rememberNavController()
-    SchoolSystemNavHost(navController = navController)
+    SchoolSystemNavHost(
+        navController = navController,
+        isAppLockEnabled = isAppLockEnabled,
+        onAppLockEnabledChange = onAppLockEnabledChange
+    )
 }

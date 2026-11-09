@@ -21,7 +21,11 @@ class BellManager @Inject constructor(
 ) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-    suspend fun setupDefaultSchedule(settings: BellSettings) {
+    suspend fun setupDefaultSchedule(
+        settings: BellSettings,
+        customLessonDurations: List<Int> = emptyList(),
+        customBreakDurations: List<Int> = emptyList()
+    ) {
         val alarms = mutableListOf<LessonAlarm>()
         val days = listOf(Calendar.SUNDAY, Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY, Calendar.THURSDAY)
         
@@ -29,10 +33,11 @@ class BellManager @Inject constructor(
             var currentTotalMinutes = settings.startHour * 60 + settings.startMinute
             
             for (i in 1..6) {
+                val lessonDuration = customLessonDurations.getOrNull(i - 1) ?: settings.lessonDuration
                 val startH = currentTotalMinutes / 60
                 val startM = currentTotalMinutes % 60
                 
-                val endTotal = currentTotalMinutes + settings.lessonDuration
+                val endTotal = currentTotalMinutes + lessonDuration
                 val endH = endTotal / 60
                 val endM = endTotal % 60
                 
@@ -46,7 +51,8 @@ class BellManager @Inject constructor(
                     )
                 )
                 
-                currentTotalMinutes = endTotal + settings.breakDuration
+                val breakDuration = customBreakDurations.getOrNull(i - 1) ?: settings.breakDuration
+                currentTotalMinutes = endTotal + if (i < 6) breakDuration else 0
             }
         }
         

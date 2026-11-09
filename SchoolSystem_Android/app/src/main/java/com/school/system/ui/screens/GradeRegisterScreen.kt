@@ -87,6 +87,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.core.content.FileProvider
 import com.school.system.data.model.SchoolConfig
 import com.school.system.data.repository.SecureUploadResult
+import com.school.system.data.GradeRestoreResult
 import com.school.system.utils.BiometricHelper
 import com.school.system.utils.ImageTextExtractor
 import com.school.system.utils.ProfessionalDocumentParser
@@ -234,6 +235,8 @@ fun GradeRegisterScreen(
     val columnSettings by viewModel.getDailyColumnSettings("${grade}_${section}_$subject").collectAsState(null)
     val config by viewModel.config.collectAsState()
     val gradeLocks by viewModel.gradeLocks.collectAsState()
+    val isAutoUploading by viewModel.isAutoUploading.collectAsState()
+    val autoUploadStatus by viewModel.autoUploadStatus.collectAsState()
     val isRosterProtected = remember(config) { config?.schoolId.orEmpty().isNotBlank() }
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -262,12 +265,23 @@ fun GradeRegisterScreen(
         }
     }
 
+    // تحديث أسماء وبيانات طلاب الشعبة آلياً في الخلفية فور فتح السجل (إذا كانت المزامنة مفعلة)
+    LaunchedEffect(grade, section, subject) {
+        if (config?.isCloudSyncEnabled != false) {
+            viewModel.refreshStudentsFromCloud(grade, section, subject) { _, _ -> }
+        }
+    }
+
     val isSpecial = remember(subject) { isSpecialSubject(subject) }
 
     var showPinDialog by remember { mutableStateOf(false) }
     var inputPin by remember { mutableStateOf("") }
     var showInvalidPinDialog by remember { mutableStateOf(false) }
     var invalidPinDialogMessage by remember { mutableStateOf("") }
+
+    var isRestoringGrades by remember { mutableStateOf(false) }
+    var showRestorePinDialog by remember { mutableStateOf(false) }
+    var inputRestorePin by remember { mutableStateOf("") }
 
     val fragmentActivity = remember(context) {
         var ctx = context
@@ -278,15 +292,41 @@ fun GradeRegisterScreen(
         ctx as? androidx.fragment.app.FragmentActivity
     }
 
+    val performRestoreGrades: (String) -> Unit = { pinToUse ->
+        isRestoringGrades = true
+        viewModel.restoreGradesSecurely(grade, section, subject, pinToUse) { result ->
+            isRestoringGrades = false
+            when (result) {
+                is GradeRestoreResult.Success -> {
+                    viewModel.savePin(grade, section, subject, pinToUse)
+                    if (result.restoredCount > 0) {
+                        Toast.makeText(context, "تم بنجاح استرجاع درجات (${result.restoredCount}) طالباً من السحابة وعرضها بالسجل ☁️✓", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "الرمز صحيح ولكن لا توجد درجات محفوظة مسبقاً في السحابة لهذه المادة والشعبة.", Toast.LENGTH_LONG).show()
+                    }
+                }
+                is GradeRestoreResult.InvalidPin -> {
+                    invalidPinDialogMessage = result.reason
+                    showInvalidPinDialog = true
+                }
+                is GradeRestoreResult.Failure -> {
+                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
     val performUpload: (String) -> Unit = { pinToUse ->
         isUploadingGrades = true
         viewModel.uploadGradesSecurely(grade, section, subject, pinToUse) { result ->
             isUploadingGrades = false
             when (result) {
                 is SecureUploadResult.Success -> {
+                    viewModel.savePin(grade, section, subject, pinToUse)
                     Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                 }
                 is SecureUploadResult.InvalidPin -> {
+                    viewModel.clearPin(grade, section, subject)
                     invalidPinDialogMessage = result.reason
                     showInvalidPinDialog = true
                 }
@@ -330,6 +370,10 @@ fun GradeRegisterScreen(
 
     LaunchedEffect(grade, section, subject) {
         viewModel.loadStudents(grade, section, subject)
+        val savedPin = viewModel.getStoredPin(grade, section, subject)
+        if (!savedPin.isNullOrBlank()) {
+            viewModel.restoreGradesSecurely(grade, section, subject, savedPin) { /* silent restore with stored PIN */ }
+        }
     }
 
     var headerHeightPx by remember { mutableFloatStateOf(0f) }
@@ -382,11 +426,11 @@ fun GradeRegisterScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(if (isLandscape) 40.dp else 46.dp)
-                            .padding(horizontal = 8.dp),
+                            .padding(horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        // Geometric Navigation Group (الرجوع والمظهر)
+                        // 1. Geometric Navigation Group (الرجوع والمظهر)
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = currentTheme.primaryColor.copy(alpha = 0.08f),
@@ -398,7 +442,7 @@ fun GradeRegisterScreen(
                             ) {
                                 IconButton(
                                     onClick = onBack,
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                    modifier = Modifier.size(if (isLandscape) 28.dp else 32.dp)
                                 ) {
                                     Icon(
                                         Icons.AutoMirrored.Filled.ArrowBack,
@@ -410,7 +454,7 @@ fun GradeRegisterScreen(
                                 Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
                                 IconButton(
                                     onClick = { showThemeDialog = true },
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                    modifier = Modifier.size(if (isLandscape) 28.dp else 32.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Palette,
@@ -422,15 +466,97 @@ fun GradeRegisterScreen(
                             }
                         }
 
-                        // Geometric Main Actions Group (إضافة طالب، طباعة، مشاركة، سحابة)
+                        // 2. Geometric Cloud Sync Group (مجموعة المزامنة السحابية: رفع واسترجاع - بارزة وثابتة دائماً)
                         Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = currentTheme.primaryColor.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.primaryColor.copy(alpha = 0.5f))
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                            ) {
+                                // زر رفع الدرجات المشفر البارز (CloudUpload)
+                                IconButton(
+                                    onClick = {
+                                        if (isUploadingGrades || isAutoUploading) return@IconButton
+                                        val storedPin = viewModel.getStoredPin(grade, section, subject)
+                                        if (storedPin != null) {
+                                            startSecureUploadWithBiometric(storedPin)
+                                        } else {
+                                            inputPin = ""
+                                            showPinDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier.size(if (isLandscape) 34.dp else 38.dp)
+                                ) {
+                                    if (isUploadingGrades || isAutoUploading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.5.dp,
+                                            color = currentTheme.primaryColor
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.CloudUpload,
+                                            contentDescription = "رفع الدرجات المشفر (يدوي وآلي)",
+                                            tint = currentTheme.primaryColor,
+                                            modifier = Modifier.size(if (isLandscape) 22.dp else 25.dp)
+                                        )
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(18.dp)
+                                        .background(currentTheme.primaryColor.copy(alpha = 0.35f))
+                                )
+
+                                // زر استرجاع وتنزيل الدرجات من السحابة (CloudDownload)
+                                IconButton(
+                                    onClick = {
+                                        if (isRestoringGrades) return@IconButton
+                                        val storedPin = viewModel.getStoredPin(grade, section, subject)
+                                        if (storedPin != null) {
+                                            performRestoreGrades(storedPin)
+                                        } else {
+                                            inputRestorePin = ""
+                                            showRestorePinDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier.size(if (isLandscape) 34.dp else 38.dp)
+                                ) {
+                                    if (isRestoringGrades) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFF0284C7)
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.CloudDownload,
+                                            contentDescription = "استرجاع الدرجات السابقة من السحابة برمز الأستاذ ☁️",
+                                            tint = Color(0xFF0284C7),
+                                            modifier = Modifier.size(if (isLandscape) 22.dp else 25.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Geometric Actions Group (إضافة طالب، تحديث الأسماء، واجبات، طباعة، مشاركة)
+                        Surface(
+                            modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp),
                             color = currentTheme.primaryColor.copy(alpha = 0.08f),
                             border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.tableBorderColor)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 2.dp, vertical = 1.dp)
+                                modifier = Modifier
+                                    .horizontalScroll(rememberScrollState())
+                                    .padding(horizontal = 2.dp, vertical = 1.dp)
                             ) {
                                 IconButton(
                                     onClick = { 
@@ -440,24 +566,12 @@ fun GradeRegisterScreen(
                                             showAddStudentDialog = true
                                         }
                                     },
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                    modifier = Modifier.size(if (isLandscape) 28.dp else 32.dp)
                                 ) {
                                     Icon(
                                         if (isRosterProtected) Icons.Default.Shield else Icons.Default.PersonAdd,
                                         contentDescription = if (isRosterProtected) "قائمة الطلبة معتمدة 🛡️" else "إضافة طالب",
                                         tint = if (isRosterProtected) Color(0xFF0284C7) else currentTheme.primaryColor,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-                                Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
-                                IconButton(
-                                    onClick = { showPublishHomeworkDialog = true },
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Campaign,
-                                        contentDescription = "إرسال واجب وتوجيهات يومية للشعبة 📝",
-                                        tint = Color(0xFF8B5CF6),
                                         modifier = Modifier.size(19.dp)
                                     )
                                 }
@@ -471,11 +585,11 @@ fun GradeRegisterScreen(
                                             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                                         }
                                     },
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                    modifier = Modifier.size(if (isLandscape) 28.dp else 32.dp)
                                 ) {
                                     if (isRefreshingStudentsFromCloud) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
+                                            modifier = Modifier.size(17.dp),
                                             strokeWidth = 2.dp,
                                             color = Color(0xFF0EA5E9)
                                         )
@@ -490,6 +604,18 @@ fun GradeRegisterScreen(
                                 }
                                 Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
                                 IconButton(
+                                    onClick = { showPublishHomeworkDialog = true },
+                                    modifier = Modifier.size(if (isLandscape) 28.dp else 32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Campaign,
+                                        contentDescription = "إرسال واجب وتوجيهات يومية للشعبة 📝",
+                                        tint = Color(0xFF8B5CF6),
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                                Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
+                                IconButton(
                                     onClick = { 
                                         if (students.isEmpty()) {
                                             Toast.makeText(context, "لا توجد أسماء طلاب في هذه الشعبة للطباعة", Toast.LENGTH_SHORT).show()
@@ -497,7 +623,7 @@ fun GradeRegisterScreen(
                                             printRegister(context, grade, section, subject, selectedTab, students, absences, config, includeCover = true, columnSettings = columnSettings)
                                         }
                                     },
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                    modifier = Modifier.size(if (isLandscape) 28.dp else 32.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Print,
@@ -515,7 +641,7 @@ fun GradeRegisterScreen(
                                             showShareRosterDialog = true
                                         }
                                     },
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
+                                    modifier = Modifier.size(if (isLandscape) 28.dp else 32.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Share,
@@ -523,35 +649,6 @@ fun GradeRegisterScreen(
                                         tint = Color(0xFF059669),
                                         modifier = Modifier.size(19.dp)
                                     )
-                                }
-                                Box(modifier = Modifier.width(1.dp).height(16.dp).background(currentTheme.tableBorderColor.copy(alpha = 0.6f)))
-                                IconButton(
-                                    onClick = {
-                                        if (isUploadingGrades) return@IconButton
-                                        val storedPin = viewModel.getStoredPin(grade, section, subject)
-                                        if (storedPin != null) {
-                                            startSecureUploadWithBiometric(storedPin)
-                                        } else {
-                                            inputPin = ""
-                                            showPinDialog = true
-                                        }
-                                    },
-                                    modifier = Modifier.size(if (isLandscape) 30.dp else 34.dp)
-                                ) {
-                                    if (isUploadingGrades) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp,
-                                            color = currentTheme.primaryColor
-                                        )
-                                    } else {
-                                        Icon(
-                                            Icons.Default.CloudUpload,
-                                            contentDescription = "رفع الدرجات المشفر بالبصمة",
-                                            tint = currentTheme.primaryColor,
-                                            modifier = Modifier.size(19.dp)
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -1656,20 +1753,41 @@ fun GradeRegisterScreen(
         if (showPinDialog) {
             AlertDialog(
                 onDismissRequest = { showPinDialog = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                modifier = Modifier.fillMaxWidth(0.92f),
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Security,
-                            contentDescription = null,
-                            tint = Color(0xFF2563EB),
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            "اعتماد مادة: $subject ($section)",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = Color(0xFF2563EB),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                "اعتماد مادة: $subject ($section)",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                maxLines = 1
+                            )
+                            Text(
+                                "المصادقة الآمنة للرفع السحابي",
+                                fontSize = 11.sp,
+                                color = currentTheme.textSecondaryColor
+                            )
+                        }
                     }
                 },
                 text = {
@@ -1678,7 +1796,7 @@ fun GradeRegisterScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            "أدخل الرمز السري للمادة والشعبة، أو كود المشرف العام المعتمد من الإدارة، أو اضغط رفع مباشر أدناه.",
+                            "أدخل رمز الأستاذ المكوّن من 4 أرقام والمعتمد من الإدارة لهذه المادة والشعبة. لا يمكن رفع الدرجات دون تحقق سحابي.",
                             fontSize = 12.5.sp,
                             color = currentTheme.textSecondaryColor,
                             lineHeight = 18.sp
@@ -1686,51 +1804,53 @@ fun GradeRegisterScreen(
                         OutlinedTextField(
                             value = inputPin,
                             onValueChange = { inputPin = it },
-                            label = { Text("الرمز السري للمادة أو رمز المشرف") },
-                            placeholder = { Text("أدخل رمز المادة أو SUP-xxxx...") },
+                            label = { Text("رمز الأستاذ (4 أرقام)") },
+                            placeholder = { Text("أدخل الرمز الذي حفظته الإدارة") },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                             visualTransformation = PasswordVisualTransformation(),
                             shape = RoundedCornerShape(10.dp)
                         )
 
-                        Spacer(Modifier.height(4.dp))
-
-                        // الزر الأول: رفع مباشر فوري بدون رمز
                         Button(
-                            onClick = {
-                                showPinDialog = false
-                                startSecureUploadWithBiometric("DIRECT")
-                            },
-                            modifier = Modifier.fillMaxWidth().height(46.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("رفع مباشر فوري للسحابة ⚡", fontWeight = FontWeight.Black, fontSize = 13.5.sp)
-                        }
-
-                        // الزر الثاني: تأكيد الرمز والرفع بالبصمة
-                        OutlinedButton(
                             onClick = {
                                 val pin = inputPin.trim()
                                 if (pin.isEmpty()) {
                                     android.widget.Toast.makeText(context, "يرجى إدخال الرمز السري", android.widget.Toast.LENGTH_SHORT).show()
-                                    return@OutlinedButton
+                                    return@Button
                                 }
                                 showPinDialog = false
                                 startSecureUploadWithBiometric(pin)
                             },
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = currentTheme.primaryColor),
-                            border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.primaryColor),
-                            shape = RoundedCornerShape(12.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                         ) {
-                            Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("تأكيد الرمز والرفع بالبصمة 🔒", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Fingerprint,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = Color.White
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "تأكيد الرمز والرفع 🔒",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.5.sp,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 },
@@ -1743,9 +1863,124 @@ fun GradeRegisterScreen(
             )
         }
 
+        if (showRestorePinDialog) {
+            AlertDialog(
+                onDismissRequest = { showRestorePinDialog = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                modifier = Modifier.fillMaxWidth(0.92f),
+                title = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = Color(0xFF0284C7).copy(alpha = 0.12f),
+                            shape = CircleShape,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.CloudDownload,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0284C7),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                "استرجاع درجات: $subject ($section)",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                maxLines = 1
+                            )
+                            Text(
+                                "تحميل الدرجات السابقة من السحابة",
+                                fontSize = 11.sp,
+                                color = currentTheme.textSecondaryColor
+                            )
+                        }
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            "لحماية خصوصية درجات الطلاب، يرجى إدخال رمز الأستاذ السري (PIN) الخاص بهذه المادة والشعبة لتنزيل الدرجات المحفوظة في السحابة وعرضها في السجل فوراً:",
+                            fontSize = 12.5.sp,
+                            color = currentTheme.textSecondaryColor,
+                            lineHeight = 18.sp
+                        )
+                        OutlinedTextField(
+                            value = inputRestorePin,
+                            onValueChange = { inputRestorePin = it },
+                            label = { Text("رمز الأستاذ (4 أرقام)") },
+                            placeholder = { Text("أدخل رمزك السري") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                            visualTransformation = PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        Button(
+                            onClick = {
+                                val pin = inputRestorePin.trim()
+                                if (pin.isEmpty()) {
+                                    Toast.makeText(context, "يرجى إدخال الرمز السري", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                showRestorePinDialog = false
+                                performRestoreGrades(pin)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.CloudDownload,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                    tint = Color.White
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "تأكيد واسترجاع الدرجات ☁️✓",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 13.5.sp,
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showRestorePinDialog = false }) {
+                        Text("إلغاء", color = currentTheme.textSecondaryColor)
+                    }
+                }
+            )
+        }
+
         if (showInvalidPinDialog) {
             AlertDialog(
                 onDismissRequest = { showInvalidPinDialog = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+                modifier = Modifier.fillMaxWidth(0.92f),
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -1770,7 +2005,7 @@ fun GradeRegisterScreen(
                     ) {
                         Text(
                             text = invalidPinDialogMessage.ifEmpty {
-                                "يمكنك المتابعة بالرفع المباشر الفوري إلى السحابة أو إدخال رمز آخر."
+                                "تعذر التحقق من رمز الأستاذ. لا تُعد المحاولة على درجات حقيقية قبل التأكد من حفظ الرمز والإسناد في Supabase."
                             },
                             fontSize = 13.sp,
                             color = currentTheme.textPrimaryColor,
@@ -1780,34 +2015,28 @@ fun GradeRegisterScreen(
 
                         Spacer(Modifier.height(4.dp))
 
-                        Button(
-                            onClick = {
-                                showInvalidPinDialog = false
-                                startSecureUploadWithBiometric("DIRECT")
-                            },
-                            modifier = Modifier.fillMaxWidth().height(46.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("تجاوز ورفع مباشر فوري للسحابة ⚡", fontWeight = FontWeight.Black, fontSize = 13.5.sp)
-                        }
-
                         OutlinedButton(
                             onClick = {
                                 showInvalidPinDialog = false
                                 inputPin = ""
                                 showPinDialog = true
                             },
-                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 46.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFDC2626)),
                             border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFFDC2626)),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("إدخال رمز جديد 🔑", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("إدخال رمز جديد 🔑", fontWeight = FontWeight.Bold, fontSize = 13.sp, textAlign = TextAlign.Center)
+                            }
                         }
                     }
                 },
@@ -2288,7 +2517,7 @@ fun printRegister(
                     try {
                         val printAdapter = webView.createPrintDocumentAdapter(jobName)
                         val printAttributes = PrintAttributes.Builder()
-                            .setMediaSize(if (tabIndex == 0) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
+                            .setMediaSize(if (tabIndex == 0 || tabIndex == 1) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
                             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                             .build()
                         printManager.print(jobName, printAdapter, printAttributes)
@@ -2400,7 +2629,7 @@ fun exportAndSharePdfWithNativePdf(
                     try {
                         val printAdapter = webView.createPrintDocumentAdapter(jobName)
                         val printAttributes = PrintAttributes.Builder()
-                            .setMediaSize(if (tabIndex == 0) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
+                            .setMediaSize(if (tabIndex == 0 || tabIndex == 1) PrintAttributes.MediaSize.ISO_A4.asLandscape() else PrintAttributes.MediaSize.ISO_A4.asPortrait())
                             .setResolution(PrintAttributes.Resolution("pdf", "pdf", 600, 600))
                             .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
                             .build()
@@ -2894,11 +3123,12 @@ fun generateGradesHtml(
         """
     }
 
-    val cellPad = if (tabIndex == 0) "5px 2px" else "6px 3px"
-    val headerPad = if (tabIndex == 0) "6px 2px" else "7px 3px"
-    val cellFontSize = if (tabIndex == 0) "12px" else "13px"
-    val headerFontSize = if (tabIndex == 0) "11px" else "12px"
-    val nameFontSize = if (tabIndex == 0) "15.5px" else "16.5px"
+    val isLandscape = tabIndex == 0 || tabIndex == 1
+    val cellPad = if (isLandscape) "4px 3px" else "6px 3px"
+    val headerPad = if (isLandscape) "5px 3px" else "7px 3px"
+    val cellFontSize = if (isLandscape) "11.5px" else "13px"
+    val headerFontSize = if (isLandscape) "10.5px" else "12px"
+    val nameFontSize = if (isLandscape) "14px" else "16.5px"
 
     val progHtmlStats = calculateProgressiveStats(students)
     val totalSt = progHtmlStats.totalStudents
@@ -2914,16 +3144,15 @@ fun generateGradesHtml(
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@400;700;900&display=swap');
                 @page {
-                    size: ${if (tabIndex == 0) "A4 landscape" else "A4 portrait"};
-                    margin: 0;
+                    size: ${if (isLandscape) "A4 landscape" else "A4 portrait"};
+                    margin: 8mm;
                 }
                 * {
                     box-sizing: border-box;
                 }
                 html, body {
-                    font-family: 'Tajawal', 'Amiri', 'Segoe UI', Tahoma, sans-serif;
+                    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', Tahoma, sans-serif;
                     margin: 0;
                     padding: 0;
                     background: #ffffff;
@@ -2942,12 +3171,12 @@ fun generateGradesHtml(
                     break-after: page !important;
                     page-break-inside: avoid !important;
                     break-inside: avoid !important;
-                    width: 100vw !important;
-                    height: 100vh !important;
-                    min-height: 100vh !important;
-                    max-height: 100vh !important;
+                    width: 100% !important;
+                    height: ${if (isLandscape) "194mm" else "277mm"} !important;
+                    min-height: 0 !important;
+                    max-height: ${if (isLandscape) "194mm" else "277mm"} !important;
                     box-sizing: border-box;
-                    padding: ${if (tabIndex == 0) "10px 18px" else "18px 22px"} !important;
+                    padding: 2mm !important;
                     margin: 0 !important;
                     overflow: hidden;
                     display: flex;
@@ -2957,9 +3186,9 @@ fun generateGradesHtml(
                 }
                 .outer-frame {
                     width: 98% !important;
-                    max-width: ${if (tabIndex == 0) "1040px" else "750px"} !important;
+                    max-width: none !important;
                     height: 96% !important;
-                    max-height: ${if (tabIndex == 0) "730px" else "1050px"} !important;
+                    max-height: none !important;
                     border-radius: 18px;
                     padding: 6px;
                     box-sizing: border-box;
@@ -2980,7 +3209,7 @@ fun generateGradesHtml(
                     height: 100%;
                     border: 2px solid #b45309;
                     border-radius: 12px;
-                    padding: ${if (tabIndex == 0) "8px 24px" else "18px 24px"};
+                    padding: ${if (isLandscape) "8px 24px" else "18px 24px"};
                     box-sizing: border-box;
                     background: radial-gradient(circle at 50% 50%, #ffffff 0%, #fafaf9 70%, #f5f5f4 100%);
                     box-shadow: 
@@ -2995,7 +3224,7 @@ fun generateGradesHtml(
                 }
                 .corner {
                     position: absolute;
-                    font-size: ${if (tabIndex == 0) "18px" else "22px"};
+                    font-size: ${if (isLandscape) "18px" else "22px"};
                     color: #b45309;
                     line-height: 1;
                     font-weight: 900;
@@ -3008,7 +3237,7 @@ fun generateGradesHtml(
 
                 .header-box { width: 100%; }
                 .country-title {
-                    font-size: ${if (tabIndex == 0) "22px" else "26px"};
+                    font-size: ${if (isLandscape) "22px" else "26px"};
                     font-weight: 900;
                     color: #1e3a8a;
                     margin: 0;
@@ -3016,13 +3245,13 @@ fun generateGradesHtml(
                     letter-spacing: 0.5px;
                 }
                 .ministry-title {
-                    font-size: ${if (tabIndex == 0) "13px" else "15px"};
+                    font-size: ${if (isLandscape) "13px" else "15px"};
                     font-weight: bold;
                     color: #475569;
                     margin: 2px 0 0 0;
                 }
                 .school-title {
-                    font-size: ${if (tabIndex == 0) "17px" else "21px"};
+                    font-size: ${if (isLandscape) "17px" else "21px"};
                     font-weight: 900;
                     color: #0f172a;
                     margin: 2px 0 0 0;
@@ -3035,7 +3264,7 @@ fun generateGradesHtml(
                     align-items: center;
                     justify-content: center;
                     width: 70%;
-                    margin: ${if (tabIndex == 0) "2px auto" else "6px auto"};
+                    margin: ${if (isLandscape) "2px auto" else "6px auto"};
                 }
                 .line-segment {
                     flex: 1;
@@ -3056,13 +3285,13 @@ fun generateGradesHtml(
                     display: flex;
                     flex-direction: column;
                     align-items: center;
-                    margin: ${if (tabIndex == 0) "2px 0" else "6px 0"};
+                    margin: ${if (isLandscape) "2px 0" else "6px 0"};
                 }
                 .title-banner {
                     background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 50%, #1e3a8a 100%);
                     color: #ffffff !important;
                     border-radius: 12px;
-                    padding: ${if (tabIndex == 0) "4px 32px" else "8px 44px"};
+                    padding: ${if (isLandscape) "4px 32px" else "8px 44px"};
                     border: 2px solid #fbbf24;
                     box-shadow: 
                         0 8px 18px -2px rgba(30, 58, 138, 0.4),
@@ -3072,16 +3301,16 @@ fun generateGradesHtml(
                     display: inline-block;
                 }
                 .register-title {
-                    font-size: ${if (tabIndex == 0) "24px" else "32px"};
+                    font-size: ${if (isLandscape) "24px" else "32px"};
                     font-weight: 900;
                     color: #ffffff !important;
                     margin: 0;
-                    font-family: 'Amiri', 'Tajawal', serif;
+                    font-family: 'Noto Naskh Arabic', 'Noto Sans Arabic', Tahoma, sans-serif;
                     text-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
                     letter-spacing: 0.5px;
                 }
                 .academic-year {
-                    font-size: ${if (tabIndex == 0) "12.5px" else "14.5px"};
+                    font-size: ${if (isLandscape) "12.5px" else "14.5px"};
                     font-weight: bold;
                     color: #92400e;
                     margin: 4px 0 0 0;
@@ -3091,16 +3320,16 @@ fun generateGradesHtml(
                 .info-cards-grid {
                     display: grid;
                     grid-template-columns: repeat(3, 1fr);
-                    gap: ${if (tabIndex == 0) "8px" else "14px"};
+                    gap: ${if (isLandscape) "8px" else "14px"};
                     width: 95%;
-                    margin: ${if (tabIndex == 0) "4px auto" else "10px auto"};
+                    margin: ${if (isLandscape) "4px auto" else "10px auto"};
                 }
                 .info-card {
                     background: linear-gradient(145deg, #ffffff, #f8fafc);
                     border: 1.5px solid #cbd5e1;
                     border-top: 4px solid #1e3a8a;
                     border-radius: 12px;
-                    padding: ${if (tabIndex == 0) "5px 10px" else "10px 14px"};
+                    padding: ${if (isLandscape) "5px 10px" else "10px 14px"};
                     display: flex;
                     flex-direction: column;
                     align-items: center;
@@ -3111,13 +3340,13 @@ fun generateGradesHtml(
                         inset 0 1px 0 rgba(255, 255, 255, 1);
                 }
                 .card-label {
-                    font-size: ${if (tabIndex == 0) "11px" else "13px"};
+                    font-size: ${if (isLandscape) "11px" else "13px"};
                     font-weight: bold;
                     color: #64748b;
                     margin-bottom: 2px;
                 }
                 .card-val {
-                    font-size: ${if (tabIndex == 0) "15px" else "18px"};
+                    font-size: ${if (isLandscape) "15px" else "18px"};
                     font-weight: 900;
                     color: #0f172a;
                     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.08);
@@ -3130,8 +3359,8 @@ fun generateGradesHtml(
                     justify-content: space-around;
                     align-items: center;
                     width: 92%;
-                    margin-top: ${if (tabIndex == 0) "4px" else "10px"};
-                    margin-bottom: ${if (tabIndex == 0) "2px" else "6px"};
+                    margin-top: ${if (isLandscape) "4px" else "10px"};
+                    margin-bottom: ${if (isLandscape) "2px" else "6px"};
                 }
                 .sig-card {
                     background: linear-gradient(145deg, #ffffff, #f8fafc);
@@ -3140,17 +3369,17 @@ fun generateGradesHtml(
                     box-shadow: 
                         0 6px 12px -2px rgba(0, 0, 0, 0.08),
                         inset 0 1px 0 #ffffff;
-                    padding: ${if (tabIndex == 0) "5px 16px" else "8px 22px"};
+                    padding: ${if (isLandscape) "5px 16px" else "8px 22px"};
                     width: 42%;
                     text-align: center;
                 }
                 .sig-title {
-                    font-size: ${if (tabIndex == 0) "12px" else "14px"};
+                    font-size: ${if (isLandscape) "12px" else "14px"};
                     font-weight: bold;
                     color: #475569;
                 }
                 .sig-name {
-                    font-size: ${if (tabIndex == 0) "14.5px" else "17px"};
+                    font-size: ${if (isLandscape) "14.5px" else "17px"};
                     font-weight: 900;
                     color: #0f172a;
                     margin-top: 2px;
@@ -3158,17 +3387,17 @@ fun generateGradesHtml(
                 }
                 .sig-dots {
                     color: #94a3b8;
-                    font-size: ${if (tabIndex == 0) "11px" else "12.5px"};
+                    font-size: ${if (isLandscape) "11px" else "12.5px"};
                     margin-top: 2px;
                 }
 
-                /* Official Table Page - Always Starts On Next Page */
+                /* Official table page */
                 .table-page {
-                    page-break-before: always !important;
-                    break-before: page !important;
+                    page-break-before: ${if (includeCover) "always" else "auto"} !important;
+                    break-before: ${if (includeCover) "page" else "auto"} !important;
                     width: 100%;
                     box-sizing: border-box;
-                    padding: ${if (tabIndex == 0) "8px 12px" else "12px 14px"};
+                    padding: 0;
                 }
                 .official-header {
                     display: flex;
@@ -3185,14 +3414,20 @@ fun generateGradesHtml(
                     table-layout: auto;
                     margin-top: 2px;
                     page-break-inside: auto;
-                    border: 1.5px solid #000000 !important;
+                    border: 0.6pt solid #94a3b8 !important;
+                }
+                thead {
+                    display: table-header-group;
+                }
+                tfoot {
+                    display: table-footer-group;
                 }
                 tr {
                     page-break-inside: avoid;
                     break-inside: avoid;
                 }
                 th, td {
-                    border: 1.2px solid #000000 !important;
+                    border: 0.5pt solid #94a3b8 !important;
                     box-sizing: border-box;
                     -webkit-print-color-adjust: exact !important;
                     print-color-adjust: exact !important;
@@ -3200,7 +3435,7 @@ fun generateGradesHtml(
                 .seq-col {
                     width: 28px;
                     font-weight: 900 !important;
-                    font-size: ${if (tabIndex == 0) "12px" else "13px"};
+                    font-size: ${if (isLandscape) "12px" else "13px"};
                     padding: 3px 2px;
                     color: #000000 !important;
                 }
@@ -3212,7 +3447,7 @@ fun generateGradesHtml(
                     font-size: $nameFontSize !important;
                     white-space: nowrap;
                     color: #000000 !important;
-                    min-width: ${if (tabIndex == 0) "150px" else "165px"};
+                    min-width: ${if (isLandscape) "145px" else "165px"};
                     letter-spacing: -0.2px;
                     -webkit-print-color-adjust: exact !important;
                     print-color-adjust: exact !important;
@@ -3222,7 +3457,7 @@ fun generateGradesHtml(
                     padding: $cellPad !important;
                     color: #000000 !important;
                     font-weight: 900 !important;
-                    border: 1.2px solid #000000 !important;
+                    border: 0.5pt solid #94a3b8 !important;
                     -webkit-print-color-adjust: exact !important;
                     print-color-adjust: exact !important;
                 }
@@ -3232,7 +3467,7 @@ fun generateGradesHtml(
                     font-size: $headerFontSize !important;
                     padding: $headerPad !important;
                     color: #000000 !important;
-                    border: 1.2px solid #000000 !important;
+                    border: 0.5pt solid #94a3b8 !important;
                     -webkit-print-color-adjust: exact !important;
                     print-color-adjust: exact !important;
                 }
@@ -4829,4 +5064,3 @@ fun EmbossedStatBox3D(
         }
     }
 }
-

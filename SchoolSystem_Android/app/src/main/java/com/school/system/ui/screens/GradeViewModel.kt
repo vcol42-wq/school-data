@@ -26,7 +26,10 @@ import com.school.system.data.model.SchoolConfig
 import com.school.system.data.network.GeminiAssistantService
 import com.school.system.data.repository.GradesRepository
 import com.school.system.data.repository.SecureUploadResult
+import com.school.system.data.GradeRestoreResult
 import com.school.system.utils.ImageTextExtractor
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -46,6 +49,20 @@ class GradeViewModel @Inject constructor(
     private val syncRepository: SyncRepository,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
+
+    var currentGrade: String = ""
+        private set
+    var currentSection: String = ""
+        private set
+    var currentSubject: String = ""
+        private set
+
+    private var autoUploadJob: Job? = null
+    private val _isAutoUploading = MutableStateFlow(false)
+    val isAutoUploading: StateFlow<Boolean> = _isAutoUploading
+
+    private val _autoUploadStatus = MutableStateFlow<String?>(null)
+    val autoUploadStatus: StateFlow<String?> = _autoUploadStatus
 
     val config = configDao.getConfig().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
@@ -74,6 +91,9 @@ class GradeViewModel @Inject constructor(
     }
 
     fun loadStudents(grade: String, section: String, subject: String) {
+        currentGrade = grade
+        currentSection = section
+        currentSubject = subject
         loadGradeLocks()
         viewModelScope.launch {
             studentDao.getStudentsForClass(grade, section, subject).collectLatest { list ->
@@ -136,20 +156,25 @@ class GradeViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val ok = syncManager.downloadSimpleRosterForClass(grade, section, subject)
-                if (ok) {
+                val currentConfig = configDao.getConfig().first()
+                val token = currentConfig?.syncSealToken ?: ""
+                val schoolId = currentConfig?.schoolId ?: ""
+                val rosterOk = if (!ok) syncManager.downloadClassRoster(schoolId, token) else true
+
+                if (ok || rosterOk) {
                     val count = studentDao.getStudentsListForClass(grade, section, subject).size
-                    onComplete(true, "تم استدعاء قائمة الطلبة والمعلومات الجديدة من السحابة بنجاح! ⚡ (العدد: $count)")
-                } else {
-                    val currentConfig = configDao.getConfig().first()
-                    val token = currentConfig?.syncSealToken ?: ""
-                    val schoolId = currentConfig?.schoolId ?: ""
-                    val rosterOk = syncManager.downloadClassRoster(schoolId, token)
-                    if (rosterOk) {
-                        val count = studentDao.getStudentsListForClass(grade, section, subject).size
-                        onComplete(true, "تم تحديث القائمة والمعلومات من السحابة بنجاح! ⚡ (العدد: $count)")
-                    } else {
-                        onComplete(false, "تأكد من وجود الاتصال بالسحابة أو رفع القوائم من النظام المكتبي.")
+                    // إذا كان الرمز السري للأستاذ محفوظاً، نسترجع درجات السحابة فوراً
+                    val savedPin = getStoredPin(grade, section, subject)
+                    var gradesMsg = ""
+                    if (!savedPin.isNullOrBlank()) {
+                        val restoreRes = gradesRepository.restoreGradesSecurely(grade, section, subject, savedPin)
+                        if (restoreRes is GradeRestoreResult.Success && restoreRes.restoredCount > 0) {
+                            gradesMsg = " واسترجاع درجات (${restoreRes.restoredCount}) طالباً"
+                        }
                     }
+                    onComplete(true, "تم تحديث قائمة الطلبة$gradesMsg من السحابة بنجاح! ⚡ (العدد: $count)")
+                } else {
+                    onComplete(false, "تأكد من وجود الاتصال بالسحابة أو رفع القوائم من النظام المكتبي.")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -175,7 +200,10 @@ class GradeViewModel @Inject constructor(
                     conf.schoolId.isNotBlank() && conf.schoolId != "school_01" -> conf.schoolId.trim()
                     else -> conf.schoolId.trim().ifEmpty { "school_01" }
                 }
-                val teacherId = conf.syncSealToken?.ifEmpty { conf.managerName }?.ifEmpty { "teacher_01" } ?: "teacher_01"
+                val teacherId = conf.syncSealToken?.takeIf { it.isNotBlank() }
+                    ?: syncRepository.getResolvedTeacherName().takeIf { it.isNotBlank() }
+                    ?: (if (conf.role == "supervisor") conf.managerName else null)?.takeIf { it.isNotBlank() }
+                    ?: "teacher_01"
 
                 val dto = SupabaseDailyAssignmentDto(
                     school_id = schoolId,
@@ -212,6 +240,55 @@ class GradeViewModel @Inject constructor(
             val updatedStudent = student.copy(marks = updatedMarks)
             // Instant, rock-solid local database persistence
             studentDao.updateStudent(updatedStudent)
+            // Debounced auto-upload to cloud
+            triggerAutoUpload(student.grade, student.section, student.subject)
+        }
+    }
+
+    /**
+     * رفع آلي ذكي للدرجات عند أي تعديل (Debounced Auto-Upload)
+     * يعتمد على الرمز السري المخزن مشفراً في عتاد الجهاز.
+     */
+    fun triggerAutoUpload(grade: String, section: String, subject: String) {
+        if (config.value?.role == "supervisor") return
+        if (config.value?.isCloudSyncEnabled == false) {
+            android.util.Log.d("GradeViewModel", "Auto-upload: Cloud sync is disabled by user setting.")
+            return
+        }
+        val targetGrade = grade.ifBlank { currentGrade }
+        val targetSection = section.ifBlank { currentSection }
+        val targetSubject = subject.ifBlank { currentSubject }
+        if (targetGrade.isBlank() || targetSection.isBlank() || targetSubject.isBlank()) return
+
+        val pin = getStoredPin(targetGrade, targetSection, targetSubject)
+        if (pin.isNullOrBlank()) {
+            android.util.Log.d("GradeViewModel", "Auto-upload: No stored PIN for $targetSubject ($targetGrade - $targetSection), skipping.")
+            return
+        }
+
+        autoUploadJob?.cancel()
+        autoUploadJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            delay(1800) // 1.8-second debounce while entering marks
+            _isAutoUploading.value = true
+            try {
+                when (val result = gradesRepository.uploadGradesSecurely(targetGrade, targetSection, targetSubject, pin)) {
+                    is SecureUploadResult.Success -> {
+                        _autoUploadStatus.value = "تم الحفظ والرفع الآلي للسحابة ☁️✓"
+                        android.util.Log.d("GradeViewModel", "Auto-upload success: ${result.message}")
+                    }
+                    is SecureUploadResult.InvalidPin -> {
+                        clearPin(targetGrade, targetSection, targetSubject)
+                        _autoUploadStatus.value = "الرمز السري المحفوظ غير صالح"
+                    }
+                    else -> {
+                        _autoUploadStatus.value = null
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("GradeViewModel", "Auto-upload error: ${e.message}")
+            } finally {
+                _isAutoUploading.value = false
+            }
         }
     }
 
@@ -481,6 +558,29 @@ class GradeViewModel @Inject constructor(
         }
     }
 
+    fun setCloudSyncEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: SchoolConfig()
+            configDao.saveConfig(current.copy(isCloudSyncEnabled = enabled))
+        }
+    }
+
+    fun restoreGradesSecurely(
+        grade: String,
+        section: String,
+        subject: String,
+        secretPin: String,
+        onResult: (GradeRestoreResult) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = gradesRepository.restoreGradesSecurely(grade, section, subject, secretPin)
+            if (result is GradeRestoreResult.Success) {
+                savePin(grade, section, subject, secretPin)
+            }
+            onResult(result)
+        }
+    }
+
     fun saveAllMarksLocally(onResult: (String) -> Unit) {
         if (config.value?.role == "supervisor") {
             onResult("تنبيه: حساب المشرف في وضع القراءة فقط ولا يمكنه حفظ أو تعديل درجات.")
@@ -492,7 +592,8 @@ class GradeViewModel @Inject constructor(
                 val calculated = calculateTotals(student.marks, student.subject)
                 studentDao.updateStudent(student.copy(marks = calculated))
             }
-            onResult("تم حفظ وتثبيت كافة درجات الطلاب محلياً بنجاح 💾✓")
+            triggerAutoUpload(currentGrade, currentSection, currentSubject)
+            onResult("تم حفظ وتثبيت كافة درجات الطلاب محلياً ورفعها آلياً بنجاح 💾☁️✓")
         }
     }
 
@@ -503,6 +604,7 @@ class GradeViewModel @Inject constructor(
             } else {
                 absenceDao.deleteAbsence(student.id, dateString, periodNumber)
             }
+            triggerAutoUpload(student.grade, student.section, student.subject)
         }
     }
 
@@ -513,6 +615,7 @@ class GradeViewModel @Inject constructor(
             } else {
                 absenceDao.deleteAbsence(student.id, dateString)
             }
+            triggerAutoUpload(student.grade, student.section, student.subject)
         }
     }
 

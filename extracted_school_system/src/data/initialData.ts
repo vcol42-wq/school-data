@@ -6,6 +6,7 @@ export const defaultAppConfig: AppConfig = {
   pairingCode: '',
   studentPairingCode: '',
   principalPairingCode: '',
+  isAutoSyncEnabled: true,
   managerName: 'وليد الحسون',
   directorateName: 'المديرية العامة لتربية ديالى',
   sectionName: 'قسم التعليم الثانوي والملاك',

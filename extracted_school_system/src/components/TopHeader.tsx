@@ -32,7 +32,8 @@ import {
   QrCode,
   Copy,
   Check,
-  Key
+  Key,
+  RefreshCw
 } from 'lucide-react';
 import { QrCodeSvg } from './QrCodeSvg';
 import { getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
@@ -52,6 +53,8 @@ interface TopHeaderProps {
   staffCount?: number;
   iconShape?: 'squircle' | 'round';
   setIconShape?: (shape: 'squircle' | 'round') => void;
+  isAutoSyncEnabled?: boolean;
+  onToggleAutoSync?: () => void;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -64,7 +67,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   studentsCount = 5,
   staffCount = 6,
   iconShape = 'squircle',
-  setIconShape
+  setIconShape,
+  isAutoSyncEnabled = true,
+  onToggleAutoSync
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showPairingModal, setShowPairingModal] = useState(false);
@@ -318,6 +323,23 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 <Key className="w-4 h-4" />
                 <span className="hidden lg:inline">{isActivated ? 'السحابة مفعلة 💎' : 'تفعيل السحابة ⚡'}</span>
               </button>
+
+          {/* Auto-Sync Toggle Button */}
+          {onToggleAutoSync && (
+            <button
+              onClick={onToggleAutoSync}
+              title={isAutoSyncEnabled ? "المزامنة والتحديث اللحظي: نشط 🟢 (انقر لإيقاف المزامنة اللحظية)" : "المزامنة والتحديث اللحظي: متوقف 🔴 (انقر لتفعيل المزامنة اللحظية)"}
+              className={`px-3 py-1.5 rounded-xl border font-black text-xs transition-all shrink-0 cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                isAutoSyncEnabled
+                  ? 'bg-emerald-50 border-emerald-400/60 text-emerald-800 hover:bg-emerald-100'
+                  : 'bg-rose-50 border-rose-400/60 text-rose-800 hover:bg-rose-100'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isAutoSyncEnabled ? 'text-emerald-600' : 'text-rose-500'}`} />
+              <span className={`w-2 h-2 rounded-full ${isAutoSyncEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+              <span className="hidden sm:inline">{isAutoSyncEnabled ? 'مزامنة لحظية: مفعلة 🟢' : 'مزامنة لحظية: معطلة 🔴'}</span>
+            </button>
+          )}
 
               {/* Lock / Settings Trigger */}
               <button
@@ -617,7 +639,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-indigo-500" />
-                <span className="font-bold text-slate-700">إصدار المنظومة v6.4.2 Super Edition</span>
+                <span className="font-bold text-slate-700">إصدار المنظومة v7.0.0 Super Edition</span>
               </div>
               <span className="text-indigo-600 font-bold font-mono text-[10px] bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">The Principal</span>
             </div>

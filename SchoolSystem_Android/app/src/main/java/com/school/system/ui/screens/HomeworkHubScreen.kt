@@ -31,6 +31,7 @@ import com.school.system.data.SupabaseDirectMessageDto
 import com.school.system.data.dao.ClassPackageDao
 import com.school.system.data.dao.ConfigDao
 import com.school.system.data.model.ClassPackage
+import com.school.system.data.model.SchoolConfig
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -55,10 +56,17 @@ class HomeworkHubViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading
 
+    private fun resolveTeacherId(conf: SchoolConfig): String {
+        return conf.syncSealToken?.takeIf { it.isNotBlank() }
+            ?: syncRepository.getResolvedTeacherName().takeIf { it.isNotBlank() }
+            ?: (if (conf.role == "supervisor") conf.managerName else null)?.takeIf { it.isNotBlank() }
+            ?: "teacher_01"
+    }
+
     fun loadData() {
         val conf = config.value ?: return
         val schoolId = conf.schoolId
-        val teacherId = conf.syncSealToken ?: conf.managerName
+        val teacherId = resolveTeacherId(conf)
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -87,7 +95,7 @@ class HomeworkHubViewModel @Inject constructor(
             _isLoading.value = true
             val dto = SupabaseDailyAssignmentDto(
                 school_id = conf.schoolId,
-                teacher_id = conf.syncSealToken ?: conf.managerName,
+                teacher_id = resolveTeacherId(conf),
                 class_name = className,
                 section = section,
                 subject_name = subjectName,
@@ -116,7 +124,7 @@ class HomeworkHubViewModel @Inject constructor(
         viewModelScope.launch {
             val dto = SupabaseDirectMessageDto(
                 school_id = conf.schoolId,
-                sender_id = conf.syncSealToken ?: conf.managerName,
+                sender_id = resolveTeacherId(conf),
                 sender_role = "teacher",
                 receiver_id = receiverId,
                 subject_name = subjectName,

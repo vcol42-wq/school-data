@@ -113,7 +113,7 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             }
 
             // Dynamic Lesson Timings for Headers from Cloud Schedule
-            val (startHourStr, lessonDur, breakDur) = WidgetScheduleHelper.getTimingFromScheduleJson(context)
+            val fullTiming = WidgetScheduleHelper.getFullTimingFromScheduleJson(context)
             val headerIds = listOf(
                 R.id.header_lesson_1, R.id.header_lesson_2, R.id.header_lesson_3,
                 R.id.header_lesson_4, R.id.header_lesson_5, R.id.header_lesson_6
@@ -124,9 +124,22 @@ class FullScheduleWidgetProvider : AppWidgetProvider() {
             val activeLessonNum = if (isViewingRealToday) currentActiveLesson else 0
 
             for (i in 1..6) {
-                val timingText = WidgetScheduleHelper.calculateLessonTiming(i, startHourStr, lessonDur, breakDur, isShort = true)
+                val timingText = WidgetScheduleHelper.calculateLessonTiming(
+                    lessonNumber = i,
+                    startHourStr = fullTiming.startHour,
+                    lessonDuration = fullTiming.lessonDuration,
+                    breakDuration = fullTiming.breakDuration,
+                    isShort = true,
+                    customLessons = fullTiming.customLessons,
+                    customBreaks = fullTiming.customBreaks
+                )
                 val startTime = timingText.split("-").getOrNull(0)?.trim() ?: ""
-                views.setTextViewText(headerIds[i - 1], "$i\n$startTime")
+                val isMergedWithPrevious = i > 1 &&
+                    (fullTiming.customBreaks.getOrNull(i - 2) ?: fullTiming.breakDuration) == 0
+                views.setTextViewText(
+                    headerIds[i - 1],
+                    if (isMergedWithPrevious) "↔ $i\n$startTime" else "$i\n$startTime"
+                )
                 if (i == activeLessonNum) {
                     views.setTextColor(headerIds[i - 1], Color.parseColor("#FEF08A"))
                     views.setInt(headerIds[i - 1], "setBackgroundColor", Color.parseColor("#065F46"))

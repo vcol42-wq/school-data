@@ -212,7 +212,7 @@ fun MainDashboardScreen(
     onExamsClick: () -> Unit,
     onTutoringClick: () -> Unit = {},
     onParentAttendanceClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {},
 ) {
     val subjects by viewModel.subjects.collectAsState()
     val assignments by viewModel.assignments.collectAsState()

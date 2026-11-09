@@ -29,11 +29,12 @@ class GeminiAssistantService @Inject constructor(
     suspend fun getEffectiveApiKey(): String {
         val config = configDao.getConfig().first()
         val key = config?.geminiApiKey?.ifEmpty { config.cloudGeminiKey }?.ifEmpty { null }
-        return key ?: "AIzaSyA92sLsbAsl9HXjEQb2fsADFeOTsvi6aGQ"
+        return key.orEmpty()
     }
 
     suspend fun extractArabicNamesFromImage(bitmap: Bitmap): String {
         val apiKey = getEffectiveApiKey()
+        if (apiKey.isBlank()) return ""
         return try {
             val byteArrayOutputStream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 85, byteArrayOutputStream)
@@ -66,6 +67,7 @@ class GeminiAssistantService @Inject constructor(
 
     suspend fun askGemini(prompt: String): String {
         val apiKey = getEffectiveApiKey()
+        if (apiKey.isBlank()) return generateTeacherSmartAssistant(prompt)
 
         return try {
             val request = GeminiRequest(

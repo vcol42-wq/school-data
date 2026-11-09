@@ -72,12 +72,16 @@ class FullScheduleWidgetFactory(private val context: Context) : RemoteViewsServi
             val display = subj
             views.setTextViewText(cellViewId, display)
 
-            if (subj == "اجتماعيات" || subj.length > 8) {
-                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 10.0f)
+            val isLongSubject = subj.length > 6 ||
+                subj.contains("اجتماع") ||
+                subj.contains("رياض") ||
+                subj.contains("اسلام") ||
+                subj.contains("إسلام")
+            if (isLongSubject) {
+                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 8.0f)
             } else {
-                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 12.0f)
+                views.setTextViewTextSize(cellViewId, TypedValue.COMPLEX_UNIT_SP, 9.5f)
             }
-
             // مطابقة دقيقة محصورة فقط بشعب الأستاذ المحددة والاسم الثنائي
             val isTeacherLesson = if (teacherName.isNotEmpty() && subj != "-") {
                 WidgetScheduleHelper.isLessonMatchingTeacherStrict(

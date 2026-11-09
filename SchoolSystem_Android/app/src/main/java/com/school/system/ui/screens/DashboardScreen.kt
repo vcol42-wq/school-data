@@ -79,8 +79,13 @@ fun DashboardScreen(
     var teacherNameState by remember { mutableStateOf(prefs.getString("teacher_name", "") ?: "") }
     var isDirectivesDismissed by remember { mutableStateOf(false) }
 
-    val coroutineScope = rememberCoroutineScope()
-    var isUploadingGrades by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        val saved = prefs.getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+            ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+        if (!saved.isNullOrBlank() && teacherNameState != saved) {
+            teacherNameState = saved
+        }
+    }
 
     val isOnlinePaired = (!config?.schoolId.isNullOrEmpty() && config?.schoolId != "school_01") ||
                          config?.isVerified == true ||
@@ -108,6 +113,12 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    Icon(
+                        imageVector = Icons.Default.Cloud,
+                        contentDescription = if (isOnlinePaired) "متصل" else "غير متصل",
+                        tint = if (isOnlinePaired) Color(0xFF16A34A) else Color(0xFFDC2626),
+                        modifier = Modifier.padding(horizontal = 8.dp).size(18.dp)
+                    )
                     // Archive of Directives (أرشيف توجيهات ورسائل الإدارة) - أيقونة كتاب صغيرة في الأعلى 📖
                     Box(contentAlignment = Alignment.TopEnd) {
                         IconButton(onClick = { showDirectivesArchiveDialog = true }) {
@@ -180,142 +191,32 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Chip 1: Connection Status
-                    Surface(
-                        color = currentTheme.surfaceColor,
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.tableBorderColor),
-                        modifier = Modifier.clickable(onClick = onNavigateToSettings)
-                    ) {
-                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(if (isOnlinePaired) Icons.Default.CloudDone else Icons.Default.Person, contentDescription = null, tint = if (isOnlinePaired) Color(0xFF16A34A) else currentTheme.primaryColor, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(if (isOnlinePaired) "متصل ☁️" else "محلي 👤", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimaryColor)
-                        }
-                    }
-
-                    // Chip 2: Summon Class
-                    Surface(
-                        color = currentTheme.surfaceColor,
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, currentTheme.tableBorderColor),
-                        modifier = Modifier.clickable {
-                            if (isOnlinePaired) showSelectClassesDialog = true else showSummonDialog = true
-                        }
-                    ) {
-                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.AddCircleOutline, contentDescription = null, tint = currentTheme.primaryColor, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("استدعاء شعبة 📥", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = currentTheme.textPrimaryColor)
-                        }
-                    }
-
-                    // Chip 3: Upload Grades
-                    Surface(
-                        color = currentTheme.primaryColor,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.clickable {
-                            coroutineScope.launch {
-                                isUploadingGrades = true
-                                val success = viewModel.syncGradesOnly()
-                                isUploadingGrades = false
-                                if (success) {
-                                    Toast.makeText(context, "تم رفع وتحديث الدرجات بنجاح ☁️✓", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, if (isOnlinePaired) "تعذر الرفع، يرجى مراجعة اتصال الإنترنت" else "التطبيق يعمل بالوضع المحلي (أوفلاين)", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        }
-                    ) {
-                        Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (isUploadingGrades) {
-                                CircularProgressIndicator(modifier = Modifier.size(12.dp), color = Color.White, strokeWidth = 1.5.dp)
-                            } else {
-                                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            }
-                            Spacer(Modifier.width(4.dp))
-                            Text("رفع الدرجات ↑", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        }
-                    }
-
-
-
                     Spacer(Modifier.weight(1f))
 
                     // Teacher Name Badge
-                    val activeName = if (!config?.managerName.isNullOrBlank()) config!!.managerName else if (teacherNameState.isNotBlank()) teacherNameState else "أستاذ المادة"
-                    Text("الأستاذ: $activeName", fontSize = 11.sp, fontWeight = FontWeight.Black, color = currentTheme.primaryColor)
+                    val activeTeacherName = teacherNameState.takeIf { it.isNotBlank() }
+                        ?: prefs.getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                        ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                    val activeName = if (isSupervisor) {
+                        activeTeacherName ?: config?.managerName?.takeIf { it.isNotBlank() } ?: "مدير المدرسة"
+                    } else {
+                        activeTeacherName ?: "أستاذ المادة"
+                    }
+                    val roleLabel = if (isSupervisor) "المدير/المشرف: " else "الأستاذ: "
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("$roleLabel$activeName", fontSize = 11.sp, fontWeight = FontWeight.Black, color = currentTheme.primaryColor)
+                        TextButton(
+                            onClick = { if (isOnlinePaired) showSelectClassesDialog = true else showSummonDialog = true },
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                        ) {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(3.dp))
+                            Text("استدعاء شعبة", fontSize = 10.sp)
+                        }
+                    }
                 }
             } else {
                 Spacer(Modifier.height(8.dp))
-
-                // 1. ROW OF 3 CLOUD/PILL BADGES (غيمات التحكم السريعة الثلاث)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // غيمة 1: وضع الاتصال (متصل / غير متصل)
-                    CloudBadge(
-                        title = if (isOnlinePaired) "متصل ☁️" else "غير متصل 👤",
-                        subtitle = if (isOnlinePaired) (config?.schoolName?.take(12) ?: "السحابة") else "محلي",
-                        backgroundColor = currentTheme.surfaceColor,
-                        borderColor = currentTheme.tableBorderColor,
-                        contentColor = if (isOnlinePaired) Color(0xFF16A34A) else currentTheme.primaryColor,
-                        icon = if (isOnlinePaired) Icons.Default.CloudDone else Icons.Default.Person,
-                        onClick = onNavigateToSettings,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    // غيمة 2: استدعاء شعبة (متصل أو غير متصل)
-                    CloudBadge(
-                        title = "استدعاء شعبة 📥",
-                        subtitle = "إضافة صف ومادة",
-                        backgroundColor = currentTheme.surfaceColor,
-                        borderColor = currentTheme.tableBorderColor,
-                        contentColor = currentTheme.primaryColor,
-                        icon = Icons.Default.AddCircleOutline,
-                        onClick = {
-                            if (isOnlinePaired) {
-                                showSelectClassesDialog = true
-                            } else {
-                                showSummonDialog = true
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    // غيمة 3: رفع الدرجات (بلون مختلف ومميز)
-                    CloudBadge(
-                        title = if (isUploadingGrades) "جاري الرفع..." else "رفع الدرجات ↑",
-                        subtitle = "مزامنة السحاب",
-                        backgroundColor = currentTheme.primaryColor,
-                        borderColor = currentTheme.secondaryColor,
-                        contentColor = Color.White,
-                        icon = Icons.Default.CloudUpload,
-                        onClick = {
-                            coroutineScope.launch {
-                                isUploadingGrades = true
-                                val success = viewModel.syncGradesOnly()
-                                isUploadingGrades = false
-                                if (success) {
-                                    Toast.makeText(context, "تم رفع ومزامنة كافة الدرجات للسحابة بنجاح ☁️✓", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(
-                                        context, 
-                                        if (isOnlinePaired) "تعذر الرفع، يرجى مراجعة اتصال الإنترنت" else "التطبيق يعمل بالوضع المحلي (أوفلاين)", 
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-
 
                 Spacer(Modifier.height(4.dp))
 
@@ -323,19 +224,23 @@ fun DashboardScreen(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 2.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color.Transparent,
-                    border = androidx.compose.foundation.BorderStroke(1.2.dp, currentTheme.tableBorderColor),
-                    shadowElevation = 6.dp
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .padding(bottom = 8.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = currentTheme.surfaceColor,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.75f)),
+                    shadowElevation = 14.dp
                 ) {
-                    Box(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Brush.horizontalGradient(currentTheme.ribbonGradient))
+                            .background(
+                                Brush.horizontalGradient(currentTheme.ribbonGradient),
+                                RoundedCornerShape(20.dp)
+                            )
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -346,25 +251,27 @@ fun DashboardScreen(
                                 Surface(
                                     color = Color.White.copy(alpha = 0.2f),
                                     shape = CircleShape,
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(38.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Text("👨‍🏫", fontSize = 14.sp)
+                                        Text("👨‍🏫", fontSize = 18.sp)
                                     }
                                 }
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.width(12.dp))
                                 Column {
-                                    val activeName = if (!config?.managerName.isNullOrBlank()) {
-                                        config!!.managerName
-                                    } else if (teacherNameState.isNotBlank()) {
-                                        teacherNameState
+                                    val activeTeacherName = teacherNameState.takeIf { it.isNotBlank() }
+                                        ?: prefs.getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                                        ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                                    val activeName = if (isSupervisor) {
+                                        activeTeacherName ?: config?.managerName?.takeIf { it.isNotBlank() } ?: "مدير المدرسة"
                                     } else {
-                                        "أستاذ المادة"
+                                        activeTeacherName ?: "أستاذ المادة"
                                     }
+                                    val roleLabel = if (isSupervisor) "المدير/المشرف: " else "الأستاذ: "
                                     Text(
-                                        text = "الأستاذ: $activeName",
+                                        text = "$roleLabel$activeName",
                                         color = Color.White,
-                                        fontSize = 12.5.sp,
+                                        fontSize = 15.sp,
                                         fontWeight = FontWeight.Black,
                                         maxLines = 1
                                     )
@@ -377,7 +284,7 @@ fun DashboardScreen(
                                     Text(
                                         text = displaySchoolName,
                                         color = Color.White.copy(alpha = 0.85f),
-                                        fontSize = 10.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium
                                     )
                                 }
@@ -385,14 +292,35 @@ fun DashboardScreen(
 
                             IconButton(
                                 onClick = { showEditTeacherNameDialog = true },
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
                                     Icons.Default.Edit,
                                     contentDescription = "تعديل اسم الأستاذ",
                                     tint = Color.White,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(horizontal = 14.dp, vertical = 0.dp)
+                                .clickable {
+                                    if (isOnlinePaired) showSelectClassesDialog = true else showSummonDialog = true
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White.copy(alpha = 0.16f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                            shadowElevation = 2.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CloudDownload, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text("استدعاء شعبة", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -664,8 +592,13 @@ fun DashboardScreen(
                 confirmButton = {
                     Button(
                         onClick = {
-                            teacherNameState = inputName.trim()
-                            prefs.edit().putString("teacher_name", inputName.trim()).apply()
+                            val cleanName = inputName.trim()
+                            teacherNameState = cleanName
+                            prefs.edit().putString("teacher_name", cleanName).apply()
+                            try {
+                                context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                                    .edit().putString("teacher_name", cleanName).apply()
+                            } catch (_: Exception) {}
                             showEditTeacherNameDialog = false
                             Toast.makeText(context, "تم حفظ الاسم بنجاح ✓", Toast.LENGTH_SHORT).show()
                         },
@@ -3079,5 +3012,3 @@ fun TeacherPromotionCard() {
         }
     }
 }
-
-

@@ -11,7 +11,9 @@ import com.school.system.data.dao.ConfigDao
 import com.school.system.data.model.BellSettings
 import com.school.system.data.model.LessonAlarm
 import com.school.system.data.model.SchoolConfig
+import com.school.system.widget.WidgetScheduleHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -23,7 +25,8 @@ import javax.inject.Inject
 class SmartBellViewModel @Inject constructor(
     private val lessonAlarmDao: LessonAlarmDao,
     private val bellManager: BellManager,
-    private val configDao: ConfigDao
+    private val configDao: ConfigDao,
+    @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     val allAlarms = lessonAlarmDao.getAllAlarms()
@@ -60,16 +63,22 @@ class SmartBellViewModel @Inject constructor(
         }
     }
 
-    fun applyAutoSchedule() {
+    fun applyAutoSchedule(useCustomTimings: Boolean = false) {
         viewModelScope.launch {
             val c = config.value ?: SchoolConfig()
+            val timing = WidgetScheduleHelper.getFullTimingFromScheduleJson(appContext)
+            val startParts = if (useCustomTimings) timing.startHour.split(":") else emptyList()
             val settings = BellSettings(
-                startHour = c.bellStartHour,
-                startMinute = c.bellStartMinute,
-                lessonDuration = c.bellLessonDuration,
-                breakDuration = c.bellBreakDuration
+                startHour = startParts.getOrNull(0)?.toIntOrNull() ?: c.bellStartHour,
+                startMinute = startParts.getOrNull(1)?.toIntOrNull() ?: c.bellStartMinute,
+                lessonDuration = if (useCustomTimings) timing.lessonDuration else c.bellLessonDuration,
+                breakDuration = if (useCustomTimings) timing.breakDuration else c.bellBreakDuration
             )
-            bellManager.setupDefaultSchedule(settings)
+            bellManager.setupDefaultSchedule(
+                settings,
+                if (useCustomTimings) timing.customLessons else emptyList(),
+                if (useCustomTimings) timing.customBreaks else emptyList()
+            )
         }
     }
 
@@ -97,23 +106,31 @@ class SmartBellViewModel @Inject constructor(
     fun importFromSchedule(context: Context, onComplete: (Int) -> Unit) {
         viewModelScope.launch {
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
-            val rawScheduleJson = prefs.getString("synced_schedule", "{}") ?: "{}"
+            val rawScheduleJson = sequenceOf(
+                prefs.getString("synced_schedule", null),
+                context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                    .getString("synced_schedule", null),
+                context.getSharedPreferences("com.example.theboss_preferences", Context.MODE_PRIVATE)
+                    .getString("synced_schedule", null)
+            ).firstOrNull { !it.isNullOrBlank() && it != "{}" } ?: "{}"
             val teacherName = prefs.getString("teacher_name", "")?.trim()?.lowercase() ?: ""
             val c = config.value ?: SchoolConfig()
+            val timing = WidgetScheduleHelper.getFullTimingFromScheduleJson(context)
+            val startParts = timing.startHour.split(":")
             
-            // Ensure default baseline alarms exist
             val settings = BellSettings(
-                startHour = c.bellStartHour,
-                startMinute = c.bellStartMinute,
-                lessonDuration = c.bellLessonDuration,
-                breakDuration = c.bellBreakDuration
+                startHour = startParts.getOrNull(0)?.toIntOrNull() ?: c.bellStartHour,
+                startMinute = startParts.getOrNull(1)?.toIntOrNull() ?: c.bellStartMinute,
+                lessonDuration = timing.lessonDuration,
+                breakDuration = timing.breakDuration
             )
-            bellManager.setupDefaultSchedule(settings)
+            bellManager.setupDefaultSchedule(settings, timing.customLessons, timing.customBreaks)
 
-            var matchedCount = 0
+            var importedLessonCount = 0
             try {
                 val gson = Gson()
                 val rootObj = gson.fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
+                val importedLessons = mutableMapOf<Pair<Int, Int>, LinkedHashSet<String>>()
                 val dayMap = mapOf(
                     "الأحد" to Calendar.SUNDAY,
                     "الإثنين" to Calendar.MONDAY,
@@ -148,13 +165,12 @@ class SmartBellViewModel @Inject constructor(
                                                     true
                                                 }
 
-                                                val alarm = currentAlarms.find { it.dayOfWeek == dayVal && it.lessonIndex == i }
-                                                if (alarm != null) {
-                                                    val updatedName = "$subj - $className"
-                                                    val shouldEnable = if (c.bellRingTeacherOnly) isTeacherLesson else true
-                                                    val updatedAlarm = alarm.copy(lessonName = updatedName, isEnabled = shouldEnable)
-                                                    bellManager.updateAlarm(updatedAlarm)
-                                                    matchedCount++
+                                                if (!c.bellRingTeacherOnly || isTeacherLesson) {
+                                                    val lessonLabel = "$subj - $className"
+                                                    val slotLessons = importedLessons.getOrPut(dayVal to i) { linkedSetOf() }
+                                                    if (slotLessons.add(lessonLabel)) {
+                                                        importedLessonCount++
+                                                    }
                                                 }
                                             }
                                         }
@@ -164,10 +180,21 @@ class SmartBellViewModel @Inject constructor(
                         }
                     }
                 }
+
+                val alarmsBySlot = currentAlarms.associateBy { it.dayOfWeek to it.lessonIndex }
+                importedLessons.forEach { (slot, lessons) ->
+                    val alarm = alarmsBySlot[slot] ?: return@forEach
+                    bellManager.updateAlarm(
+                        alarm.copy(
+                            lessonName = lessons.joinToString("، "),
+                            isEnabled = true
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
-            onComplete(matchedCount)
+            onComplete(importedLessonCount)
         }
     }
 }

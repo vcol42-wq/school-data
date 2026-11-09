@@ -51,6 +51,7 @@ export interface AppConfig {
   pairingCode?: string; // Teacher Link Code
   studentPairingCode?: string; // Dedicated Student Link Code
   principalPairingCode?: string; // Dedicated Principal/Manager Link Code
+  isAutoSyncEnabled?: boolean; // إمكانية تفعيل أو إيقاف التحديث والمزامنة التلقائية
   lastBackupDate?: string;
   backupCloudProvider?: 'google_drive' | 'local' | 'none';
 }

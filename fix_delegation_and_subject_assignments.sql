@@ -35,23 +35,20 @@ WHERE a.school_id = b.school_id
   AND a.subject = b.subject
   AND a.last_updated_at < b.last_updated_at;
 
--- 5. تفعيل نظام أمان الصفوف (RLS) وإعطاء صلاحيات كاملة للتطبيق مع عزل المدارس
+-- 5. Expose assignment metadata only; PINs are stored separately and accessed
+-- exclusively through server-verified grade and administrator functions.
 ALTER TABLE IF EXISTS subject_assignments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS subject_assignments_tenant_policy ON subject_assignments;
 CREATE POLICY subject_assignments_tenant_policy ON subject_assignments
-    FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR current_user = 'service_role'
-        OR current_user = 'postgres'
-    )
-    WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR current_user = 'service_role'
-        OR current_user = 'postgres'
+    FOR SELECT TO anon, authenticated USING (
+        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
     );
 
-GRANT ALL ON subject_assignments TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE subject_assignments FROM PUBLIC, anon, authenticated;
+GRANT SELECT (school_id, grade, section, subject, is_locked, teacher_name, last_updated_at)
+    ON subject_assignments TO anon, authenticated;
+GRANT ALL ON TABLE subject_assignments TO service_role;
 
 COMMIT;
 

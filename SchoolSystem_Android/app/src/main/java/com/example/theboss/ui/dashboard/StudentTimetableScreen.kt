@@ -36,7 +36,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -56,6 +55,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.theboss.data.local.AssignmentEntity
 import com.example.theboss.data.local.AttendanceEntity
 import com.example.theboss.data.remote.DirectiveDto
+import com.school.system.ui.theme.LocalAppTheme
 import com.example.theboss.utils.NotificationHelper
 import com.example.theboss.utils.alarm.StudyAlarmScheduler
 import com.google.gson.Gson
@@ -451,7 +451,6 @@ fun StudentTimetableScreen(
             }
             val activity = ctx as? Activity
             activity?.window?.let { window ->
-                window.statusBarColor = activeTheme.topBarBg.toArgb()
                 WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
             }
         }
@@ -1283,7 +1282,7 @@ fun StudentTimetableScreen(
                             IconButton(onClick = { showTimingDialog = true }) {
                                 Icon(Icons.Default.AccessTime, contentDescription = "توقيت الدوام", tint = Color(0xFFF59E0B), modifier = Modifier.size(22.dp))
                             }
-                            // 5: Overflow Tools Dropdown Menu (Notebook, Tasks, Pomodoro, Role Switch)
+                            // 5: Overflow Tools Dropdown Menu (Notebook, Tasks, Pomodoro)
                             var showMoreToolsMenu by remember { mutableStateOf(false) }
                             Box {
                                 IconButton(onClick = { showMoreToolsMenu = true }) {
@@ -1293,14 +1292,6 @@ fun StudentTimetableScreen(
                                     expanded = showMoreToolsMenu,
                                     onDismissRequest = { showMoreToolsMenu = false }
                                 ) {
-                                    DropdownMenuItem(
-                                        text = { Text("تبديل الصفة (أستاذ / طالب) ⇄", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
-                                        leadingIcon = { Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = Color(0xFF2563EB)) },
-                                        onClick = {
-                                            showMoreToolsMenu = false
-                                            onNavigateToSettings()
-                                        }
-                                    )
                                     DropdownMenuItem(
                                         text = { Text("مؤقت التركيز بومودورو ⏱️", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                                         leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null, tint = Color(0xFFF43F5E)) },
@@ -2524,12 +2515,15 @@ fun StudentTimetableScreen(
                             if (cleanHour.isNotBlank()) {
                                 schoolStartHour = cleanHour
                                 lessonDuration = selectedLessonMinutes
-                                prefs.edit()
-                                    .putString("school_start_hour", cleanHour)
-                                    .putInt("lesson_duration_minutes", selectedLessonMinutes)
-                                    .apply()
+                                listOf(prefs, diyalaPrefs).forEach { p ->
+                                    p.edit()
+                                        .putString("school_start_hour", cleanHour)
+                                        .putInt("lesson_duration_minutes", selectedLessonMinutes)
+                                        .apply()
+                                }
+                                com.school.system.widget.WidgetScheduleHelper.updateAllWidgets(context)
                                 showTimingDialog = false
-                                Toast.makeText(context, "تم حفظ توقيت الدوام المخصص ⚡", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "تم حفظ توقيت الدوام وتحديث الودجت بنجاح ⏱️", Toast.LENGTH_SHORT).show()
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706))
@@ -3234,10 +3228,18 @@ fun StudentInfoEditDialog(
     onDismiss: () -> Unit,
     onSave: (newName: String, newGrade: String, newSection: String, newSchoolCode: String) -> Unit
 ) {
+    val currentTheme = LocalAppTheme.current
+    val dialogFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = currentTheme.textPrimaryColor,
+        unfocusedTextColor = currentTheme.textPrimaryColor,
+        focusedContainerColor = currentTheme.surfaceColor,
+        unfocusedContainerColor = currentTheme.surfaceColor,
+        focusedLabelColor = currentTheme.primaryColor,
+        unfocusedLabelColor = currentTheme.textSecondaryColor
+    )
     var name by remember { mutableStateOf(initialName) }
     var grade by remember { mutableStateOf(initialGrade) }
     var section by remember { mutableStateOf(initialSection) }
-    var schoolCode by remember { mutableStateOf(initialSchoolCode) }
 
     val commonGrades = listOf(
         "الصف الأول المتوسط",
@@ -3262,8 +3264,8 @@ fun StudentInfoEditDialog(
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = RoundedCornerShape(20.dp),
-            color = Color.White,
-            border = BorderStroke(1.5.dp, Color(0xFF0284C7)),
+            color = currentTheme.surfaceColor,
+            border = BorderStroke(1.5.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFF0284C7)),
             modifier = Modifier.fillMaxWidth().padding(8.dp)
         ) {
             Column(
@@ -3276,10 +3278,10 @@ fun StudentInfoEditDialog(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Person, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(24.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("تسجيل وتعديل بيانات الطالب 🎓", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFF0F172A))
+                    Text("تسجيل وتعديل بيانات الطالب 🎓", fontWeight = FontWeight.Black, fontSize = 16.sp, color = currentTheme.textPrimaryColor)
                 }
 
-                HorizontalDivider(color = Color(0xFFE2E8F0))
+                HorizontalDivider(color = currentTheme.tableBorderColor)
 
                 // Name input
                 OutlinedTextField(
@@ -3290,19 +3292,8 @@ fun StudentInfoEditDialog(
                     leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = Color(0xFF0284C7)) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    singleLine = true
-                )
-
-                // School code input
-                OutlinedTextField(
-                    value = schoolCode,
-                    onValueChange = { schoolCode = it },
-                    label = { Text("رمز ربط المدرسة (كود الاقتران)") },
-                    placeholder = { Text("أدخل رمز المدرسة المعتمد...") },
-                    leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null, tint = Color(0xFF0284C7)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true
+                    singleLine = true,
+                    colors = dialogFieldColors
                 )
 
                 // Grade input & quick selection chips
@@ -3314,10 +3305,11 @@ fun StudentInfoEditDialog(
                         leadingIcon = { Icon(Icons.Default.Class, contentDescription = null, tint = Color(0xFF0284C7)) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        singleLine = true
+                        singleLine = true,
+                        colors = dialogFieldColors
                     )
 
-                    Text("اختيار سريع للصف:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Text("اختيار سريع للصف:", fontSize = 11.sp, color = currentTheme.textSecondaryColor, fontWeight = FontWeight.Bold)
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -3341,10 +3333,11 @@ fun StudentInfoEditDialog(
                         leadingIcon = { Icon(Icons.Default.MeetingRoom, contentDescription = null, tint = Color(0xFF0284C7)) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        singleLine = true
+                        singleLine = true,
+                        colors = dialogFieldColors
                     )
 
-                    Text("اختيار سريع للشعبة:", fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Text("اختيار سريع للشعبة:", fontSize = 11.sp, color = currentTheme.textSecondaryColor, fontWeight = FontWeight.Bold)
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -3376,8 +3369,7 @@ fun StudentInfoEditDialog(
                             val finalName = if (name.trim().isBlank()) "طالب متميز" else name.trim()
                             val finalGrade = if (grade.trim().isBlank()) "الصف الأول المتوسط" else grade.trim()
                             val finalSection = if (section.trim().isBlank()) "أ" else section.trim()
-                            val finalCode = if (schoolCode.trim().isBlank()) "762261" else schoolCode.trim()
-                            onSave(finalName, finalGrade, finalSection, finalCode)
+                            onSave(finalName, finalGrade, finalSection, initialSchoolCode.trim())
                         },
                         modifier = Modifier.weight(1.5f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),

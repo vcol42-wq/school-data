@@ -183,15 +183,41 @@ async function startServer() {
     }
   });
 
-  app.use(express.static(activeDirname));
-  app.get('*', (req, res) => {
-    const indexPath = path.join(activeDirname, 'index.html');
-    if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-    else res.status(404).send('System Error');
-  });
+  // Serve Frontend: Vite Middleware in development, or compiled dist in production
+  const distPath = path.join(activeDirname, 'dist');
+  let viteMiddleware: any = null;
+
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      viteMiddleware = vite.middlewares;
+    } catch (viteErr) {
+      console.warn('Vite dev middleware not available, falling back to dist:', viteErr);
+    }
+  }
+
+  if (viteMiddleware) {
+    app.use(viteMiddleware);
+  } else if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    app.use(express.static(activeDirname));
+    app.get('*', (req, res) => {
+      const indexPath = path.join(activeDirname, 'index.html');
+      if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+      else res.status(404).send('System Error');
+    });
+  }
 
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Principal AI Engine v6.5 Active on port ${PORT}`);
+    console.log(`Principal AI Engine v6.5.1 Active on port ${PORT}`);
   });
 
   server.on('error', (err: any) => {

@@ -195,26 +195,33 @@ fun JoinRequestScreen(
             if (pairedSchoolName.isNotBlank()) {
                 Surface(
                     color = androidx.compose.ui.graphics.Color(0xFFDCFCE7),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, androidx.compose.ui.graphics.Color(0xFF22C55E)),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, androidx.compose.ui.graphics.Color(0xFF22C55E)),
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
                             Icons.Default.CheckCircle,
                             contentDescription = null,
                             tint = androidx.compose.ui.graphics.Color(0xFF16A34A),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            "تم الاقتران بنجاح مع: $pairedSchoolName ✓",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = androidx.compose.ui.graphics.Color(0xFF14532D)
+                            text = "تم الاقتران بنجاح مع: $pairedSchoolName ✓",
+                            fontWeight = FontWeight.Black,
+                            fontSize = 13.5.sp,
+                            color = androidx.compose.ui.graphics.Color(0xFF14532D),
+                            textAlign = TextAlign.Center,
+                            softWrap = true,
+                            lineHeight = 19.sp,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
                 }

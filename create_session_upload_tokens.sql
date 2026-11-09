@@ -51,15 +51,8 @@ ALTER TABLE session_upload_tokens ENABLE ROW LEVEL SECURITY;
 -- RLS Policy for session tokens
 DROP POLICY IF EXISTS session_tokens_tenant_policy ON session_upload_tokens;
 CREATE POLICY session_tokens_tenant_policy ON session_upload_tokens
-    FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
-        OR current_user = 'service_role'
-    )
-    WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
-        OR current_user = 'service_role'
-    );
+    FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
 
--- Grant appropriate permissions
-GRANT SELECT ON session_upload_tokens TO anon, authenticated;
-GRANT INSERT, UPDATE, DELETE ON session_upload_tokens TO anon, authenticated;
+-- Direct client access is disabled until school membership is authenticated.
+REVOKE ALL ON TABLE session_upload_tokens FROM anon, authenticated;
+GRANT ALL ON TABLE session_upload_tokens TO service_role;

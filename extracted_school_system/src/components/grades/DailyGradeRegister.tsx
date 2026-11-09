@@ -40,7 +40,13 @@ export const DailyGradeRegister: React.FC<DailyGradeRegisterProps> = ({
   selectedSection,
   schoolName
 }) => {
-  const [selectedSubject, setSelectedSubject] = useState<string>(() => subjectsList[0] || 'اللغة العربية');
+  const [selectedSubject, setSelectedSubject] = useState<string>(() => {
+    const subjWithMarks = subjectsList.find(s => {
+      const norm = normalizeArabic(s);
+      return students.some(std => (std.marksHistory || []).some(m => normalizeArabic(m.subject) === norm && ((m.total && m.total > 0) || (m.m1MonthAvg && m.m1MonthAvg > 0) || (m.m1Written && m.m1Written > 0))));
+    });
+    return subjWithMarks || subjectsList[0] || 'اللغة العربية';
+  });
   const [subStage, setSubStage] = useState<SubStage>('m1');
 
   // استخراج أستاذ المادة تلقائياً من جدول الحصص الأسبوعي
@@ -205,6 +211,13 @@ export const DailyGradeRegister: React.FC<DailyGradeRegisterProps> = ({
           {subjectsList.map(subj => {
             const oral = isOralAndWrittenSubject(subj);
             const isSelected = selectedSubject === subj;
+            const normSubj = normalizeArabic(subj);
+            const hasGrades = students.some(std => 
+              (std.marksHistory || []).some(m => 
+                normalizeArabic(m.subject) === normSubj && 
+                ((m.total && m.total > 0) || (m.m1MonthAvg && m.m1MonthAvg > 0) || (m.m1Written && m.m1Written > 0) || (Array.isArray(m.m1Daily) && m.m1Daily.some(d => d > 0)))
+              )
+            );
 
             return (
               <button
@@ -214,12 +227,21 @@ export const DailyGradeRegister: React.FC<DailyGradeRegisterProps> = ({
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 border shadow-2xs ${
                   isSelected
                     ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white border-amber-500 shadow-sm scale-102 ring-2 ring-amber-300'
-                    : oral
-                      ? 'bg-amber-50/70 hover:bg-amber-100 text-amber-950 border-amber-200'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
+                    : hasGrades
+                      ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border-emerald-300 font-black ring-1 ring-emerald-200'
+                      : oral
+                        ? 'bg-amber-50/70 hover:bg-amber-100 text-amber-950 border-amber-200'
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-800 border-slate-200'
                 }`}
               >
                 <span>{subj}</span>
+                {hasGrades && (
+                  <span className={`text-[9px] px-1 py-0.2 rounded-md font-black ${
+                    isSelected ? 'bg-emerald-400 text-slate-950' : 'bg-emerald-200 text-emerald-900'
+                  }`}>
+                    درجات مرصودة ✓
+                  </span>
+                )}
                 <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
                   isSelected 
                     ? 'bg-white/20 text-white' 

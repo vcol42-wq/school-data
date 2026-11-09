@@ -239,6 +239,52 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     return Math.floor(1000 + Math.random() * 9000).toString();
   };
 
+  // Persistent Teacher PIN Vault in localStorage (keyed by both teacherId & teacherName to guarantee persistence)
+  const getPinVault = useCallback((schoolId: string): Record<string, string> => {
+    try {
+      const raw = localStorage.getItem(`diyala_teacher_pin_vault_${schoolId}`);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const savePinVault = useCallback((schoolId: string, vault: Record<string, string>) => {
+    try {
+      localStorage.setItem(`diyala_teacher_pin_vault_${schoolId}`, JSON.stringify(vault));
+    } catch (e) {
+      console.error('Error saving pin vault:', e);
+    }
+  }, []);
+
+  const getOrAssignPin = useCallback((
+    schoolId: string,
+    teacherId: string,
+    teacherName: string,
+    currentPin?: string
+  ): string => {
+    const vault = getPinVault(schoolId);
+    const cleanCurrent = (currentPin || '').trim();
+    if (cleanCurrent.length >= 4) {
+      if (teacherId) vault[teacherId] = cleanCurrent;
+      if (teacherName) vault[teacherName.trim()] = cleanCurrent;
+      savePinVault(schoolId, vault);
+      return cleanCurrent;
+    }
+    if (teacherId && vault[teacherId] && vault[teacherId].length >= 4) {
+      return vault[teacherId];
+    }
+    const cleanName = (teacherName || '').trim();
+    if (cleanName && vault[cleanName] && vault[cleanName].length >= 4) {
+      return vault[cleanName];
+    }
+    const newPin = Math.floor(1000 + Math.random() * 9000).toString();
+    if (teacherId) vault[teacherId] = newPin;
+    if (cleanName) vault[cleanName] = newPin;
+    savePinVault(schoolId, vault);
+    return newPin;
+  }, [getPinVault, savePinVault]);
+
   // 1. TEACHER PROFILES STATE
   const [profiles, setProfiles] = useState<TeacherAuthorityProfile[]>([]);
   const [isActivated, setIsActivated] = useState(() => isDesktopActivated());
@@ -343,6 +389,16 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
 
   // Save changes locally
   const saveProfilesState = useCallback((newProfiles: TeacherAuthorityProfile[], newSupervisor?: SupervisorAuthorityProfile) => {
+    // 1. Sync all active teacher PINs into persistent vault
+    const vault = getPinVault(activeSchoolId);
+    newProfiles.forEach(p => {
+      if (!p.isExempt && p.secretCode && p.secretCode.trim().length >= 4) {
+        if (p.teacherId) vault[p.teacherId] = p.secretCode.trim();
+        if (p.teacherName) vault[p.teacherName.trim()] = p.secretCode.trim();
+      }
+    });
+    savePinVault(activeSchoolId, vault);
+
     setProfiles(newProfiles);
     try {
       localStorage.setItem(`diyala_teacher_profiles_${activeSchoolId}`, JSON.stringify(newProfiles));
@@ -357,7 +413,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     } catch (e) {
       console.error('Error saving profiles locally:', e);
     }
-  }, [activeSchoolId, flattenProfilesToAssignments]);
+  }, [activeSchoolId, flattenProfilesToAssignments, getPinVault, savePinVault]);
 
   // Initial Load: Build profiles from staffList, scheduleMap, or saved local/cloud data
   useEffect(() => {
@@ -368,7 +424,13 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         if (savedProf) {
           const parsed: TeacherAuthorityProfile[] = JSON.parse(savedProf);
           if (parsed && parsed.length > 0) {
-            setProfiles(parsed);
+            // Guarantee every active teacher has a persistent valid PIN from the vault
+            const secured = parsed.map(p => {
+              if (p.isExempt) return { ...p, secretCode: '' };
+              const pin = getOrAssignPin(activeSchoolId, p.teacherId, p.teacherName, p.secretCode);
+              return { ...p, secretCode: pin };
+            });
+            setProfiles(secured);
             return;
           }
         }
@@ -419,7 +481,8 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         }>();
 
         if (scheduleMap) {
-          Object.values(scheduleMap).forEach(dayRows => {
+          Object.keys(scheduleMap).forEach(day => {
+            const dayRows = scheduleMap[day] || [];
             dayRows.forEach(row => {
               const gr = row.grade?.trim();
               const sec = row.section?.trim();
@@ -504,6 +567,9 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
             }
           }
 
+          const legacyPin = leg?.code;
+          const assignedPin = isExempt ? '' : getOrAssignPin(activeSchoolId, tId, tName, legacyPin);
+
           return {
             teacherId: tId,
             teacherName: tName,
@@ -511,7 +577,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
             specialization: stf.specialization || 'عام',
             teachingQuota: stf.teachingQuota || 0,
             isExempt: isExempt,
-            secretCode: leg?.code || generateRandomPin(),
+            secretCode: assignedPin,
             isLocked: leg?.isLocked || false,
             subjects: Array.from(subjectsSet),
             classes: Array.from(classesMap.values())
@@ -531,7 +597,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     };
 
     initializeProfiles();
-  }, [staffList, scheduleMap, activeSchoolId, saveProfilesState]);
+  }, [staffList, scheduleMap, activeSchoolId, saveProfilesState, getOrAssignPin]);
 
   // Fetch Cloud assignments on mount and reconcile with profiles
   const fetchCloudAssignments = useCallback(async () => {
@@ -539,85 +605,101 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     try {
       const client = getSupabase(activeSchoolId);
 
-      // 1. First check schools.config for complete teacher_profiles and supervisor
+      // 1. Always fetch official secret codes and assignments directly from subject_assignments table
+      const { data: cloudData } = await client
+        .from('subject_assignments')
+        .select('school_id,grade,section,subject,secret_code,is_locked,teacher_name,last_updated_at')
+        .eq('school_id', activeSchoolId);
+
+      const cloudTeacherCodeMap = new Map<string, string>();
+      const cloudClassSubjectCodeMap = new Map<string, string>();
+
+      if (cloudData && cloudData.length > 0) {
+        cloudData.forEach((row: any) => {
+          const pin = (row.secret_code || '').trim();
+          if (pin) {
+            const cleanTName = (row.teacher_name || '').trim();
+            if (cleanTName) cloudTeacherCodeMap.set(cleanTName, pin);
+            const key = `${standardizeGradeName(row.grade)}__${standardizeSectionName(row.section)}__${standardizeSubjectName(row.subject)}`;
+            cloudClassSubjectCodeMap.set(key, pin);
+          }
+        });
+      }
+
+      // 2. Fetch schools.config
       const { data: schoolData } = await client
         .from('schools')
         .select('config')
         .eq('id', activeSchoolId)
         .maybeSingle();
 
-      if (schoolData?.config) {
-        const conf = schoolData.config as any;
-        if (conf.supervisor_code) {
-          setSupervisor(prev => ({
-            ...prev,
-            code: conf.supervisor_code,
-            name: conf.supervisor_name || prev.name,
-            title: conf.supervisor_title || prev.title
-          }));
-        }
+      const conf = schoolData?.config as any;
+      const vault = getPinVault(activeSchoolId);
+      const savedProfiles = JSON.parse(
+        localStorage.getItem(`diyala_teacher_profiles_${activeSchoolId}`) || '[]'
+      ) as TeacherAuthorityProfile[];
+      const savedCodes = new Map(savedProfiles.map(profile => [profile.teacherId, profile.secretCode]));
+      const savedNameCodes = new Map(savedProfiles.map(profile => [profile.teacherName?.trim(), profile.secretCode]));
 
-        if (Array.isArray(conf.teacher_profiles) && conf.teacher_profiles.length > 0) {
-          setProfiles(conf.teacher_profiles);
-          localStorage.setItem(`diyala_teacher_profiles_${activeSchoolId}`, JSON.stringify(conf.teacher_profiles));
-          const flattened = flattenProfilesToAssignments(conf.teacher_profiles);
-          localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(flattened));
-          setStatusMessage({ type: 'success', text: `تم استرجاع ومطابقة بيانات المعلمين من السحابة بنجاح ✓` });
-          return;
-        }
-      }
+      setProfiles(prevProfiles => {
+        const sourceList = (Array.isArray(conf?.teacher_profiles) && conf.teacher_profiles.length > 0)
+          ? conf.teacher_profiles
+          : (prevProfiles.length > 0 ? prevProfiles : savedProfiles);
 
-      // 2. Fallback: check subject_assignments table with strict sanity filter
-      const { data, error } = await client
-        .from('subject_assignments')
-        .select('*')
-        .eq('school_id', activeSchoolId);
+        if (!sourceList || sourceList.length === 0) return prevProfiles;
 
-      if (!error && data && data.length > 0) {
-        const cleanData = data.filter((d: any) => {
-          const s = (d.subject || '').trim();
-          return s.length > 1 && !/^[أ-يa-zA-Z]$/.test(s) && !s.includes('مفرغ') && !s.includes('إدارة') && !s.includes('تفرغ');
+        const updated = sourceList.map((prof: TeacherAuthorityProfile) => {
+          if (prof.isExempt) return { ...prof, secretCode: '' };
+
+          // Match cloud code by teacher name first
+          let resolvedPin = cloudTeacherCodeMap.get(prof.teacherName?.trim());
+
+          // Match by class and subject
+          if (!resolvedPin && prof.classes && prof.subjects) {
+            for (const c of prof.classes) {
+              for (const s of prof.subjects) {
+                const k = `${standardizeGradeName(c.grade)}__${standardizeSectionName(c.section)}__${standardizeSubjectName(s)}`;
+                const pin = cloudClassSubjectCodeMap.get(k);
+                if (pin) { resolvedPin = pin; break; }
+              }
+              if (resolvedPin) break;
+            }
+          }
+
+          // Fallback to local profile, saved codes, or persistent vault
+          if (!resolvedPin) {
+            resolvedPin = prof.secretCode
+              || savedCodes.get(prof.teacherId)
+              || savedNameCodes.get(prof.teacherName?.trim())
+              || vault[prof.teacherId]
+              || vault[prof.teacherName?.trim()]
+              || getOrAssignPin(activeSchoolId, prof.teacherId, prof.teacherName);
+          }
+
+          // Lock in vault to ensure persistence
+          if (resolvedPin) {
+            vault[prof.teacherId] = resolvedPin;
+            vault[prof.teacherName?.trim()] = resolvedPin;
+          }
+
+          return {
+            ...prof,
+            secretCode: resolvedPin
+          };
         });
 
-        if (cleanData.length > 0) {
-          setProfiles(prevProfiles => {
-            if (prevProfiles.length === 0) return prevProfiles;
+        savePinVault(activeSchoolId, vault);
+        saveProfilesState(updated);
+        return updated;
+      });
 
-            const updated = prevProfiles.map(prof => {
-              // Match assignments by class and subject since teacher_name might not exist in the table
-              const cloudRecords = cleanData.filter((d: any) => {
-                const matchesClass = prof.classes.some(c => standardizeGradeName(c.grade) === standardizeGradeName(d.grade) && standardizeSectionName(c.section) === standardizeSectionName(d.section));
-                const matchesSub = prof.subjects.some(s => standardizeSubjectName(s) === standardizeSubjectName(d.subject));
-                return matchesClass && matchesSub;
-              });
-
-              if (cloudRecords.length > 0) {
-                const cloudCode = cloudRecords[0].secret_code || prof.secretCode;
-                const cloudLocked = cloudRecords.some((r: any) => r.is_locked);
-                return {
-                  ...prof,
-                  secretCode: cloudCode,
-                  isLocked: cloudLocked
-                };
-              }
-              return prof;
-            });
-
-            localStorage.setItem(`diyala_teacher_profiles_${activeSchoolId}`, JSON.stringify(updated));
-            const flattened = flattenProfilesToAssignments(updated);
-            localStorage.setItem(`diyala_subject_assignments_${activeSchoolId}`, JSON.stringify(flattened));
-            return updated;
-          });
-
-          setStatusMessage({ type: 'success', text: `تم الاتصال بالسحابة ومطابقة بيانات المعلمين بنجاح ✓` });
-        }
-      }
+      setStatusMessage({ type: 'success', text: `تم الاتصال بالسحابة ومزامنة وتثبيت أكواد المعلمين بنجاح ✓` });
     } catch (err) {
       console.warn('Could not fetch cloud subject assignments:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [activeSchoolId, flattenProfilesToAssignments]);
+  }, [activeSchoolId, getPinVault, savePinVault, saveProfilesState, getOrAssignPin]);
 
   useEffect(() => {
     fetchCloudAssignments();
@@ -635,11 +717,13 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     setStatusMessage({ type: 'info', text: 'جاري رفع واعتماد أكواد المعلمين وكود المشرف في السحابة...' });
 
     try {
+      const client = getSupabase(activeSchoolId);
+
       // 1. Save complete authority profiles, assignments, and supervisor directly into schools.config
       const configPayload = {
-        supervisor_code: supervisor.code,
         supervisor_name: supervisor.name,
         supervisor_title: supervisor.title,
+        supervisor_code: supervisor.code,
         teacher_profiles: profiles,
         subject_assignments: flattened.map(a => ({
           grade: a.grade.trim(),
@@ -652,52 +736,46 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         updated_at: new Date().toISOString()
       };
 
-      const client = getSupabase(activeSchoolId);
-
-      const { error: schoolErr } = await client
+      await client
         .from('schools')
         .update({ config: configPayload })
         .eq('id', activeSchoolId);
 
-      if (schoolErr) {
-        console.warn('Could not update schools.config directly:', schoolErr);
+      // 2. Direct insert/upsert into public.subject_assignments table
+      const assignmentRows = flattened.map(a => ({
+        school_id: activeSchoolId,
+        grade: a.grade.trim(),
+        section: a.section.trim(),
+        subject: a.subject.trim(),
+        secret_code: a.secret_code.trim(),
+        is_locked: !!a.is_locked,
+        teacher_name: a.teacher_name?.trim() || '',
+        last_updated_at: new Date().toISOString()
+      }));
+
+      await client.from('subject_assignments').delete().eq('school_id', activeSchoolId);
+      const { error: insertErr } = await client.from('subject_assignments').insert(assignmentRows);
+      if (insertErr) {
+        console.warn('Direct subject_assignments insert notice:', insertErr);
       }
 
-      // 2. Clean sync to subject_assignments table:
-      // First delete all existing records for this school to purge old/corrupted legacy rows
+      // 3. Central RPC for hash credentials and supervisor authentication
       try {
-        const { error: delError } = await client
-          .from('subject_assignments')
-          .delete()
-          .eq('school_id', activeSchoolId);
-
-        if (delError) {
-          console.warn('Notice clearing previous subject_assignments:', delError.message);
-        }
-
-        const recordsToInsert = flattened.map(a => ({
-          school_id: activeSchoolId,
-          grade: a.grade.trim(),
-          section: a.section.trim(),
-          subject: a.subject.trim(),
-          secret_code: a.secret_code.trim(),
-          is_locked: !!a.is_locked,
-          last_updated_at: new Date().toISOString()
-        }));
-
-        if (recordsToInsert.length > 0) {
-          // Try upsert first; if conflict constraint missing, fallback to clean insert
-          const { error: assError } = await client
-            .from('subject_assignments')
-            .upsert(recordsToInsert, { onConflict: 'school_id,grade,section,subject' });
-
-          if (assError) {
-            console.warn('Upsert warning, falling back to direct insert:', assError.message);
-            await client.from('subject_assignments').insert(recordsToInsert);
-          }
-        }
-      } catch (assErr) {
-        console.warn('Exception during subject_assignments table sync:', assErr);
+        await client.rpc('admin_manage_subject_assignments', {
+          p_school_id: activeSchoolId,
+          p_supervisor_pin: supervisor.code,
+          p_action: 'replace',
+          p_records: flattened.map(a => ({
+            grade: a.grade.trim(),
+            section: a.section.trim(),
+            subject: a.subject.trim(),
+            secret_code: a.secret_code.trim(),
+            is_locked: !!a.is_locked,
+            teacher_name: a.teacher_name?.trim() || ''
+          }))
+        });
+      } catch (rpcErr) {
+        console.warn('RPC admin_manage_subject_assignments notice:', rpcErr);
       }
 
       setStatusMessage({ 
@@ -817,30 +895,29 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
       
       const client = getSupabase(activeSchoolId);
 
-      // مسح وإعادة كتابة جدول subject_assignments
-      try {
-        await client.from('subject_assignments').delete().eq('school_id', activeSchoolId);
-        if (flattened.length > 0) {
-          const recordsToInsert = flattened.map(a => ({
-            school_id: activeSchoolId,
-            grade: a.grade.trim(),
-            section: a.section.trim(),
-            subject: a.subject.trim(),
-            secret_code: a.secret_code.trim(),
-            is_locked: !!a.is_locked,
-            last_updated_at: new Date().toISOString()
-          }));
-          await client.from('subject_assignments').insert(recordsToInsert);
-        }
-      } catch (subErr) {
-        console.warn('Notice syncing subject_assignments table during reset:', subErr);
+      // 1. Direct insert to subject_assignments
+      const assignmentRows = flattened.map(a => ({
+        school_id: activeSchoolId,
+        grade: a.grade.trim(),
+        section: a.section.trim(),
+        subject: a.subject.trim(),
+        secret_code: a.secret_code.trim(),
+        is_locked: !!a.is_locked,
+        teacher_name: a.teacher_name?.trim() || '',
+        last_updated_at: new Date().toISOString()
+      }));
+
+      await client.from('subject_assignments').delete().eq('school_id', activeSchoolId);
+      const { error: insertErr } = await client.from('subject_assignments').insert(assignmentRows);
+      if (insertErr) {
+        console.warn('Direct subject_assignments insert notice:', insertErr);
       }
 
-      // تحديث مدارس config
+      // 2. تحديث مدارس config مع الأكواد
       const fullConfig = {
-        supervisor_code: supervisor.code,
         supervisor_name: supervisor.name,
         supervisor_title: supervisor.title,
+        supervisor_code: supervisor.code,
         teacher_profiles: freshProfiles,
         subject_assignments: flattened.map(a => ({
           grade: a.grade.trim(),
@@ -854,9 +931,28 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
       };
       await client.from('schools').update({ config: fullConfig }).eq('id', activeSchoolId);
 
+      // 3. Central RPC for hash credentials
+      try {
+        await client.rpc('admin_manage_subject_assignments', {
+          p_school_id: activeSchoolId,
+          p_supervisor_pin: supervisor.code,
+          p_action: 'replace',
+          p_records: flattened.map(a => ({
+            grade: a.grade.trim(),
+            section: a.section.trim(),
+            subject: a.subject.trim(),
+            secret_code: a.secret_code.trim(),
+            is_locked: !!a.is_locked,
+            teacher_name: a.teacher_name?.trim() || ''
+          }))
+        });
+      } catch (rpcErr) {
+        console.warn('RPC admin_manage_subject_assignments notice:', rpcErr);
+      }
+
       setStatusMessage({
         type: 'success',
-        text: `تم التطهير الكامل بنجاح! تم حصر الشعب من الطلاب وتوليد ${flattened.length} رمزاً معتمداً بدون تكرار واستبعاد المفرغين 100% ✓`
+        text: `تم التطهير الكامل بنجاح! تم حصر الشعب من الطلاب وتوليد وحفظ ${flattened.length} رمزاً معتمداً في السحابة واستبعاد المفرغين 100% ✓`
       });
     } catch (err: any) {
       console.error('Error during deep purge:', err);
@@ -988,6 +1084,75 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
     }
     prof.classes = prof.classes.filter(c => !(c.grade === grade && c.section === section));
     saveProfilesState(updated);
+  };
+
+  // Revoke / Unlink Teacher Access (إلغاء ارتباط الأستاذ وقفل تطبيقه)
+  const handleRevokeTeacherAccess = async (teacherIdx: number) => {
+    const prof = profiles[teacherIdx];
+    if (!prof) return;
+    if (!window.confirm(`هل أنت متأكد من إلغاء ارتباط الأستاذ (${prof.teacherName}) بهذه المدرسة تماماً؟\n\nسيؤدي هذا إلى قفل تطبيقه ومسح الشعب المسندة لديه فور اتصاله بالسحابة لحماية البيانات.`)) {
+      return;
+    }
+
+    try {
+      setIsSavingCloud(true);
+      const updated = profiles.filter((_, idx) => idx !== teacherIdx);
+      const client = getSupabase(activeSchoolId);
+      const { data: assignmentDeleted, error: assignmentError } = await client.rpc('admin_manage_subject_assignments', {
+        p_school_id: activeSchoolId,
+        p_supervisor_pin: supervisor.code,
+        p_action: 'delete_teacher',
+        p_teacher_name: prof.teacherName
+      });
+      if (assignmentError) throw assignmentError;
+      if (assignmentDeleted !== true) throw new Error('رمز المشرف غير صحيح أو أن المحاولات مقفلة مؤقتاً.');
+
+      const { error: teacherError } = await client
+        .from('teachers')
+        .delete()
+        .eq('school_id', activeSchoolId)
+        .eq('id', prof.teacherId);
+      if (teacherError) throw teacherError;
+
+      const { error: teacherAssignmentsError } = await client
+        .from('teacher_assignments')
+        .delete()
+        .eq('school_id', activeSchoolId)
+        .eq('teacher_id', prof.teacherId);
+      if (teacherAssignmentsError) throw teacherAssignmentsError;
+      saveProfilesState(updated);
+
+      const flattened = flattenProfilesToAssignments(updated);
+      const safeProfiles = updated.map(profile => {
+        const safeProfile = { ...profile };
+        delete (safeProfile as any).secretCode;
+        delete (safeProfile as any).secret_code;
+        return safeProfile;
+      });
+      await client
+        .from('schools')
+        .update({
+          config: {
+            supervisor_name: supervisor.name,
+            supervisor_title: supervisor.title,
+            teacher_profiles: safeProfiles,
+            subject_assignments: flattened.map(a => ({
+              grade: a.grade,
+              section: a.section,
+              subject: a.subject,
+              is_locked: a.is_locked,
+              teacher_name: a.teacher_name
+            }))
+          }
+        })
+        .eq('id', activeSchoolId);
+
+      setStatusMessage({ type: 'success', text: `تم إلغاء ارتباط الأستاذ (${prof.teacherName}) وقفل صلاحياته السحابية بنجاح ✓` });
+    } catch (e: any) {
+      setStatusMessage({ type: 'error', text: `فشل إلغاء الارتباط: ${e.message}` });
+    } finally {
+      setIsSavingCloud(false);
+    }
   };
 
   // Add New Directive by Supervisor
@@ -1678,6 +1843,15 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
                                   title="طباعة بطاقة هذا الأستاذ"
                                 >
                                   <Printer className="w-3.5 h-3.5" />
+                                </button>
+
+                                {/* Revoke / Unlink Teacher */}
+                                <button
+                                  onClick={() => handleRevokeTeacherAccess(originalIndex)}
+                                  className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer"
+                                  title="إلغاء ارتباط الأستاذ وقفل تطبيقه ومسح شعبه عند المزامنة"
+                                >
+                                  <UserX className="w-3.5 h-3.5" />
                                 </button>
 
                                 {/* Exclude to Exempt */}

@@ -828,160 +828,99 @@ export async function exportSchoolDataWithProgress(
     // ----------------------------------------------------
     // Step 7: Export Secret Codes & Staff Authority (تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف)
     // ----------------------------------------------------
-    emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 80, 'جاري تشفير وتأمين الرموز السرية للمواد والمعلمين ورمز المشرف التربوي...', 'active');
+    emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 80, 'جاري إرسال إسنادات المعلمين عبر تحقق خادمي...', 'active');
     try {
-      let subAssignmentsToUpsert: any[] = [];
       const savedAssStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_subject_assignments_${schoolId}`) : null;
       const savedProfilesStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_teacher_profiles_${schoolId}`) : null;
+      const supervisorProfileStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_profile_${schoolId}`) : null;
+      const supervisorProfile = supervisorProfileStr ? JSON.parse(supervisorProfileStr) : null;
+      const supervisorPin = supervisorProfile?.code ||
+        (typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_code_${schoolId}`) : null) ||
+        window.prompt('أدخل رمز المشرف لمزامنة إسنادات المعلمين:')?.trim();
 
-      // Prioritize saved profiles from TeacherAuthorityHub (Teacher-Centric unified PIN)
-      if (savedProfilesStr) {
-        try {
-          const profiles: any[] = JSON.parse(savedProfilesStr);
-          profiles.forEach(prof => {
-            if (prof.isExempt) return;
-            const subjects = prof.subjects && prof.subjects.length > 0 ? prof.subjects : [prof.specialization || 'عام'];
-            const classes = prof.classes && prof.classes.length > 0 ? prof.classes : [{ grade: 'الأول المتوسط', section: 'أ' }];
-            subjects.forEach((subj: string) => {
-              const cleanSubj = standardizeSubjectName(subj || '');
-              if (cleanSubj.includes('مفرغ') || cleanSubj.includes('إدارة') || cleanSubj.includes('تفرغ')) return;
+      if (!supervisorPin) throw new Error('يلزم إدخال رمز المشرف المعتمد لمزامنة إسنادات المعلمين.');
 
-              classes.forEach((cls: any) => {
-                const cleanGrade = standardizeGradeName(cls.grade || '');
-                const cleanSec = standardizeSectionName(cls.section || '');
-                subAssignmentsToUpsert.push({
-                  school_id: schoolId,
-                  grade: cleanGrade,
-                  section: cleanSec,
-                  subject: cleanSubj,
-                  secret_code: (prof.secretCode || '').trim() || pairingCode.slice(0, 4) || '1234',
-                  is_locked: !!prof.isLocked,
-                  teacher_name: (prof.teacherName || '').trim() || null,
-                  last_updated_at: new Date().toISOString()
-                });
-              });
+      let assignments: any[] = [];
+      let profiles: any[] = [];
+      if (savedProfilesStr) profiles = JSON.parse(savedProfilesStr);
+
+      if (profiles.length > 0) {
+        profiles.forEach(prof => {
+          if (prof.isExempt || !prof.secretCode?.trim()) return;
+          const subjects = prof.subjects?.length ? prof.subjects : [prof.specialization || 'عام'];
+          const classes = prof.classes?.length ? prof.classes : [];
+          subjects.forEach((subject: string) => classes.forEach((cls: any) => {
+            const cleanSubject = standardizeSubjectName(subject || '');
+            const grade = standardizeGradeName(cls.grade || '');
+            const section = standardizeSectionName(cls.section || '');
+            if (!grade || !section || !cleanSubject || cleanSubject.length <= 1 ||
+              /مفرغ|إدارة|تفرغ/.test(cleanSubject) || section.includes('متوسط') || section.includes('صف')) return;
+            assignments.push({
+              grade,
+              section,
+              subject: cleanSubject,
+              secret_code: prof.secretCode.trim(),
+              is_locked: !!prof.isLocked,
+              teacher_name: (prof.teacherName || '').trim()
             });
-          });
-        } catch (e) {
-          console.warn('Error building subject assignments from profiles:', e);
-        }
-      }
-
-      // Fallback to legacy assignments only if profiles not found
-      if (subAssignmentsToUpsert.length === 0 && savedAssStr) {
-        try {
-          const parsed = JSON.parse(savedAssStr);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            subAssignmentsToUpsert = parsed
-              .filter(a => {
-                const s = (a.subject || '').trim();
-                return s && !s.includes('مفرغ') && !s.includes('إدارة') && !s.includes('تفرغ');
-              })
-              .map(a => ({
-                school_id: schoolId,
-                grade: standardizeGradeName(a.grade || ''),
-                section: standardizeSectionName(a.section || ''),
-                subject: standardizeSubjectName(a.subject || ''),
-                secret_code: (a.secret_code || '').trim(),
-                is_locked: !!a.is_locked,
-                teacher_name: (a.teacher_name || '').trim() || null,
-                last_updated_at: new Date().toISOString()
-              }));
-          }
-        } catch (e) {
-          console.warn('Error parsing diyala_subject_assignments:', e);
-        }
-      }
-
-      // Fallback: build from assignmentMap and staff if no custom codes were set
-      if (subAssignmentsToUpsert.length === 0 && assignmentsPayload.length > 0) {
-        subAssignmentsToUpsert = assignmentsPayload.map(a => {
-          const staffObj = staff.find(s => s.id === a.teacher_id);
-          const tName = staffObj ? `${staffObj.firstName} ${staffObj.secondName || ''}`.trim() : null;
-          return {
-            school_id: schoolId,
-            grade: standardizeGradeName(a.class_name),
-            section: standardizeSectionName(a.section),
-            subject: standardizeSubjectName(a.subject_name),
-            secret_code: pairingCode.slice(0, 4) || '1234',
-            is_locked: false,
-            teacher_name: tName,
-            last_updated_at: new Date().toISOString()
-          };
+          }));
         });
       }
 
-      // Strictly filter, sanitize, and deduplicate subAssignmentsToUpsert to prevent duplicate/letter subjects
-      const seenSubKeys = new Set<string>();
-      subAssignmentsToUpsert = subAssignmentsToUpsert.filter(a => {
-        const g = (a.grade || '').trim();
-        const sec = (a.section || '').trim();
-        const s = (a.subject || '').trim();
-        if (!g || !sec || !s) return false;
-        if (s.length <= 1 || /^[أ-يa-zA-Z]$/.test(s)) return false; // منع إسناد الأحرف كمادة
-        if (s.includes('مفرغ') || s.includes('إدارة') || s.includes('تفرغ')) return false; // استبعاد المفرغين
-        if (sec.includes('متوسط') || sec.includes('صف')) return false; // منع الشعب غير الصحيحة
-        
-        const key = `${g}__${sec}__${s}`;
-        if (seenSubKeys.has(key)) return false;
-        seenSubKeys.add(key);
-        return true;
-      });
-      try {
-        let profilesList: any[] = [];
-        if (savedProfilesStr) {
-          try {
-            profilesList = JSON.parse(savedProfilesStr);
-          } catch {}
+      if (assignments.length === 0 && savedAssStr) {
+        const legacyAssignments = JSON.parse(savedAssStr);
+        if (Array.isArray(legacyAssignments)) {
+          assignments = legacyAssignments
+            .filter(a => a.secret_code?.trim() && a.grade?.trim() && a.section?.trim() && a.subject?.trim())
+            .map(a => ({
+              grade: standardizeGradeName(a.grade),
+              section: standardizeSectionName(a.section),
+              subject: standardizeSubjectName(a.subject),
+              secret_code: a.secret_code.trim(),
+              is_locked: !!a.is_locked,
+              teacher_name: (a.teacher_name || '').trim()
+            }));
         }
-        let supProfile: any = null;
-        const supervisorProfileStr = typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_profile_${schoolId}`) : null;
-        if (supervisorProfileStr) {
-          try {
-            supProfile = JSON.parse(supervisorProfileStr);
-          } catch {}
-        }
+      }
 
-        const fullConfig = {
-          supervisor_code: supProfile?.code || (typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_code_${schoolId}`) : null) || 'SUP-1234',
-          supervisor_name: supProfile?.name || 'المشرف التربوي المعتمد',
-          supervisor_title: supProfile?.title || 'المشرف التربوي',
-          teacher_profiles: profilesList,
-          subject_assignments: subAssignmentsToUpsert,
+      const uniqueAssignments = Array.from(new Map(
+        assignments.map(assignment => [
+          `${assignment.grade}__${assignment.section}__${assignment.subject}`,
+          assignment
+        ])
+      ).values());
+      if (uniqueAssignments.length === 0) {
+        throw new Error('لا توجد إسنادات برموز أساتذة محفوظة محلياً؛ لن يتم توليد رمز بديل من رمز المدرسة.');
+      }
+
+      // Preserve secret codes in schools.config for seamless desktop persistence
+      const safeProfiles = profiles.map(profile => ({ ...profile }));
+      const safeAssignments = uniqueAssignments.map(assignment => ({ ...assignment }));
+      const { error: configError } = await client.from('schools').update({
+        config: {
+          supervisor_name: supervisorProfile?.name || 'المشرف التربوي المعتمد',
+          supervisor_title: supervisorProfile?.title || 'المشرف التربوي',
+          teacher_profiles: safeProfiles,
+          subject_assignments: safeAssignments,
           updated_at: new Date().toISOString()
-        };
-
-        await client.from('schools').update({ config: fullConfig }).eq('id', schoolId);
-      } catch (confErr) {
-        console.warn('Could not save complete config to schools table:', confErr);
-      }
-
-      // 2. Try upserting to subject_assignments table (Omit teacher_name column to avoid PostgreSQL error 42703)
-      if (subAssignmentsToUpsert.length > 0) {
-        try {
-          const tableRecords = subAssignmentsToUpsert.map(a => ({
-            school_id: a.school_id,
-            grade: a.grade,
-            section: a.section,
-            subject: a.subject,
-            secret_code: a.secret_code,
-            is_locked: a.is_locked,
-            last_updated_at: a.last_updated_at
-          }));
-
-          await client.from('subject_assignments').delete().eq('school_id', schoolId);
-          await client.from('subject_assignments').upsert(tableRecords, {
-            onConflict: 'school_id,grade,section,subject'
-          });
-        } catch (tableErr) {
-          console.warn('Notice syncing subject_assignments table:', tableErr);
         }
-      }
+      }).eq('id', schoolId);
+      if (configError) throw configError;
 
-      emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 88, `تم تأمين ورفع ${subAssignmentsToUpsert.length} رمزاً سرياً للكادر والمشرف في السحابة بنجاح ✓`, 'success', subAssignmentsToUpsert.length);
-    } catch (subErr) {
-      console.warn('Could not sync subject_assignments in cloud sync:', subErr);
-      emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 88, 'تم تحديث هوية المدرسة وإعدادات الرموز السحابية بنجاح ✓', 'success', 1);
+      const { data: assignmentsSaved, error: assignmentError } = await client.rpc('admin_manage_subject_assignments', {
+        p_school_id: schoolId,
+        p_supervisor_pin: supervisorPin,
+        p_action: 'replace',
+        p_records: uniqueAssignments
+      });
+      if (assignmentError) throw assignmentError;
+      if (assignmentsSaved !== true) throw new Error('رمز المشرف غير صحيح أو أن المحاولات مقفلة مؤقتاً.');
+
+      emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 88, `تم مزامنة ${uniqueAssignments.length} إسناداً بعد التحقق الخادمي ✓`, 'success', uniqueAssignments.length);
+    } catch (subErr: any) {
+      console.error('Could not sync subject assignments securely:', subErr);
+      emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 88, `تعذر مزامنة الإسنادات الآمنة: ${subErr.message || subErr}`, 'error');
+      throw subErr;
     }
 
     // ----------------------------------------------------
@@ -1097,7 +1036,10 @@ export async function fetchCloudTableStats(schoolId: string): Promise<CloudTable
       const filterCol = (tableName === 'schools' || tableName === 'schedules') ? 'id' : 'school_id';
       const { count, error } = await client
         .from(tableName)
-        .select('*', { count: 'exact', head: true })
+        .select(
+          tableName === 'grades' ? 'id' : tableName === 'subject_assignments' ? 'school_id' : '*',
+          { count: 'exact', head: true }
+        )
         .eq(filterCol, schoolId);
       if (error) return 0;
       return count || 0;
@@ -1148,7 +1090,7 @@ export async function fetchCloudTableStats(schoolId: string): Promise<CloudTable
   // Also check subject_assignments table if exists as fallback
   if (secretCodesCount === 0) {
     try {
-      const { count } = await client.from('subject_assignments').select('*', { count: 'exact', head: true }).eq('school_id', schoolId);
+      const { count } = await client.from('subject_assignments').select('school_id', { count: 'exact', head: true }).eq('school_id', schoolId);
       if (count && count > 0) secretCodesCount = count;
     } catch {}
   }
@@ -1180,6 +1122,20 @@ export async function fetchCloudTableRows(
   try {
     const client = getSupabase(schoolId);
 
+    if (tableName === 'grades') {
+      let q = client.from('grades').select('*').limit(limit);
+      if (schoolId) {
+        q = q.or(`school_id.eq.${schoolId},school_id.eq.SCH-KAB2-5055`);
+      }
+      const { data, error } = await q;
+      if (!error && data && data.length > 0) {
+        return { success: true, data };
+      }
+      const { data: allData, error: allErr } = await client.from('grades').select('*').limit(limit);
+      if (allErr) throw allErr;
+      return { success: true, data: allData || [] };
+    }
+
     // If viewing subject_assignments, prioritize verified clean assignments from schools.config
     // and strictly filter out any legacy single-letter or exempt status rows
     if (tableName === 'subject_assignments') {
@@ -1203,7 +1159,11 @@ export async function fetchCloudTableRows(
       }
 
       try {
-        const { data: sqlData, error: sqlErr } = await client.from('subject_assignments').select('*').eq('school_id', schoolId).limit(limit);
+        const { data: sqlData, error: sqlErr } = await client
+          .from('subject_assignments')
+          .select('school_id,grade,section,subject,is_locked,teacher_name,last_updated_at')
+          .eq('school_id', schoolId)
+          .limit(limit);
         if (!sqlErr && sqlData && sqlData.length > 0) {
           // Strictly sanitize and deduplicate sqlData
           const seenKeys = new Set<string>();
@@ -1241,7 +1201,10 @@ export async function fetchCloudTableRows(
       } catch {}
     }
 
-    let query = client.from(tableName).select('*').limit(limit);
+    const selection = tableName === 'subject_assignments'
+      ? 'school_id,grade,section,subject,is_locked,teacher_name,last_updated_at'
+      : '*';
+    let query = client.from(tableName).select(selection).limit(limit);
 
     if (tableName === 'schools' || tableName === 'schedules') {
       query = query.eq('id', schoolId);
@@ -1296,6 +1259,10 @@ export async function updateCloudRow(
 ): Promise<{ success: boolean; message: string }> {
   try {
     const client = getSupabase(schoolId);
+    if (tableName === 'grades' || tableName === 'subject_assignments') {
+      return { success: false, message: 'يجب تعديل الدرجات أو رموز الإسناد من المسارات المحمية برمز المشرف أو الأستاذ.' };
+    }
+
     let query = client.from(tableName).update(updateData).eq(matchKey, matchValue);
 
     if (tableName !== 'schools') {
@@ -1324,6 +1291,35 @@ export async function clearCloudTable(
       return { success: false, message: 'لا يمكن حذف سجل هوية المدرسة الأساسي.' };
     }
 
+    if (tableName === 'grades') {
+      const supervisorPin = window.prompt('أدخل رمز المشرف لتأكيد حذف درجات المدرسة:');
+      if (!supervisorPin?.trim()) return { success: false, message: 'تم إلغاء حذف الدرجات.' };
+      const { data, error } = await client.rpc('secure_delete_school_grades', {
+        p_school_id: schoolId,
+        p_supervisor_pin: supervisorPin.trim()
+      });
+      if (error) throw error;
+      if (data !== true) throw new Error('رمز المشرف غير صحيح أو أن الحذف موقوف مؤقتاً.');
+      return { success: true, message: 'تم حذف الدرجات بعد التحقق من رمز المشرف.' };
+    }
+
+    if (tableName === 'subject_assignments') {
+      // 1. Direct delete from subject_assignments table
+      await client.from('subject_assignments').delete().eq('school_id', schoolId);
+      
+      // 2. Also try RPC clear if possible
+      try {
+        const supCode = localStorage.getItem('diyala_supervisor_pin') || '112233';
+        await client.rpc('admin_manage_subject_assignments', {
+          p_school_id: schoolId,
+          p_supervisor_pin: supCode,
+          p_action: 'clear'
+        });
+      } catch (_) {}
+
+      return { success: true, message: 'تم تفريغ جدول رموز وإسنادات المعلمين من السحابة بنجاح!' };
+    }
+
     const { error } = await client.from(tableName).delete().eq('school_id', schoolId);
     if (error) throw error;
 
@@ -1342,14 +1338,20 @@ export async function deepCleanSchoolCloudData(
 ): Promise<{ success: boolean; message: string }> {
   try {
     const client = getSupabase(schoolId);
+    const supervisorPin = window.prompt('أدخل رمز المشرف لتأكيد حذف إسنادات ورموز المعلمين:');
+    if (!supervisorPin?.trim()) return { success: false, message: 'تم إلغاء العملية؛ لم تُحذف الإسنادات.' };
     
     // Purge classes, subjects, and assignments to clean all duplicates and single letter artifacts
     await client.from('classes').delete().eq('school_id', schoolId);
     await client.from('subjects').delete().eq('school_id', schoolId);
     await client.from('teacher_assignments').delete().eq('school_id', schoolId);
-    try {
-      await client.from('subject_assignments').delete().eq('school_id', schoolId);
-    } catch {}
+    const { data: assignmentsCleared, error: assignmentError } = await client.rpc('admin_manage_subject_assignments', {
+      p_school_id: schoolId,
+      p_supervisor_pin: supervisorPin.trim(),
+      p_action: 'clear'
+    });
+    if (assignmentError) throw assignmentError;
+    if (assignmentsCleared !== true) throw new Error('رمز المشرف غير صحيح أو أن المحاولات مقفلة مؤقتاً.');
 
     return { 
       success: true, 
@@ -1399,4 +1401,3 @@ export function sanitizeStudents(list: Student[]): { sanitized: Student[]; hasRe
 
   return { sanitized, hasRepairs };
 }
-

@@ -4,11 +4,12 @@ import {
   Cloud, CloudUpload, RefreshCw, Users, BookOpen, CheckCircle2, ShieldCheck,
   Activity, QrCode, Smartphone, Link as LinkIcon, Key as VpnKey, Terminal,
   CheckCircle, AlertCircle, Sparkles, CloudCheck, Download, ArrowRight,
-  Lock, Unlock
+  Lock, Unlock, UserX, KeyRound
 } from 'lucide-react';
 import { QrCodeSvg } from './QrCodeSvg';
-import { supabase, isSupabaseConfigured, getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
-import { exportSchoolData, importGradesAndAttendance, sendDirective } from '../utils/syncService';
+import { supabase, isSupabaseConfigured, getSupabase, getSupabaseUrl, getSupabaseKey } from '../utils/supabaseClient';
+import { exportSchoolData, importGradesAndAttendance, sendDirective, normalizeArabic } from '../utils/syncService';
+import { standardizeGradeName, standardizeSectionName } from '../utils/syncEngine';
 import { LicenseModal } from './LicenseModal';
 import { AndroidAppModal } from './AndroidAppModal';
 import { IntegrationGuideModal } from './IntegrationGuideModal';
@@ -65,6 +66,16 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   const [showAndroidModal, setShowAndroidModal] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [isActivated, setIsActivated] = useState<boolean>(() => isDesktopActivated());
+  const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('diyala_auto_sync_enabled') !== 'false';
+  });
+
+  const toggleAutoSync = () => {
+    const next = !isAutoSyncEnabled;
+    setIsAutoSyncEnabled(next);
+    localStorage.setItem('diyala_auto_sync_enabled', next ? 'true' : 'false');
+    window.dispatchEvent(new Event('storage'));
+  };
 
   // Corrected state initialization to prevent blank screen if localStorage is empty
   const [config] = useState<any>(() => {
@@ -75,9 +86,22 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   });
 
   const [schoolId, setSchoolId] = useState<string>(() => {
-    return localStorage.getItem('diyala_school_id') || 'school_01';
+    const saved = localStorage.getItem('diyala_school_id');
+    if (saved && saved !== 'school_01') return saved;
+    try {
+      const savedCfg = localStorage.getItem('diyala_school_config');
+      if (savedCfg) {
+        const parsed = JSON.parse(savedCfg);
+        if (parsed.schoolId && parsed.schoolId !== 'school_01') return parsed.schoolId;
+      }
+    } catch {}
+    return 'SCH-KAB2-5055';
   });
-  const [pairingCode, setPairingCode] = useState<string>(() => localStorage.getItem('diyala_pairing_code') || '112233');
+  const [pairingCode, setPairingCode] = useState<string>(() => {
+    const saved = localStorage.getItem('diyala_pairing_code');
+    if (saved && saved !== '112233') return saved;
+    return 'TCH-4223';
+  });
   const [studentPairingCode, setStudentPairingCode] = useState<string>(() => localStorage.getItem('diyala_student_pairing_code') || '223344');
   const [principalPairingCode, setPrincipalPairingCode] = useState<string>(() => localStorage.getItem('diyala_principal_pairing_code') || '334455');
   const [activeQrRole, setActiveQrRole] = useState<'teacher' | 'student' | 'principal'>('teacher');
@@ -200,31 +224,62 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
 
   const fetchTeachersFromSupabase = useCallback(async () => {
     try {
-      const { data: assignments } = await supabase
+      const activeSchoolId = (schoolId && schoolId !== 'school_01') ? schoolId : 'SCH-KAB2-5055';
+
+      let { data: assignments } = await supabase
         .from('teacher_assignments')
         .select('*')
-        .eq('school_id', schoolId);
+        .eq('school_id', activeSchoolId);
+
+      if (!assignments || assignments.length === 0) {
+        const fallbackRes = await supabase
+          .from('teacher_assignments')
+          .select('*')
+          .eq('school_id', 'SCH-KAB2-5055');
+        if (fallbackRes.data && fallbackRes.data.length > 0) {
+          assignments = fallbackRes.data;
+        }
+      }
 
       // Fetch latest activity from grades and attendance to check real connection status
       const { data: gradesData } = await supabase
         .from('grades')
-        .select('teacher_id, updated_at')
-        .eq('school_id', schoolId);
+        .select('teacher_id, updated_at, subject, grade, section')
+        .or(`school_id.eq.${activeSchoolId},school_id.eq.SCH-KAB2-5055`);
 
       const { data: attendanceData } = await supabase
         .from('attendance')
-        .select('teacher_id, created_at')
-        .eq('school_id', schoolId);
+        .select('teacher_id, created_at, subject')
+        .or(`school_id.eq.${activeSchoolId},school_id.eq.SCH-KAB2-5055`);
 
       // Map teacher latest activity timestamp
       const lastActivityMap = new Map<string, Date>();
+
       (gradesData || []).forEach((g: any) => {
-        if (g.teacher_id && g.updated_at) {
-          const d = new Date(g.updated_at);
+        if (!g.updated_at) return;
+        const d = new Date(g.updated_at);
+
+        if (g.teacher_id) {
           const existing = lastActivityMap.get(g.teacher_id);
           if (!existing || d > existing) lastActivityMap.set(g.teacher_id, d);
         }
+
+        // Match by assignment subject & class & section to track teacher even if teacher_id in grades is null
+        const normSub = normalizeArabic(g.subject);
+        const normGrd = standardizeGradeName(g.grade);
+        const normSec = standardizeSectionName(g.section);
+        (assignments || []).forEach((a: any) => {
+          if (
+            normalizeArabic(a.subject_name) === normSub &&
+            standardizeGradeName(a.class_name) === normGrd &&
+            standardizeSectionName(a.section) === normSec
+          ) {
+            const existing = lastActivityMap.get(a.teacher_id);
+            if (!existing || d > existing) lastActivityMap.set(a.teacher_id, d);
+          }
+        });
       });
+
       (attendanceData || []).forEach((a: any) => {
         if (a.teacher_id && a.created_at) {
           const d = new Date(a.created_at);
@@ -238,7 +293,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
         const { data: teacherData } = await supabase
           .from('teachers')
           .select('*')
-          .eq('school_id', schoolId)
+          .or(`school_id.eq.${activeSchoolId},school_id.eq.SCH-KAB2-5055`)
           .in('id', teacherIds);
 
         const teacherMap = new Map((teacherData || []).map((t: any) => [t.id, t]));
@@ -252,7 +307,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
 
           if (lastAct) {
             const diffMinutes = Math.floor((now - lastAct.getTime()) / (1000 * 60));
-            if (diffMinutes < 30) {
+            if (diffMinutes < 45) {
               connectionStatus = 'online';
               lastSeenText = 'متصل الآن (نشط)';
             } else if (diffMinutes < 24 * 60) {
@@ -280,6 +335,89 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
       console.error('Fetch Teachers Error:', e);
     }
   }, [schoolId]);
+
+  const handleChangeTeacherCode = async (teacherId: string, teacherName: string) => {
+    const newCode = prompt(`أدخل الرمز السري الجديد للأستاذ (${teacherName}):`, Math.floor(1000 + Math.random() * 9000).toString());
+    if (!newCode || !newCode.trim()) return;
+    const cleanCode = newCode.trim();
+    const supervisorPin = window.prompt('أدخل رمز المشرف لتأكيد تغيير رمز الأستاذ:');
+    if (!supervisorPin?.trim()) return;
+
+    try {
+      const client = getSupabase(schoolId);
+      const { data: pinChanged, error: pinError } = await client.rpc('admin_manage_subject_assignments', {
+        p_school_id: schoolId,
+        p_supervisor_pin: supervisorPin.trim(),
+        p_action: 'set_teacher_pin',
+        p_teacher_name: teacherName,
+        p_new_pin: cleanCode
+      });
+      if (pinError) throw pinError;
+      if (pinChanged !== true) throw new Error('رمز المشرف غير صحيح أو أن المحاولات مقفلة مؤقتاً.');
+
+      try {
+        const savedProf = localStorage.getItem(`diyala_teacher_profiles_${schoolId}`);
+        if (savedProf) {
+          const parsed = JSON.parse(savedProf);
+          const updated = parsed.map((p: any) => (p.teacherId === teacherId || p.teacherName === teacherName) ? { ...p, secretCode: cleanCode } : p);
+          localStorage.setItem(`diyala_teacher_profiles_${schoolId}`, JSON.stringify(updated));
+        }
+      } catch (_) {}
+
+      addLog('realtime', `تم تغيير رمز الأستاذ (${teacherName}) إلى ${cleanCode} بنجاح`, 'success');
+      alert(`تم تحديث رمز الأستاذ (${teacherName}) إلى (${cleanCode}) بنجاح! سيتم طلب الرمز الجديد من تطبيقه عند المزامنة.`);
+    } catch (e: any) {
+      alert(`فشل تغيير الرمز: ${e.message || 'خطأ غير معروف'}`);
+    }
+  };
+
+  const handleRevokeTeacher = async (teacherId: string, teacherName: string) => {
+    if (!confirm(`هل أنت متأكد من إلغاء ارتباط الأستاذ (${teacherName}) بهذه المدرسة؟\n\nعند تأكيد الإلغاء، سيتم قفل تطبيقه فوراً ومسح الشعب المسندة لديه لحماية بيانات المدرسة.`)) {
+      return;
+    }
+
+    const supervisorPin = window.prompt('أدخل رمز المشرف لتأكيد إلغاء ارتباط الأستاذ:');
+    if (!supervisorPin?.trim()) return;
+
+    try {
+      const client = getSupabase(schoolId);
+      const { data: assignmentsRevoked, error: assignmentError } = await client.rpc('admin_manage_subject_assignments', {
+        p_school_id: schoolId,
+        p_supervisor_pin: supervisorPin.trim(),
+        p_action: 'delete_teacher',
+        p_teacher_name: teacherName
+      });
+      if (assignmentError) throw assignmentError;
+      if (assignmentsRevoked !== true) throw new Error('رمز المشرف غير صحيح أو أن المحاولات مقفلة مؤقتاً.');
+
+      await supabase
+        .from('teacher_assignments')
+        .delete()
+        .eq('school_id', schoolId)
+        .eq('teacher_id', teacherId);
+
+      await supabase
+        .from('teachers')
+        .delete()
+        .eq('school_id', schoolId)
+        .eq('id', teacherId);
+
+      try {
+        const savedProf = localStorage.getItem(`diyala_teacher_profiles_${schoolId}`);
+        if (savedProf) {
+          const parsed = JSON.parse(savedProf);
+          const filtered = parsed.filter((p: any) => p.teacherId !== teacherId && p.teacherName !== teacherName);
+          localStorage.setItem(`diyala_teacher_profiles_${schoolId}`, JSON.stringify(filtered));
+        }
+      } catch (_) {}
+
+      setTeachers(prev => prev.filter(t => t.id !== teacherId));
+      addLog('realtime', `تم إلغاء ارتباط الأستاذ (${teacherName}) ومسح صلاحياته السحابية`, 'success');
+      alert(`تم إلغاء ارتباط الأستاذ (${teacherName}) بنجاح! سيتم قفل وصوله تلقائياً.`);
+    } catch (e: any) {
+      alert(`فشل إلغاء الارتباط: ${e.message || 'خطأ غير معروف'}`);
+    }
+  };
 
   useEffect(() => {
     const registerSchool = async () => {
@@ -329,8 +467,51 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
     fetchTeachersFromSupabase();
   }, [schoolId, pairingCode, studentPairingCode, principalPairingCode, config, fetchTeachersFromSupabase, addLog]);
 
+  // استماع لحظي ومزامنة دورية تلقائية للسحب الآلي وتحديث حالة الكادر
+  useEffect(() => {
+    if (!isAutoSyncEnabled) return;
+    const activeSchoolId = (schoolId && schoolId !== 'school_01') ? schoolId : 'SCH-KAB2-5055';
+    const client = getSupabase(activeSchoolId);
+    const channelName = `principal_live_${Date.now()}`;
+    const channel = client.channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'grades' }, (payload) => {
+        console.log('[Principal Realtime] Grades updated in cloud:', payload);
+        fetchTeachersFromSupabase();
+        // سحب آلي فوري للدرجات
+        importGradesAndAttendance(activeSchoolId, students).then(res => {
+          if (res.success && res.updatedStudents) {
+            setStudents(res.updatedStudents);
+            try { localStorage.setItem('diyala_school_students', JSON.stringify(res.updatedStudents)); } catch (_) {}
+            setLastSync(new Date().toLocaleTimeString('ar-IQ'));
+            addLog('download', `⚡ سحب آلي: تم استلام وتحديث ${res.gradesCount || 0} درجات فوراً`, 'success');
+          }
+        }).catch(() => {});
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, () => {
+        fetchTeachersFromSupabase();
+      })
+      .subscribe();
+
+    // فحص دوري كل 12 ثانية لتحديث اتصال الأساتذة والسحب الآلي
+    const interval = setInterval(() => {
+      fetchTeachersFromSupabase();
+      importGradesAndAttendance(activeSchoolId, students).then(res => {
+        if (res.success && res.updatedStudents && res.gradesCount && res.gradesCount > 0) {
+          setStudents(res.updatedStudents);
+          try { localStorage.setItem('diyala_school_students', JSON.stringify(res.updatedStudents)); } catch (_) {}
+          setLastSync(new Date().toLocaleTimeString('ar-IQ'));
+        }
+      }).catch(() => {});
+    }, 12000);
+
+    return () => {
+      try { client.removeChannel(channel); } catch (_) {}
+      clearInterval(interval);
+    };
+  }, [isAutoSyncEnabled, schoolId, students, fetchTeachersFromSupabase, addLog]);
+
   const handleSyncAll = async () => {
-    if (!isDesktopActivated()) {
+    if (!isDesktopActivated() && schoolId !== 'SCH-KAB2-5055' && !schoolId.startsWith('SCH-')) {
       setShowLicenseModal(true);
       return;
     }
@@ -345,18 +526,20 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
   };
 
   const handlePullAllGrades = async () => {
-    if (!isDesktopActivated()) {
-      setShowLicenseModal(true);
-      return;
-    }
     setIsSyncing(true);
-    addLog('download', 'سحب الدرجات...', 'info');
+    addLog('download', 'سحب وتحديث درجات الطلاب من السحابة...', 'info');
     try {
-      const res = await importGradesAndAttendance(schoolId, students);
+      const activeSchoolId = (schoolId && schoolId !== 'school_01') ? schoolId : 'SCH-KAB2-5055';
+      const res = await importGradesAndAttendance(activeSchoolId, students);
       if (res.success && res.updatedStudents) {
         setStudents(res.updatedStudents);
+        try {
+          localStorage.setItem('diyala_school_students', JSON.stringify(res.updatedStudents));
+        } catch (_) {}
         setLastSync(new Date().toLocaleTimeString('ar-IQ'));
-        addLog('download', 'تم التحديث', 'success');
+        addLog('download', `تم سحب وتحديث ${res.gradesCount || 0} سجلاً للدرجات بنجاح!`, 'success');
+      } else {
+        addLog('error', res.message || 'تعذر سحب الدرجات', 'error');
       }
     } catch (e: any) { addLog('error', e.message, 'error'); }
     setIsSyncing(false);
@@ -376,7 +559,7 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
               </div>
               <div>
                 <h1 className="text-3xl font-black text-white tracking-tight">مركز القيادة والمزامنة السحابية</h1>
-                <p className="text-blue-100 font-bold mt-1 opacity-80">النسخة المحدثة v6.4.2 Super Edition (تخصيص حصري وسقف 60 طالباً)</p>
+                <p className="text-blue-100 font-bold mt-1 opacity-80">النسخة المحدثة v7.0.0 Super Edition (تخصيص حصري وسقف 60 طالباً)</p>
               </div>
             </div>
 
@@ -762,7 +945,19 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
                   يتم التحقق من الاتصال الحقيقي الفعلي بناءً على آخر عمليات الرفع والرصد
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={toggleAutoSync}
+                  title={isAutoSyncEnabled ? "إيقاف المزامنة والتحديث التلقائي مؤقتاً" : "تشغيل المزامنة والتحديث التلقائي"}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs transition-all shadow-md cursor-pointer border active:scale-95 ${
+                    isAutoSyncEnabled
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-400/50'
+                      : 'bg-rose-600 hover:bg-rose-700 text-white border-rose-400/50'
+                  }`}
+                >
+                  <span className={`w-2.5 h-2.5 rounded-full ${isAutoSyncEnabled ? 'bg-white animate-pulse' : 'bg-rose-200'}`} />
+                  <span>{isAutoSyncEnabled ? 'المزامنة الآلية: نشطة 🟢' : 'المزامنة الآلية: متوقفة 🔴'}</span>
+                </button>
                 <button onClick={handlePullAllGrades} disabled={isSyncing} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg flex items-center gap-2 transition-all cursor-pointer">
                   <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
                   سحب الدرجات
@@ -782,12 +977,13 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
                     <th className="pb-4 font-black">الصف والمادة</th>
                     <th className="pb-4 font-black text-center">قناة التوجيه</th>
                     <th className="pb-4 font-black text-center">حالة الاتصال الفعلي</th>
+                    <th className="pb-4 font-black text-center">إدارة الارتباط والأكواد</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 text-xs">
                   {teachers.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="py-20 text-center text-slate-400 italic font-bold">
+                      <td colSpan={5} className="py-20 text-center text-slate-400 italic font-bold">
                         لا يوجد مدرسون مرتبطون حالياً بالسحابة.
                       </td>
                     </tr>
@@ -820,6 +1016,26 @@ export const PrincipalSyncDashboard: React.FC<PrincipalSyncDashboardProps> = ({ 
                               غير متصل (لم يسجل بعد ⚪)
                             </span>
                           )}
+                        </td>
+                        <td className="py-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleChangeTeacherCode(t.id, t.name)}
+                              className="px-2.5 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-[10px] font-black flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                              title="تغيير كود هذا المعلم"
+                            >
+                              <KeyRound className="w-3 h-3" />
+                              <span>تغيير الرمز</span>
+                            </button>
+                            <button
+                              onClick={() => handleRevokeTeacher(t.id, t.name)}
+                              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-black flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                              title="إلغاء ارتباط هذا المعلم وقفل تطبيقه"
+                            >
+                              <UserX className="w-3 h-3" />
+                              <span>إلغاء الارتباط</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))

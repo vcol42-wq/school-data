@@ -45,8 +45,14 @@ export const StudentAttendanceView: React.FC<StudentAttendanceViewProps> = ({
   const [warningModalStudent, setWarningModalStudent] = useState<Student | null>(null);
 
   // Extract unique grades & sections
-  const uniqueGrades = sortGradesList(['الكل', ...Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)))]);
-  const uniqueSections = sortSectionsAlphabetically(['الكل', ...Array.from(new Set(students.map(s => s.section).filter(Boolean)))]);
+  const gradeNames: string[] = students
+    .map(student => student.currentGrade)
+    .filter((grade): grade is string => typeof grade === 'string' && grade.length > 0);
+  const sectionNames: string[] = students
+    .map(student => student.section)
+    .filter((section): section is string => typeof section === 'string' && section.length > 0);
+  const uniqueGrades = sortGradesList(['الكل', ...Array.from(new Set(gradeNames))]);
+  const uniqueSections = sortSectionsAlphabetically(['الكل', ...Array.from(new Set(sectionNames))]);
 
   // Helper to determine risk level
   const getAbsenceStatus = (count: number) => {
@@ -110,7 +116,7 @@ export const StudentAttendanceView: React.FC<StudentAttendanceViewProps> = ({
     setIsPulling(true);
     setPullMsg('جاري جلب سجلات الغياب من السحابة...');
     try {
-      const res = await importGradesAndAttendance(schoolId, students);
+      const res = await importGradesAndAttendance(schoolId, students, undefined, undefined, undefined, false);
       const updated = res.updatedStudents || (res as any).studentsWithMarks;
       if (res.success && updated) {
         setStudents(updated);

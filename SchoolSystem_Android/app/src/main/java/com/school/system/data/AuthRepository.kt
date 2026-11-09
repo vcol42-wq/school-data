@@ -83,11 +83,20 @@ class AuthRepository @Inject constructor(
 
             if (response.isSuccessful) {
                 val current = configDao.getConfig().first() ?: SchoolConfig()
+                val isPrincipal = (role == "supervisor" || role == "principal")
+                val cleanManager = if (isPrincipal) fullName else current.managerName
+                try {
+                    val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putString("teacher_name", fullName).apply()
+                    context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                        .edit().putString("teacher_name", fullName).apply()
+                } catch (_: Exception) {}
+
                 configDao.saveConfig(
                     current.copy(
                         schoolId = schoolId,
                         schoolName = "مدرسة سحابية",
-                        managerName = fullName,
+                        managerName = cleanManager,
                         role = role,
                         isVerified = false,
                         isActivated = false,

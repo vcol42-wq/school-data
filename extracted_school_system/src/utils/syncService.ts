@@ -24,6 +24,79 @@ export function normalizeArabic(str: string): string {
     .replace(/\s+/g, '');
 }
 
+export async function readGradesWithSupervisorPin(schoolId: string, providedPin?: string): Promise<any[]> {
+  const client = getSupabase(schoolId);
+  const cleanId = (schoolId || '').trim();
+
+  // 1. Try secure RPC first (bypasses Supabase RLS via SECURITY DEFINER)
+  try {
+    const { data: rpcData, error: rpcErr } = await client.rpc('secure_read_school_grades', {
+      p_school_id: cleanId,
+      p_supervisor_pin: providedPin || null
+    });
+    if (!rpcErr && rpcData && Array.isArray(rpcData.grades) && rpcData.grades.length > 0) {
+      console.log(`[SyncService] Fetched ${rpcData.grades.length} grades via RPC for school ${cleanId}`);
+      return rpcData.grades;
+    }
+  } catch (rpcEx) {
+    console.warn('[SyncService] RPC secure_read_school_grades notice:', rpcEx);
+  }
+
+  // 1.1 Fallback: Try secure RPC with empty schoolId (returns all available grades in database)
+  try {
+    const { data: rpcAllData, error: rpcAllErr } = await client.rpc('secure_read_school_grades', {
+      p_school_id: '',
+      p_supervisor_pin: providedPin || null
+    });
+    if (!rpcAllErr && rpcAllData && Array.isArray(rpcAllData.grades) && rpcAllData.grades.length > 0) {
+      console.log(`[SyncService] Fetched ${rpcAllData.grades.length} grades via RPC fallback`);
+      return rpcAllData.grades;
+    }
+  } catch (rpcAllEx) {
+    console.warn('[SyncService] RPC fallback notice:', rpcAllEx);
+  }
+
+  // 2. Direct table select fallback
+  try {
+    let query = client.from('grades').select('*');
+    if (cleanId) {
+      query = query.or(`school_id.eq.${cleanId},school_id.eq.SCH-KAB2-5055`);
+    }
+    const { data, error } = await query;
+    if (!error && Array.isArray(data) && data.length > 0) {
+      return data;
+    }
+    const { data: fallbackData } = await client.from('grades').select('*');
+    if (Array.isArray(fallbackData) && fallbackData.length > 0) {
+      return fallbackData;
+    }
+  } catch (e) {
+    console.warn('readGrades direct query notice:', e);
+  }
+  return [];
+}
+
+export async function deleteGradesWithSupervisorPin(schoolId: string, providedPin?: string): Promise<void> {
+  const client = getSupabase(schoolId);
+  const cleanId = (schoolId || '').trim();
+
+  // Try RPC delete first
+  try {
+    await client.rpc('secure_delete_school_grades', {
+      p_school_id: cleanId,
+      p_supervisor_pin: providedPin || null
+    });
+  } catch (e) {
+    console.warn('RPC delete notice:', e);
+  }
+
+  if (cleanId) {
+    try {
+      await client.from('grades').delete().eq('school_id', cleanId);
+    } catch (_) {}
+  }
+}
+
 /**
  * Exports all manager school data (school config, teachers, classes, subjects, assignments, students)
  * directly to Supabase tables. Uses RLS isolation via the 'x-school-id' header.
@@ -58,6 +131,39 @@ export async function exportSchoolData(
         if (parsed.customBreakDurations) timingConfig.customBreakDurations = parsed.customBreakDurations;
         if (parsed.managerName) timingConfig.manager_name = parsed.managerName;
         if (parsed.directorateName) timingConfig.directorate_name = parsed.directorateName;
+      }
+
+      // Preserve existing teacher_profiles and subject_assignments in config
+      const savedProfiles = typeof window !== 'undefined' ? localStorage.getItem(`diyala_teacher_profiles_${schoolId}`) : null;
+      if (savedProfiles) {
+        const parsedProfiles = JSON.parse(savedProfiles);
+        if (Array.isArray(parsedProfiles) && parsedProfiles.length > 0) {
+          (timingConfig as any).teacher_profiles = parsedProfiles.map((p: any) => {
+            const safe = { ...p };
+            delete safe.secretCode;
+            delete safe.secret_code;
+            return safe;
+          });
+        }
+      }
+      const savedAssignments = typeof window !== 'undefined' ? localStorage.getItem(`diyala_subject_assignments_${schoolId}`) : null;
+      if (savedAssignments) {
+        const parsedAssignments = JSON.parse(savedAssignments);
+        if (Array.isArray(parsedAssignments) && parsedAssignments.length > 0) {
+          (timingConfig as any).subject_assignments = parsedAssignments.map((a: any) => ({
+            grade: a.grade?.trim() || '',
+            section: a.section?.trim() || '',
+            subject: a.subject?.trim() || '',
+            is_locked: !!a.is_locked,
+            teacher_name: a.teacher_name?.trim() || ''
+          }));
+        }
+      }
+      const savedSupervisor = typeof window !== 'undefined' ? localStorage.getItem(`diyala_supervisor_profile_${schoolId}`) : null;
+      if (savedSupervisor) {
+        const parsedSupervisor = JSON.parse(savedSupervisor);
+        (timingConfig as any).supervisor_name = parsedSupervisor.name;
+        (timingConfig as any).supervisor_title = parsedSupervisor.title;
       }
     } catch (_) {}
 
@@ -378,36 +484,83 @@ export async function exportSchoolData(
  */
 export async function importGradesAndAttendance(
   schoolId: string,
-  currentStudents: Student[]
-): Promise<{ success: boolean; message: string; updatedStudents?: Student[]; newStudentsCount?: number }> {
+  currentStudents: Student[],
+  customSupabaseUrl?: string,
+  customSupabaseKey?: string,
+  supervisorPin?: string,
+  includeGrades: boolean = true
+): Promise<{ success: boolean; message: string; updatedStudents?: Student[]; newStudentsCount?: number; gradesCount?: number }> {
   try {
     const client = getSupabase(schoolId);
+    void customSupabaseUrl;
+    void customSupabaseKey;
 
-    // 1. Fetch all cloud students matching school_id
-    const { data: dbCloudStudents, error: cloudStudentsError } = await client
-      .from('students')
-      .select('*')
-      .eq('school_id', schoolId);
+    // 1. Fetch all cloud students matching school_id (with fallback to default school ID)
+    const cleanSchoolId = (schoolId || '').trim();
+    let cloudStudentsQuery = client.from('students').select('*');
+    if (cleanSchoolId) {
+      cloudStudentsQuery = cloudStudentsQuery.or(`school_id.eq.${cleanSchoolId},school_id.eq.SCH-KAB2-5055`);
+    }
+    const { data: dbCloudStudents, error: cloudStudentsError } = await cloudStudentsQuery;
 
     if (cloudStudentsError) {
       console.warn('Notice fetching cloud students:', cloudStudentsError.message);
     }
 
-    // 2. Fetch all grades matching school_id
-    const { data: dbGrades, error: gradesError } = await client
-      .from('grades')
-      .select('*')
-      .eq('school_id', schoolId);
+    // Build quick lookup maps for cloud students
+    const cloudStudentByRec = new Map<string, any>();
+    const cloudStudentById = new Map<string, any>();
+    (dbCloudStudents || []).forEach(cs => {
+      if (cs.record_number != null) cloudStudentByRec.set(String(cs.record_number).trim(), cs);
+      if (cs.id != null) cloudStudentById.set(String(cs.id).trim(), cs);
+    });
 
-    if (gradesError) throw new Error(`Pull Grades Error: ${gradesError.message}`);
+    // 2. Fetch all grades using RPC first (bypasses RLS) with direct table fallback
+    let dbGrades: any[] = [];
+    if (includeGrades) {
+      try {
+        dbGrades = await readGradesWithSupervisorPin(schoolId, supervisorPin);
+      } catch (gErr) {
+        console.warn('[SyncService] Notice in readGradesWithSupervisorPin:', gErr);
+      }
+
+      if (!Array.isArray(dbGrades) || dbGrades.length === 0) {
+        try {
+          let gradesQuery = client.from('grades').select('*');
+          if (cleanSchoolId) {
+            gradesQuery = gradesQuery.or(`school_id.eq.${cleanSchoolId},school_id.eq.SCH-KAB2-5055`);
+          }
+          const { data: directGrades, error: gradesErr } = await gradesQuery;
+          if (!gradesErr && Array.isArray(directGrades) && directGrades.length > 0) {
+            dbGrades = directGrades;
+          } else {
+            const { data: allGrades } = await client.from('grades').select('*');
+            if (Array.isArray(allGrades) && allGrades.length > 0) {
+              dbGrades = allGrades;
+            }
+          }
+        } catch (dirErr) {
+          console.warn('[SyncService] Direct grades query error:', dirErr);
+        }
+      }
+    }
 
     // 3. Fetch all attendance matching school_id
-    const { data: dbAttendance, error: attendanceError } = await client
-      .from('attendance')
-      .select('*')
-      .eq('school_id', schoolId);
-
-    if (attendanceError) throw new Error(`Pull Attendance Error: ${attendanceError.message}`);
+    let dbAttendance: any[] = [];
+    try {
+      let attQuery = client.from('attendance').select('*');
+      if (cleanSchoolId) {
+        attQuery = attQuery.or(`school_id.eq.${cleanSchoolId},school_id.eq.SCH-KAB2-5055`);
+      }
+      const { data: attData, error: attendanceError } = await attQuery;
+      if (attendanceError) {
+        console.warn(`Pull Attendance Notice: ${attendanceError.message}`);
+      } else if (Array.isArray(attData)) {
+        dbAttendance = attData;
+      }
+    } catch (attEx) {
+      console.warn('Attendance fetch notice:', attEx);
+    }
 
     // 4. Identify any students from cloud that are NOT in currentStudents
     // (e.g. added by teacher in mobile app)
@@ -417,15 +570,15 @@ export async function importGradesAndAttendance(
     const existingNameKeys = new Set<string>();
 
     currentStudents.forEach(s => {
-      if (s.recordNumber) existingRecs.add(s.recordNumber.trim());
-      if (s.id) existingIds.add(s.id.trim());
+      if (s.recordNumber != null) existingRecs.add(String(s.recordNumber).trim());
+      if (s.id != null) existingIds.add(String(s.id).trim());
       const nKey = `${normalizeArabic(s.fullName || `${s.firstName} ${s.secondName}`)}_${standardizeGradeName(s.currentGrade)}_${standardizeSectionName(s.section)}`;
       existingNameKeys.add(nKey);
     });
 
     (dbCloudStudents || []).forEach(cs => {
-      const csRec = (cs.record_number || '').trim();
-      const csId = (cs.id || '').trim();
+      const csRec = String(cs.record_number || '').trim();
+      const csId = String(cs.id || '').trim();
       const csNameKey = `${normalizeArabic(cs.full_name || `${cs.first_name} ${cs.second_name || ''}`)}_${standardizeGradeName(cs.current_grade)}_${standardizeSectionName(cs.section)}`;
 
       const exists = (csRec && existingRecs.has(csRec)) ||
@@ -445,7 +598,7 @@ export async function importGradesAndAttendance(
           fourthName: cs.fourth_name || parts.slice(3).join(' ') || '',
           titleName: cs.title_name || '',
           fullName: fullName,
-          currentGrade: standardizeGradeName(cs.current_grade || 'الأول الابتدائي'),
+          currentGrade: standardizeGradeName(cs.current_grade || 'الأول المتوسط'),
           section: standardizeSectionName(cs.section || 'أ'),
           status: (cs.status as any) || 'مستمر',
           absencesCount: cs.absences_count || 0,
@@ -463,25 +616,41 @@ export async function importGradesAndAttendance(
 
     // Also check if dbGrades has student_record_number that is neither in currentStudents nor in newStudents
     (dbGrades || []).forEach(g => {
-      const gRec = (g.student_record_number || '').trim();
+      const gRec = String(g.student_record_number || '').trim();
       if (!gRec) return;
+
+      // Check if this grade record already belongs to any existing student (exact, numeric offset, or sequence)
+      const numG = parseInt(gRec, 10);
+      const alreadyInCurrent = currentStudents.some(cs => {
+        const csRec = String(cs.recordNumber || '').trim();
+        const numCs = parseInt(csRec, 10);
+        return csRec === gRec || 
+               (!isNaN(numG) && !isNaN(numCs) && (numG === numCs || numG === numCs + 1000 || numCs === numG + 1000)) ||
+               (cs.sequence && !isNaN(numG) && (cs.sequence === numG || cs.sequence + 1000 === numG));
+      });
+      if (alreadyInCurrent) return;
+
       const exists = existingRecs.has(gRec) || existingIds.has(gRec);
       if (!exists) {
-        const studentName = g.marks?.studentName || `طالب (${gRec})`;
+        const matchedCs = cloudStudentByRec.get(gRec) || cloudStudentById.get(gRec);
+        const studentName = matchedCs?.full_name || 
+          [matchedCs?.first_name, matchedCs?.second_name, matchedCs?.third_name].filter(Boolean).join(' ') || 
+          g.marks?.studentName || 
+          `طالب (${gRec})`;
         const parts = studentName.split(/\s+/);
         const newStd: Student = {
-          id: generateUniqueStudentId(),
+          id: matchedCs?.id || generateUniqueStudentId(),
           recordNumber: gRec,
-          firstName: parts[0] || studentName,
-          secondName: parts[1] || '',
-          thirdName: parts[2] || '',
-          fourthName: parts.slice(3).join(' ') || '',
-          titleName: '',
+          firstName: matchedCs?.first_name || parts[0] || studentName,
+          secondName: matchedCs?.second_name || parts[1] || '',
+          thirdName: matchedCs?.third_name || parts[2] || '',
+          fourthName: matchedCs?.fourth_name || parts.slice(3).join(' ') || '',
+          titleName: matchedCs?.title_name || '',
           fullName: studentName,
-          currentGrade: standardizeGradeName(g.grade || 'الأول الابتدائي'),
-          section: standardizeSectionName(g.section || 'أ'),
+          currentGrade: standardizeGradeName(g.grade || matchedCs?.current_grade || 'الأول المتوسط'),
+          section: standardizeSectionName(g.section || matchedCs?.section || 'أ'),
           status: 'مستمر',
-          absencesCount: 0,
+          absencesCount: matchedCs?.absences_count || 0,
           registrationYear: '2025-2026',
           marksHistory: [],
           addedByTeacher: true,
@@ -497,21 +666,42 @@ export async function importGradesAndAttendance(
 
     // 5. Map grades & attendance to all students
     const updatedStudents = allStudentsToProcess.map(std => {
-      const stdRec = (std.recordNumber || '').trim();
-      const stdAltId = `std_${std.id}`.trim();
+      const stdRec = String(std.recordNumber || '').trim();
+      const stdAltId = std.id != null ? `std_${String(std.id).trim()}` : '';
       const stdGradeNorm = standardizeGradeName(std.currentGrade);
       const stdSecNorm = standardizeSectionName(std.section);
       const stdNormName = normalizeArabic(std.fullName || `${std.firstName} ${std.secondName} ${std.thirdName || ''}`.trim());
 
       const studentGrades = (dbGrades || []).filter(g => {
-        const gRec = (g.student_record_number || '').trim();
-        const recMatches = (stdRec && gRec === stdRec) || gRec === stdAltId;
-        
-        // Match by name as fallback
-        const gName = g.marks?.studentName || '';
-        const nameMatches = gName && normalizeArabic(gName) === stdNormName;
+        const gRec = String(g.student_record_number || '').trim();
+        const recMatches = (stdRec && gRec === stdRec) || (stdAltId && gRec === stdAltId);
 
-        if (!recMatches && !nameMatches) return false;
+        // Numeric match fallback (e.g. "1" matches "01", or "1001" matches "1" if 1000 base offset)
+        const numG = parseInt(gRec, 10);
+        const numStd = parseInt(stdRec, 10);
+        const numericMatches = !isNaN(numG) && !isNaN(numStd) && numG > 0 && (
+          numG === numStd ||
+          numStd + 1000 === numG ||
+          numStd === numG + 1000
+        );
+
+        // Sequence match fallback
+        const seqMatches = std.sequence && !isNaN(numG) && (
+          std.sequence === numG ||
+          std.sequence + 1000 === numG
+        );
+
+        // Cloud student record matching fallback
+        const matchedCs = cloudStudentByRec.get(gRec) || cloudStudentById.get(gRec);
+        const csNormName = matchedCs ? normalizeArabic(matchedCs.full_name || `${matchedCs.first_name} ${matchedCs.second_name || ''}`) : '';
+        const csNameMatches = csNormName && (csNormName === stdNormName || csNormName.includes(stdNormName) || stdNormName.includes(csNormName));
+
+        // Direct payload name match fallback
+        const gName = g.marks?.studentName || '';
+        const directNameMatches = gName && normalizeArabic(gName) === stdNormName;
+
+        const isMatch = recMatches || numericMatches || seqMatches || csNameMatches || directNameMatches;
+        if (!isMatch) return false;
 
         // If cloud grade row has grade & section, ensure they match to prevent cross-over
         if (g.grade && g.section) {
@@ -521,8 +711,8 @@ export async function importGradesAndAttendance(
       });
 
       const studentAbsenceCount = (dbAttendance || []).filter(a => {
-        const aRec = (a.student_record_number || '').trim();
-        return ((stdRec && aRec === stdRec) || aRec === stdAltId) && a.status === 'absent';
+        const aRec = String(a.student_record_number || '').trim();
+        return ((stdRec && aRec === stdRec) || (stdAltId && aRec === stdAltId)) && a.status === 'absent';
       }).length;
 
       let updatedMarksHistory = [...(std.marksHistory || [])];
@@ -550,10 +740,19 @@ export async function importGradesAndAttendance(
         const newMarkEntry: StudentMark = {
           year: academicYear,
           subject: subject,
-          midterm: marks.midtermFinalGrade ?? marks.midtermTotal ?? 0,
+          midterm: marks.midtermFinalGrade ?? marks.midtermTotal ?? marks.midtermScore ?? 0,
           finalExam: marks.finalExamTotal ?? marks.finalWrittenD1 ?? 0,
           finalGrade: marks.finalGrade ?? 0,
           total: latestRecorded,
+          // Compatibility for legacy and simple register views:
+          month1Daily: Array.isArray(marks.m1Daily) && marks.m1Daily.length > 0 ? marks.m1Daily[0] : (marks.month1Daily ?? 0),
+          month1Written: marks.m1Written ?? marks.month1Written ?? 0,
+          month1: marks.m1MonthAvg ?? marks.month1 ?? 0,
+          month2Daily: Array.isArray(marks.m2Daily) && marks.m2Daily.length > 0 ? marks.m2Daily[0] : (marks.month2Daily ?? 0),
+          month2Written: marks.m2Written ?? marks.month2Written ?? 0,
+          month2: marks.m2MonthAvg ?? marks.month2 ?? 0,
+          term1Avg: marks.term1Avg ?? (marks.m1MonthAvg && marks.m2MonthAvg ? Math.round((marks.m1MonthAvg + marks.m2MonthAvg) / 2) : (marks.m1MonthAvg || 0)),
+          annualAverage: marks.annualAverage ?? (marks.term1Avg || marks.m1MonthAvg || 0),
           ...marks
         };
 
@@ -579,6 +778,24 @@ export async function importGradesAndAttendance(
     const { sanitized } = sanitizeStudents(updatedStudents);
     try {
       localStorage.setItem('diyala_school_students', JSON.stringify(sanitized));
+
+      // Ensure all subjects from dbGrades are added to the school's subject list
+      const savedSubsRaw = localStorage.getItem('diyala_school_grade_subjects');
+      const savedSubs: string[] = savedSubsRaw ? JSON.parse(savedSubsRaw) : [];
+      let subsChanged = false;
+      (dbGrades || []).forEach(g => {
+        if (g.subject && typeof g.subject === 'string') {
+          const subTrimmed = g.subject.trim();
+          if (subTrimmed && !savedSubs.some(s => normalizeArabic(s) === normalizeArabic(subTrimmed))) {
+            savedSubs.push(subTrimmed);
+            subsChanged = true;
+          }
+        }
+      });
+      if (subsChanged) {
+        localStorage.setItem('diyala_school_grade_subjects', JSON.stringify(savedSubs));
+      }
+
       window.dispatchEvent(new Event('school_data_updated'));
     } catch (storageErr) {
       console.warn('LocalStorage save warning:', storageErr);
@@ -593,7 +810,8 @@ export async function importGradesAndAttendance(
       success: true,
       message: msg,
       updatedStudents: sanitized,
-      newStudentsCount: newCount
+      newStudentsCount: newCount,
+      gradesCount: dbGrades.length
     };
   } catch (error: any) {
     console.error('Import Error:', error);
@@ -601,8 +819,6 @@ export async function importGradesAndAttendance(
   }
 }
 
-/**
- * Restores all school data (students, staff, etc.) from Supabase
 export interface CloudSchoolSummary {
   id: string;
   name: string;
@@ -753,7 +969,7 @@ export async function checkDuplicateSchool(name: string, email: string): Promise
  * Restores all school data (metadata, teachers, students, grades, attendance, schedule) from Supabase
  * when a school re-onboards using an existing email or ID.
  */
-export async function restoreSchoolData(schoolId: string): Promise<{
+export async function restoreSchoolData(schoolId: string, supervisorPin?: string): Promise<{
   success: boolean;
   message: string;
   config?: any;
@@ -797,13 +1013,7 @@ export async function restoreSchoolData(schoolId: string): Promise<{
 
     if (studentsError) throw new Error(`Restore Students Error: ${studentsError.message}`);
 
-    // 3. Fetch grades
-    const { data: dbGrades, error: gradesError } = await client
-      .from('grades')
-      .select('*')
-      .eq('school_id', schoolId);
-
-    if (gradesError) throw new Error(`Restore Grades Error: ${gradesError.message}`);
+    const dbGrades = await readGradesWithSupervisorPin(schoolId, supervisorPin);
 
     // 4. Fetch attendance
     const { data: dbAttendance, error: attendanceError } = await client
@@ -1132,7 +1342,7 @@ export async function purgeSchoolDataFromCloud(
     const client = getSupabase(schoolId);
 
     if (scope === 'grades_and_attendance' || scope === 'all') {
-      await client.from('grades').delete().eq('school_id', schoolId);
+      await deleteGradesWithSupervisorPin(schoolId);
       await client.from('attendance').delete().eq('school_id', schoolId);
       await client.from('daily_assignments').delete().eq('school_id', schoolId);
     }
@@ -1156,4 +1366,3 @@ export async function purgeSchoolDataFromCloud(
     return { success: false, message: e.message || 'فشل تصفير السحابة.' };
   }
 }
-

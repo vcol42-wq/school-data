@@ -965,94 +965,10 @@ class StudentRepository @Inject constructor(
         }
     }
 
-    /**
-     * مزامنة درجات الطالب الفردية الحقيقية من جدول grades السحابي
-     */
-    suspend fun syncStudentGrades(schoolId: String, studentRecordNumber: String? = null) = withContext(Dispatchers.IO) {
-        try {
-            val cleanSchoolId = schoolId.trim().ifEmpty { getSchoolId()?.trim() ?: "" }
-            val cleanRecord = (studentRecordNumber?.trim()?.ifEmpty { null }) ?: getStudentRecordNumber()
-            if (cleanSchoolId.isBlank() || cleanSchoolId == "independent_student" || cleanRecord.isBlank()) {
-                return@withContext
-            }
-
-            val response = api.getStudentGrades(
-                recordFilter = "eq.$cleanRecord",
-                schoolFilter = "eq.$cleanSchoolId"
-            )
-
-            if (!response.isSuccessful || response.body().isNullOrEmpty()) {
-                return@withContext
-            }
-
-            val remoteGrades = response.body()!!
-            val gradeEntities = mutableListOf<com.example.theboss.data.local.GradeEntity>()
-
-            fun extractDouble(map: Map<String, Any>, key: String): Double? {
-                val v = map[key] ?: return null
-                return when (v) {
-                    is Number -> v.toDouble()
-                    is String -> v.toDoubleOrNull()
-                    else -> null
-                }
-            }
-
-            for (dto in remoteGrades) {
-                val subjName = dto.subject.trim()
-                val subjId = "subj_${standardizeSubjectName(subjName).hashCode()}"
-                val marks = dto.marks
-
-                val m1Avg = extractDouble(marks, "m1MonthAvg")
-                val m2Avg = extractDouble(marks, "m2MonthAvg")
-                val term1Avg = extractDouble(marks, "term1Avg")
-                val midterm = extractDouble(marks, "midtermFinalGrade") ?: extractDouble(marks, "midtermTotal") ?: extractDouble(marks, "midtermScore")
-                val m3Avg = extractDouble(marks, "m3MonthAvg")
-                val m4Avg = extractDouble(marks, "m4MonthAvg")
-                val term2Avg = extractDouble(marks, "term2Avg")
-                val annualAvg = extractDouble(marks, "annualAverage")
-                val finalGrade = extractDouble(marks, "finalGrade")
-
-                val itemsToAdd = mutableListOf<Pair<String, Double>>()
-                if (m1Avg != null && m1Avg > 0) itemsToAdd.add("معدل الشهر الأول" to m1Avg)
-                if (m2Avg != null && m2Avg > 0) itemsToAdd.add("معدل الشهر الثاني" to m2Avg)
-                if (term1Avg != null && term1Avg > 0) itemsToAdd.add("معدل الفصل الأول" to term1Avg)
-                if (midterm != null && midterm > 0) itemsToAdd.add("امتحان نصف السنة" to midterm)
-                if (m3Avg != null && m3Avg > 0) itemsToAdd.add("معدل الشهر الثالث" to m3Avg)
-                if (m4Avg != null && m4Avg > 0) itemsToAdd.add("معدل الشهر الرابع" to m4Avg)
-                if (term2Avg != null && term2Avg > 0) itemsToAdd.add("معدل الفصل الثاني" to term2Avg)
-                if (annualAvg != null && annualAvg > 0) itemsToAdd.add("السعي السنوي" to annualAvg)
-                if (finalGrade != null && finalGrade > 0) itemsToAdd.add("الدرجة النهائية" to finalGrade)
-
-                for ((label, score) in itemsToAdd) {
-                    gradeEntities.add(
-                        com.example.theboss.data.local.GradeEntity(
-                            subjectId = subjId,
-                            type = label,
-                            score = score,
-                            maxScore = 100.0,
-                            date = System.currentTimeMillis()
-                        )
-                    )
-                    gradeEntities.add(
-                        com.example.theboss.data.local.GradeEntity(
-                            subjectId = standardizeSubjectName(subjName),
-                            type = label,
-                            score = score,
-                            maxScore = 100.0,
-                            date = System.currentTimeMillis()
-                        )
-                    )
-                }
-            }
-
-            if (gradeEntities.isNotEmpty()) {
-                dao.clearGrades()
-                dao.insertGrades(gradeEntities)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+    suspend fun syncStudentGrades(schoolId: String, studentRecordNumber: String? = null) =
+        withContext(Dispatchers.IO) {
+            // Cloud grade access stays disabled until student-specific authorization exists.
         }
-    }
 
     /**
      * مزامنة سجل الحضور والغياب الحقيقي للطالب وإشعار ولي الأمر الفوري

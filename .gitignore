@@ -43,6 +43,25 @@ extracted_school_system/dist_electron/
 extracted_school_system/app_staging/
 extracted_school_system/coverage/
 extracted_school_system/sync_database.json
+# === Global Secrets & Environment Protection ===
+.env
+.env.*
+*.env
+!.env.example
+*.key
+*.pem
+*.pfx
+*.p12
+*.cer
+*.crt
+**/*.jks
+**/*.keystore
+**/keystore.properties
+**/local.properties
+credentials.json
+*service_account*.json
+*service-account*.json
+
 extracted_school_system/.env*
 !extracted_school_system/.env.example
 LATEST_BUILDS/The_Principal_v*_Desktop_App/

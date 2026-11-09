@@ -1,7 +1,10 @@
 package com.school.system.ui.navigation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,14 +35,25 @@ import com.school.system.ui.screens.SettingsViewModel
 import com.school.system.utils.AppRole
 import com.school.system.utils.RoleManager
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
 
 @Composable
-fun SchoolSystemNavHost(navController: NavHostController) {
+fun SchoolSystemNavHost(
+    navController: NavHostController,
+    isAppLockEnabled: Boolean,
+    onAppLockEnabledChange: (Boolean) -> Unit
+) {
     val settingsViewModel: SettingsViewModel = hiltViewModel()
     val config by settingsViewModel.config.collectAsState()
     val context = LocalContext.current
     val studentSessionManager = remember { com.example.theboss.data.local.SessionManager(context) }
-    
+    val securityLockState by settingsViewModel.syncManager.securityLockState.collectAsState()
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        settingsViewModel.syncManager.validateSessionIntegrity()
+    }
+
     if (config == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -50,7 +64,43 @@ fun SchoolSystemNavHost(navController: NavHostController) {
         return
     }
 
-    NavHost(navController = navController, startDestination = "splash") {
+    (securityLockState as? com.school.system.data.SecurityLockState.Locked)?.let { locked ->
+        com.school.system.ui.components.SessionSecurityLockDialog(
+            lockedState = locked,
+            onVerifyNewCode = { newCode ->
+                coroutineScope.launch {
+                    val ok = settingsViewModel.syncManager.connectAndPairQr(newCode)
+                    if (ok) {
+                        settingsViewModel.syncManager.validateSessionIntegrity()
+                        android.widget.Toast.makeText(context, "تم ربط المدرسة بالرمز الجديد بنجاح ✓", android.widget.Toast.LENGTH_LONG).show()
+                    } else {
+                        android.widget.Toast.makeText(context, "الرمز الجديد غير صحيح أو تعذر التحقق", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onSwitchOffline = {
+                coroutineScope.launch {
+                    settingsViewModel.syncManager.purgeEnrolledSchoolData(context)
+                    RoleManager.resetRoleBeforeLock(context)
+                    navController.navigate("role_selection") {
+                        popUpTo(0) { inclusive = true }
+                    }
+                    android.widget.Toast.makeText(context, "تم التحول للوضع المحلي ومسح الشعب بنجاح 👤", android.widget.Toast.LENGTH_LONG).show()
+                }
+            },
+            onScanQr = {
+                navController.navigate("qr_scanner")
+            }
+        )
+    }
+
+    NavHost(
+        navController = navController,
+        startDestination = "splash",
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+    ) {
         composable("splash") {
             SplashScreen(
                 onAnimationFinished = {
@@ -172,7 +222,7 @@ fun SchoolSystemNavHost(navController: NavHostController) {
                 },
                 onNavigateToHomeworkHub = {
                     navController.navigate("homework_hub")
-                }
+                },
             )
         }
 
@@ -186,6 +236,8 @@ fun SchoolSystemNavHost(navController: NavHostController) {
             SettingsScreen(
                 onBack = { navController.popBackStack() },
                 onNavigateToQrScanner = { navController.navigate("qr_scanner") },
+                isAppLockEnabled = isAppLockEnabled,
+                onAppLockEnabledChange = onAppLockEnabledChange,
                 navController = navController
             )
         }
@@ -304,7 +356,7 @@ fun SchoolSystemNavHost(navController: NavHostController) {
                 onExamsClick = { },
                 onTutoringClick = { navController.navigate("direct_tutoring") },
                 onParentAttendanceClick = { navController.navigate("student_attendance") },
-                onSettingsClick = { navController.navigate("student_settings") }
+                onSettingsClick = { navController.navigate("student_settings") },
             )
         }
 
@@ -325,6 +377,8 @@ fun SchoolSystemNavHost(navController: NavHostController) {
                 onNavigateToQrScanner = {
                     navController.navigate("student_qr_scanner")
                 },
+                isAppLockEnabled = isAppLockEnabled,
+                onAppLockEnabledChange = onAppLockEnabledChange,
                 navController = navController
             )
         }

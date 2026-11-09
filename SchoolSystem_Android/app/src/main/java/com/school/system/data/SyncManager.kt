@@ -16,6 +16,15 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
+sealed class SecurityLockState {
+    object Unlocked : SecurityLockState()
+    data class Locked(
+        val reason: String,
+        val isSchoolCodeChanged: Boolean = false,
+        val isTeacherRevoked: Boolean = false
+    ) : SecurityLockState()
+}
+
 @Singleton
 class SyncManager @Inject constructor(
     private val configDao: ConfigDao,
@@ -29,6 +38,101 @@ class SyncManager @Inject constructor(
 ) {
     companion object {
         const val DEFAULT_AI_GATEWAY = "https://theprinciple-ai.up.railway.app/" // Example global AI gateway
+    }
+
+    val securityLockState = kotlinx.coroutines.flow.MutableStateFlow<SecurityLockState>(SecurityLockState.Unlocked)
+
+    suspend fun validateSessionIntegrity(): Boolean {
+        val currentConfig = configDao.getConfig().first() ?: return true
+        if (!currentConfig.isVerified || currentConfig.schoolId.isBlank() || currentConfig.schoolId == "school_01") {
+            return true
+        }
+        val resolvedTeacher = syncRepository.getResolvedTeacherName().takeIf { it.isNotBlank() }
+            ?: (if (currentConfig.role == "supervisor") currentConfig.managerName else "")
+        val result = syncRepository.checkSessionIntegrity(
+            schoolId = currentConfig.schoolId,
+            currentPairingCode = currentConfig.pairingCode,
+            teacherId = currentConfig.syncSealToken,
+            teacherName = resolvedTeacher,
+            role = currentConfig.role
+        )
+        if (!result.isValid) {
+            securityLockState.value = SecurityLockState.Locked(
+                reason = result.message,
+                isSchoolCodeChanged = result.isSchoolCodeChanged,
+                isTeacherRevoked = result.isTeacherRevoked
+            )
+            return false
+        } else {
+            if (securityLockState.value is SecurityLockState.Locked) {
+                securityLockState.value = SecurityLockState.Unlocked
+            }
+            return true
+        }
+    }
+
+    suspend fun purgeEnrolledSchoolData(context: android.content.Context) {
+        try {
+            // 1. Delete all packages / classes
+            packageDao.clearAll()
+
+            // 2. Delete all students
+            studentDao.clearAll()
+
+            // 3. Delete all absences
+            try {
+                absenceDao.clearAll()
+            } catch (_: Exception) {}
+
+            // 4. Reset config to completely offline/unpaired state
+            val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+            configDao.saveConfig(
+                currentConfig.copy(
+                    schoolId = "",
+                    schoolName = "",
+                    pairingCode = "",
+                    syncSealToken = null,
+                    isVerified = false,
+                    isActivated = false
+                )
+            )
+
+            // 5. Clear all shared preferences and session caches
+            com.example.theboss.data.local.SessionManager(context).clearSchoolSession()
+
+            try {
+                context.getSharedPreferences("diyala_school_prefs", android.content.Context.MODE_PRIVATE).edit()
+                    .remove("diyala_school_id")
+                    .remove("school_id")
+                    .remove("school_name")
+                    .remove("synced_schedule")
+                    .remove("cached_teacher_enrolled_classes")
+                    .remove("cached_enrolled_classes_json")
+                    .remove("widget_selected_day_idx")
+                    .apply()
+
+                context.getSharedPreferences("the_boss_prefs", android.content.Context.MODE_PRIVATE).edit()
+                    .remove("school_id")
+                    .remove("school_code")
+                    .remove("school_name")
+                    .remove("synced_schedule")
+                    .remove("last_saved_school_code")
+                    .remove("independent_mode")
+                    .apply()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // 6. Update all widgets so they reflect the empty offline schedule
+            com.school.system.widget.WidgetScheduleHelper.updateAllWidgets(context)
+
+            // 7. Reset security lock state
+            securityLockState.value = SecurityLockState.Unlocked
+
+            android.util.Log.d("SyncManager", "purgeEnrolledSchoolData: Successfully purged all enrolled classes and school data.")
+        } catch (e: Exception) {
+            android.util.Log.e("SyncManager", "purgeEnrolledSchoolData error: ${e.message}")
+        }
     }
 
     private fun getApi(baseUrl: String): DiyalaSchoolApi {
@@ -278,12 +382,14 @@ class SyncManager @Inject constructor(
 
         val localPackages = packageDao.getAllPackagesList()
         if (localPackages.isNotEmpty()) {
+            val resolvedTeacher = syncRepository.getResolvedTeacherName().takeIf { it.isNotBlank() }
+                ?: (if (currentConfig.role == "supervisor") currentConfig.managerName else "")
             val items = localPackages.map { pkg ->
                 SchoolClassSubjectItem(
                     grade = pkg.grade,
                     section = pkg.section,
                     subject = pkg.subject,
-                    teacherName = currentConfig.managerName
+                    teacherName = resolvedTeacher
                 )
             }
             return downloadSelectedClasses(items)
@@ -293,6 +399,10 @@ class SyncManager @Inject constructor(
     }
 
     suspend fun downloadSimpleRosterForClass(grade: String, section: String, subject: String): Boolean {
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        if (!currentConfig.isCloudSyncEnabled) {
+            return false
+        }
         val result = summonClassRosterDetailed(grade, section, subject)
         return result.success
     }
@@ -374,6 +484,9 @@ class SyncManager @Inject constructor(
                                 historicalAbsences = studentDto.historicalAbsences
                             )
                         )
+                        if (existingStudent.recordNumber.isNotBlank()) {
+                            studentDao.updateStudentNameForAllSubjects(cleanGrade, cleanSection, existingStudent.recordNumber, cleanDtoName)
+                        }
                     } else {
                         studentDao.insertStudent(
                             Student(
@@ -472,7 +585,12 @@ class SyncManager @Inject constructor(
         }
     }
 
-    suspend fun syncGrades(grade: String, section: String, subject: String): Boolean {
+    suspend fun syncGrades(
+        grade: String,
+        section: String,
+        subject: String,
+        secretCode: String = ""
+    ): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         val schoolId = resolveActiveSchoolId(currentConfig)
         val token = if (!currentConfig.syncSealToken.isNullOrEmpty()) currentConfig.syncSealToken!!.trim() else null
@@ -481,7 +599,25 @@ class SyncManager @Inject constructor(
             teacherId = token,
             targetGrade = grade,
             targetSection = section,
-            targetSubject = subject
+            targetSubject = subject,
+            secretCode = secretCode
+        ) is GradeUploadResult.Success
+    }
+
+    suspend fun restoreGrades(
+        grade: String,
+        section: String,
+        subject: String,
+        secretCode: String
+    ): GradeRestoreResult {
+        val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        val schoolId = resolveActiveSchoolId(currentConfig)
+        return syncRepository.restoreTeacherGradesFromCloud(
+            schoolId = schoolId,
+            targetGrade = grade,
+            targetSection = section,
+            targetSubject = subject,
+            secretCode = secretCode
         )
     }
 
@@ -584,6 +720,10 @@ class SyncManager @Inject constructor(
 
     suspend fun downloadSchedule(context: android.content.Context): Boolean {
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
+        if (!currentConfig.isCloudSyncEnabled) {
+            android.util.Log.d("SyncManager", "downloadSchedule aborted: isCloudSyncEnabled is false")
+            return false
+        }
         val schoolId = resolveActiveSchoolId(currentConfig)
         if (schoolId.isBlank() || schoolId == "school_01" || !currentConfig.isVerified) {
             android.util.Log.w("SyncManager", "downloadSchedule aborted: unverified schoolId ($schoolId)")

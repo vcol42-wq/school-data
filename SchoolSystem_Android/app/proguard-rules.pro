@@ -1,68 +1,31 @@
-# Proguard & R8 Production Rules for Release Build
+# Preserve generic signatures and runtime annotations used by Gson, Retrofit,
+# Room, and Hilt without retaining entire implementation packages.
+-keepattributes Signature,*Annotation*,EnclosingMethod,InnerClasses
 
-# 1. Project Models, DTOs & Data Layer
--keep class com.school.system.data.** { *; }
--keepclassmembers class com.school.system.data.** { *; }
--keep class com.school.system.data.model.** { *; }
--keepclassmembers class com.school.system.data.model.** { *; }
--keep class com.school.system.data.models.** { *; }
--keepclassmembers class com.school.system.data.models.** { *; }
--keep class com.school.system.data.network.** { *; }
--keepclassmembers class com.school.system.data.network.** { *; }
--keep class com.school.system.data.dao.** { *; }
--keepclassmembers class com.school.system.data.dao.** { *; }
--keep class com.school.system.data.repository.** { *; }
--keepclassmembers class com.school.system.data.repository.** { *; }
-
-# 2. Gson Serialization
--keepattributes Signature
--keepattributes *Annotation*
--keepattributes EnclosingMethod
--keepattributes InnerClasses
--keepclassmembers class * {
+-keepclassmembers,allowobfuscation class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
--keep class com.google.gson.** { *; }
 
-# 3. Retrofit & OkHttp
--dontwarn retrofit2.**
--keep class retrofit2.** { *; }
--keepclasseswithmembers class * {
+# DTOs and Data Models for Room, Gson, and Retrofit serialization
+-keep class com.school.system.data.model.** { *; }
+-keep class com.school.system.data.*Dto { *; }
+-keep class com.school.system.data.*Request { *; }
+-keep class com.school.system.data.*Response { *; }
+-keep class com.school.system.data.Supabase* { *; }
+-keep class com.school.system.data.Student* { *; }
+
+-keep,allowoptimization interface * {
     @retrofit2.http.* <methods>;
 }
--dontwarn okhttp3.**
--dontwarn okio.**
--keep class okhttp3.** { *; }
 
-# 4. Room Database
--keep class * extends androidx.room.RoomDatabase
+# Room loads generated database implementations by convention and accesses
+# entity fields through generated adapters.
+-keep class * extends androidx.room.RoomDatabase { *; }
 -keep @androidx.room.Entity class * { *; }
 -keep @androidx.room.Dao interface * { *; }
--dontwarn androidx.room.paging.**
 
-# 5. Dagger Hilt
--keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager
--keep class * extends dagger.hilt.android.internal.managers.ActivityComponentManager
--keep class * extends dagger.hilt.android.internal.managers.ApplicationComponentManager
--keep,allowobfuscation,allowshrinking interface * extends dagger.hilt.internal.GeneratedComponent
--keep,allowobfuscation,allowshrinking interface * extends dagger.hilt.internal.ComponentManager
--dontwarn dagger.hilt.**
+# WorkManager instantiates worker subclasses reflectively.
+-keep class * extends androidx.work.ListenableWorker { <init>(...); }
 
-# 6. ML Kit & CameraX
--keep class com.google.mlkit.** { *; }
--dontwarn com.google.mlkit.**
--keep class androidx.camera.** { *; }
--dontwarn androidx.camera.**
-
-# 7. Jetpack WorkManager
--keep class * extends androidx.work.Worker { *; }
--keep class * extends androidx.work.CoroutineWorker { *; }
--keep class * extends androidx.work.ListenableWorker { *; }
-
-# 8. Kotlin Coroutines & Flow
--keepclassmembers class kotlinx.coroutines.** { *; }
--dontwarn kotlinx.coroutines.**
-
-# 9. Jetpack Compose
--keep class androidx.compose.** { *; }
--dontwarn androidx.compose.**
+-keep,allowobfuscation,allowoptimization interface * extends dagger.hilt.internal.GeneratedComponent
+-keep,allowobfuscation,allowoptimization interface * extends dagger.hilt.internal.ComponentManager

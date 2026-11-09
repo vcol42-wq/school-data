@@ -273,7 +273,7 @@ export const LicenseModal: React.FC<LicenseModalProps> = ({
         <div className="p-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between text-xs text-slate-300 font-bold">
           <div className="flex items-center gap-2">
             <Laptop className="w-4 h-4 text-amber-400" />
-            <span className="text-white">The Principal Desktop v6.4.2 Super Edition</span>
+            <span className="text-white">The Principal Desktop v7.0.0 Super Edition</span>
           </div>
           {!forceLock && (
             <button 

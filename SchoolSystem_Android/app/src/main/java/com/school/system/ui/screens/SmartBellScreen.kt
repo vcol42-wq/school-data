@@ -12,13 +12,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -28,13 +29,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.school.system.data.model.LessonAlarm
 import com.school.system.ui.components.HelpGuideDialog
+import com.school.system.ui.theme.LocalAppTheme
 import kotlinx.coroutines.launch
 import java.util.*
 
@@ -48,6 +52,7 @@ fun SmartBellScreen(
     val config by viewModel.config.collectAsState()
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val theme = LocalAppTheme.current
     
     // 0: جدول وضبط الحصص, 1: إعدادات التوقيت ورنين الجرس
     var mainTabSelected by remember { mutableIntStateOf(0) }
@@ -59,12 +64,13 @@ fun SmartBellScreen(
     val pagerState = rememberPagerState(pageCount = { daysList.size })
 
     Scaffold(
+        containerColor = theme.backgroundColor,
         topBar = {
             TopAppBar(
                 title = { 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
-                            color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                            color = theme.primaryColor.copy(alpha = 0.12f),
                             shape = CircleShape,
                             modifier = Modifier.size(36.dp)
                         ) {
@@ -73,7 +79,7 @@ fun SmartBellScreen(
                                     Icons.Default.NotificationsActive,
                                     contentDescription = null,
                                     modifier = Modifier.size(20.dp),
-                                    tint = Color(0xFF2563EB)
+                                    tint = theme.primaryColor
                                 )
                             }
                         }
@@ -83,7 +89,7 @@ fun SmartBellScreen(
                             Text(
                                 text = if (config?.bellRingTeacherOnly == true) "الوضع: رنين لحصصي المقررة فقط" else "الوضع: رنين لكافة الحصص المدرسية",
                                 fontSize = 11.sp,
-                                color = Color(0xFF2563EB),
+                                color = theme.primaryColor,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -94,16 +100,21 @@ fun SmartBellScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = theme.surfaceColor,
+                    titleContentColor = theme.textPrimaryColor,
+                    navigationIconContentColor = theme.textPrimaryColor
+                ),
                 actions = {
                     IconButton(onClick = { showHelpGuideDialog = true }) {
-                        Icon(Icons.Default.Info, contentDescription = "دليل الاستخدام والتعليمات", tint = Color(0xFF2563EB))
+                        Icon(Icons.Default.Info, contentDescription = "دليل الاستخدام والتعليمات", tint = theme.primaryColor)
                     }
                     if (mainTabSelected == 0) {
                         IconButton(onClick = { isGridView = !isGridView }) {
                             Icon(
                                 if (isGridView) Icons.Default.ViewDay else Icons.Default.GridView,
                                 contentDescription = "تبديل طريقة العرض",
-                                tint = Color(0xFF2563EB)
+                                tint = theme.primaryColor
                             )
                         }
                     }
@@ -111,7 +122,7 @@ fun SmartBellScreen(
                         viewModel.applyAutoSchedule()
                         Toast.makeText(context, "تم حساب وتوليد مواعيد الحصص تلقائياً ⚡", Toast.LENGTH_SHORT).show()
                     }) {
-                        Icon(Icons.Default.AutoMode, contentDescription = "حساب تلقائي", tint = Color(0xFF059669))
+                        Icon(Icons.Default.AutoMode, contentDescription = "حساب تلقائي", tint = theme.secondaryColor)
                     }
                 }
             )
@@ -122,8 +133,8 @@ fun SmartBellScreen(
             // Primary Tabs: (1. جدول الحصص والتنبيهات) | (2. إعدادات التوقيت ورنين الجرس)
             TabRow(
                 selectedTabIndex = mainTabSelected,
-                containerColor = Color(0xFFF8FAFC),
-                contentColor = Color(0xFF2563EB)
+                containerColor = theme.surfaceColor,
+                contentColor = theme.primaryColor
             ) {
                 Tab(
                     selected = mainTabSelected == 0,
@@ -158,20 +169,29 @@ fun SmartBellScreen(
                         // Day Selector Tabs
                         TabRow(
                             selectedTabIndex = pagerState.currentPage,
-                            containerColor = Color.White
+                            containerColor = theme.surfaceColor
                         ) {
                             daysList.forEachIndexed { index, day ->
                                 Tab(
                                     selected = pagerState.currentPage == index,
                                     onClick = { coroutineScope.launch { pagerState.animateScrollToPage(index) } },
-                                    text = { Text(day, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                                    text = {
+                                        Text(
+                                            day,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
                                 )
                             }
                         }
 
                         // Top Quick Actions inside Period Tab
                         Surface(
-                            color = Color(0xFFF1F5F9),
+                            color = theme.tableAltCellBg,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
@@ -192,7 +212,7 @@ fun SmartBellScreen(
                                             }
                                         }
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = theme.primaryColor),
                                     shape = RoundedCornerShape(10.dp),
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
@@ -246,13 +266,20 @@ fun SmartBellScreen(
                                     }
                                 }
                             } else {
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                LazyVerticalGrid(
+                                    columns = GridCells.Adaptive(minSize = 280.dp),
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     items(dayAlarms) { alarm ->
+                                        val previous = dayAlarms.find { it.lessonIndex == alarm.lessonIndex - 1 }
+                                        val next = dayAlarms.find { it.lessonIndex == alarm.lessonIndex + 1 }
                                         AlarmItemCard(
                                             alarm = alarm,
+                                            isMergedWithPrevious = areAdjacentLessons(previous, alarm),
+                                            isMergedWithNext = areAdjacentLessons(alarm, next),
                                             onToggle = { viewModel.toggleAlarm(alarm, it) },
                                             onUpdate = { name, start, end -> viewModel.updateAlarmDetails(alarm, name, start, end) }
                                         )
@@ -269,8 +296,8 @@ fun SmartBellScreen(
                         config = config!!,
                         onUpdateSettings = { sh, sm, ld, bd, ring -> viewModel.updateBellSettings(sh, sm, ld, bd, ring) },
                         onUpdateRingMode = { ringTeacherOnly -> viewModel.updateBellRingMode(ringTeacherOnly) },
-                        onApplyAuto = { 
-                            viewModel.applyAutoSchedule()
+                        onApplyAuto = { useCustomTimings ->
+                            viewModel.applyAutoSchedule(useCustomTimings)
                             Toast.makeText(context, "تم حساب وتحديث كافة مواعيد الحصص بنجاح ⚡", Toast.LENGTH_SHORT).show()
                         }
                     )
@@ -289,9 +316,17 @@ fun BellConfigurationScreen(
     config: com.school.system.data.model.SchoolConfig,
     onUpdateSettings: (startH: Int, startM: Int, lessonD: Int, breakD: Int, ringtoneUri: String?) -> Unit,
     onUpdateRingMode: (ringTeacherOnly: Boolean) -> Unit,
-    onApplyAuto: () -> Unit
+    onApplyAuto: (useCustomTimings: Boolean) -> Unit
 ) {
     val context = LocalContext.current
+    val theme = LocalAppTheme.current
+    val surfaceColor = theme.surfaceColor
+    val backgroundColor = theme.backgroundColor
+    val textColor = theme.textPrimaryColor
+    val secondaryTextColor = theme.textSecondaryColor
+    val borderColor = theme.tableBorderColor
+    val sectionColor = theme.tableAltCellBg
+    val selectedColor = theme.primaryColor.copy(alpha = if (theme.isDark) 0.22f else 0.10f)
     var showCustomTimingsDialog by remember { mutableStateOf(false) }
     var refreshKey by remember { mutableIntStateOf(0) }
     val prefs = remember(context, refreshKey) { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
@@ -329,73 +364,85 @@ fun BellConfigurationScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(backgroundColor)
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Section 1: Ring Mode Selector (رنين لجميع الحصص أم لحصص المعلم فقط)
         Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = surfaceColor),
+            border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (theme.isDark) 0.dp else 1.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color(0xFF2563EB))
+                    Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = theme.primaryColor)
                     Spacer(Modifier.width(8.dp))
-                    Text("نطاق تشغيل رنين الجرس 🔔", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color(0xFF0F172A))
+                    Text("نطاق تشغيل رنين الجرس", fontWeight = FontWeight.Black, fontSize = 15.sp, color = textColor)
                 }
-                Text("حدد متى ترغب بسماع جرس المنبه أثناء اليوم الدراسي:", fontSize = 12.sp, color = Color(0xFF64748B))
+                Text("اختر الحصص التي تريد أن يعمل فيها الجرس.", fontSize = 12.sp, color = secondaryTextColor)
 
                 // Option A: All Periods
                 Surface(
-                    color = if (!config.bellRingTeacherOnly) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(12.dp),
+                    color = if (!config.bellRingTeacherOnly) selectedColor else sectionColor,
+                    shape = RoundedCornerShape(14.dp),
                     border = androidx.compose.foundation.BorderStroke(
-                        1.5.dp, 
-                        if (!config.bellRingTeacherOnly) Color(0xFF2563EB) else Color(0xFFE2E8F0)
+                        if (!config.bellRingTeacherOnly) 1.5.dp else 1.dp,
+                        if (!config.bellRingTeacherOnly) theme.primaryColor else borderColor
                     ),
                     modifier = Modifier.fillMaxWidth().clickable { onUpdateRingMode(false) }
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(
                             selected = !config.bellRingTeacherOnly,
-                            onClick = { onUpdateRingMode(false) }
+                            onClick = { onUpdateRingMode(false) },
+                            colors = RadioButtonDefaults.colors(selectedColor = theme.primaryColor),
+                            modifier = Modifier.size(40.dp)
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text("رنين لجميع الحصص (الجدول العام) 🔔", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
-                            Text("تنبيه برنين الجرس مع بداية ونهاية كل حصة وفترة استراحة في المدرسة.", fontSize = 11.sp, color = Color(0xFF64748B))
+                        Spacer(Modifier.width(6.dp))
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text("جميع الحصص", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor, maxLines = 1)
+                            Text("يرن عند بدايات الحصص والاستراحات في الجدول العام.", fontSize = 11.sp, color = secondaryTextColor, lineHeight = 15.sp)
                         }
                     }
                 }
 
                 // Option B: Teacher's Lessons Only
                 Surface(
-                    color = if (config.bellRingTeacherOnly) Color(0xFFEFF6FF) else Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(12.dp),
+                    color = if (config.bellRingTeacherOnly) selectedColor else sectionColor,
+                    shape = RoundedCornerShape(14.dp),
                     border = androidx.compose.foundation.BorderStroke(
-                        1.5.dp, 
-                        if (config.bellRingTeacherOnly) Color(0xFF2563EB) else Color(0xFFE2E8F0)
+                        if (config.bellRingTeacherOnly) 1.5.dp else 1.dp,
+                        if (config.bellRingTeacherOnly) theme.primaryColor else borderColor
                     ),
                     modifier = Modifier.fillMaxWidth().clickable { onUpdateRingMode(true) }
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         RadioButton(
                             selected = config.bellRingTeacherOnly,
-                            onClick = { onUpdateRingMode(true) }
+                            onClick = { onUpdateRingMode(true) },
+                            colors = RadioButtonDefaults.colors(selectedColor = theme.primaryColor),
+                            modifier = Modifier.size(40.dp)
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text("رنين لحصصي المقررة فقط (خاص بالأستاذ) 👨‍🏫", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0F172A))
-                            Text("تنبيه برنين الجرس فقط في أوقات الحصص والمواد التي تدرّسها أنت حسب جدولك.", fontSize = 11.sp, color = Color(0xFF64748B))
+                        Spacer(Modifier.width(6.dp))
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text("حصصي المقررة فقط", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor, maxLines = 1)
+                            Text("يرن في أوقات حصصك وموادك المحددة في الجدول.", fontSize = 11.sp, color = secondaryTextColor, lineHeight = 15.sp)
                         }
                     }
                 }
@@ -404,33 +451,33 @@ fun BellConfigurationScreen(
 
         // Section 2: Timing Configuration
         Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = surfaceColor),
+            border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = if (theme.isDark) 0.dp else 1.dp)
         ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Timer, contentDescription = null, tint = Color(0xFF059669))
+                    Icon(Icons.Default.Timer, contentDescription = null, tint = theme.primaryColor)
                     Spacer(Modifier.width(8.dp))
-                    Text("ضبط التوقيت والمدد الزمنية ⏱️", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color(0xFF0F172A))
+                    Text("التوقيت والمدد", fontWeight = FontWeight.Black, fontSize = 15.sp, color = textColor)
                 }
 
                 // Start of school day
                 Surface(
-                    color = Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    color = sectionColor,
+                    shape = RoundedCornerShape(11.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
-                            Text("بداية الدوام المدرسي:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text("وقت انطلاق الحصة الأولى", fontSize = 11.sp, color = Color.Gray)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("بداية الدوام المدرسي", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor)
+                            Text("موعد انطلاق الحصة الأولى", fontSize = 11.sp, color = secondaryTextColor)
                         }
                         Button(
                             onClick = {
@@ -438,120 +485,161 @@ fun BellConfigurationScreen(
                                     onUpdateSettings(h, m, config.bellLessonDuration, config.bellBreakDuration, config.bellRingtoneUri)
                                 }, config.bellStartHour, config.bellStartMinute, true).show()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                            shape = RoundedCornerShape(10.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.primaryColor),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.height(46.dp)
                         ) {
                             Text(
                                 String.format(Locale.US, "%02d:%02d", config.bellStartHour, config.bellStartMinute),
                                 fontWeight = FontWeight.Black,
-                                fontSize = 15.sp
+                                fontSize = 16.sp,
+                                textAlign = TextAlign.Center,
+                                style = TextStyle(textDirection = TextDirection.Ltr)
                             )
                         }
                     }
                 }
 
                 // Lesson duration
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("مدة الحصة الدراسية:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("${config.bellLessonDuration} دقيقة", fontWeight = FontWeight.Black, color = Color(0xFF2563EB), fontSize = 14.sp)
+                        Text("مدة الحصة", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor)
+                        Text("${config.bellLessonDuration} دقيقة", fontWeight = FontWeight.Black, color = theme.primaryColor, fontSize = 14.sp)
                     }
                     Slider(
                         value = config.bellLessonDuration.toFloat(),
                         onValueChange = { onUpdateSettings(config.bellStartHour, config.bellStartMinute, it.toInt(), config.bellBreakDuration, config.bellRingtoneUri) },
                         valueRange = 30f..60f,
-                        steps = 5
+                        steps = 5,
+                        colors = SliderDefaults.colors(
+                            thumbColor = theme.primaryColor,
+                            activeTrackColor = theme.primaryColor,
+                            inactiveTrackColor = borderColor
+                        )
                     )
                 }
 
                 // Break duration
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("مدة الفرصة / الاستراحة:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("${config.bellBreakDuration} دقيقة", fontWeight = FontWeight.Black, color = Color(0xFF059669), fontSize = 14.sp)
+                        Text("مدة الاستراحة", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor)
+                        Text("${config.bellBreakDuration} دقيقة", fontWeight = FontWeight.Black, color = theme.secondaryColor, fontSize = 14.sp)
                     }
                     Slider(
                         value = config.bellBreakDuration.toFloat(),
                         onValueChange = { onUpdateSettings(config.bellStartHour, config.bellStartMinute, config.bellLessonDuration, it.toInt(), config.bellRingtoneUri) },
                         valueRange = 5f..30f,
-                        steps = 4
+                        steps = 4,
+                        colors = SliderDefaults.colors(
+                            thumbColor = theme.secondaryColor,
+                            activeTrackColor = theme.secondaryColor,
+                            inactiveTrackColor = borderColor
+                        )
                     )
                 }
 
                 // Advanced Timing Customization & Merge Lessons (0 min break)
                 Surface(
-                    color = Color(0xFFF0FDF4),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF86EFAC)),
+                    color = selectedColor,
+                    shape = RoundedCornerShape(11.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, theme.primaryColor.copy(alpha = 0.45f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Tune, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("تخصيص متقدم ودمج الحصص (0د)", fontWeight = FontWeight.Black, fontSize = 13.sp, color = Color(0xFF166534))
-                            }
-                            Surface(
-                                color = Color(0xFFDCFCE7),
-                                shape = RoundedCornerShape(6.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    "ميزة الدمج 🔗",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF15803D),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                Icon(Icons.Default.Tune, contentDescription = null, tint = theme.primaryColor, modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "تخصيص أوقات الحصص والفرص",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 12.sp,
+                                        color = textColor,
+                                        maxLines = 1
+                                    )
+                                }
+                                Surface(
+                                    color = surfaceColor,
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        "دمج 🔗",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = theme.primaryColor,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
+                                    )
+                                }
                             }
                         }
                         Text(
-                            "تعديل مدة كل حصة واستراحة بشكل مستقل، أو جعل مدة الاستراحة 0 دقيقة لدمج درسين متتاليين كدرس واحد.",
+                            "خصص مدة الحصص والاستراحات، واجعل الاستراحة 0 دقيقة لدمج حصتين.",
                             fontSize = 11.sp,
-                            color = Color(0xFF166534),
+                            color = secondaryTextColor,
                             lineHeight = 16.sp
                         )
                         Button(
                             onClick = { showCustomTimingsDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                            shape = RoundedCornerShape(10.dp)
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = theme.primaryColor),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth().height(46.dp)
                         ) {
                             Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("تعديل أوقات الحصص والفرص والدمج ⏱️", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                "ضبط أوقات الحصص والدمج",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
 
                 // Ringtone picker
                 Surface(
-                    color = Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    color = sectionColor,
+                    shape = RoundedCornerShape(11.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, borderColor),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column {
-                            Text("نغمة تنبيه الجرس:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                            Text(if (config.bellRingtoneUri != null) "تم تخصيص نغمة ✓" else "النغمة الافتراضية للنظام", fontSize = 11.sp, color = Color.Gray)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("نغمة الجرس", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = textColor)
+                            Text(
+                                if (config.bellRingtoneUri != null) "نغمة مخصصة" else "نغمة النظام الافتراضية",
+                                fontSize = 11.sp,
+                                color = secondaryTextColor,
+                                maxLines = 1
+                            )
                         }
                         OutlinedButton(
                             onClick = {
@@ -562,11 +650,14 @@ fun BellConfigurationScreen(
                                 }
                                 ringtonePickerLauncher.launch(intent)
                             },
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            modifier = Modifier.height(44.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = theme.primaryColor)
                         ) {
                             Icon(Icons.Default.MusicNote, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("تغيير النغمة", fontSize = 12.sp)
+                            Text("تغيير النغمة", fontSize = 11.sp, maxLines = 1)
                         }
                     }
                 }
@@ -575,10 +666,11 @@ fun BellConfigurationScreen(
 
         // Apply Button
         Button(
-            onClick = onApplyAuto,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-            shape = RoundedCornerShape(14.dp)
+            onClick = { onApplyAuto(false) },
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = theme.primaryColor),
+            shape = RoundedCornerShape(11.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
         ) {
             Icon(Icons.Default.AutoMode, contentDescription = null)
             Spacer(Modifier.width(8.dp))
@@ -601,7 +693,7 @@ fun BellConfigurationScreen(
                         val avgL = newLessons.firstOrNull() ?: config.bellLessonDuration
                         val avgB = newBreaks.firstOrNull() ?: config.bellBreakDuration
                         onUpdateSettings(sh, sm, avgL, avgB, config.bellRingtoneUri)
-                        onApplyAuto()
+                        onApplyAuto(true)
                         refreshKey++
                         showCustomTimingsDialog = false
                         Toast.makeText(context, "تم حفظ وتطبيق التوقيتات المخصصة ودمج الحصص بنجاح ⚡", Toast.LENGTH_SHORT).show()
@@ -614,139 +706,159 @@ fun BellConfigurationScreen(
 
 @Composable
 fun AlarmItemCard(
-    alarm: LessonAlarm, 
-    onToggle: (Boolean) -> Unit, 
+    alarm: LessonAlarm,
+    isMergedWithPrevious: Boolean,
+    isMergedWithNext: Boolean,
+    onToggle: (Boolean) -> Unit,
     onUpdate: (String, String, String) -> Unit
 ) {
     var name by remember(alarm.lessonName) { mutableStateOf(alarm.lessonName) }
     val context = LocalContext.current
+    val theme = LocalAppTheme.current
 
     Surface(
-        color = if (alarm.isEnabled) Color.White else Color(0xFFF8FAFC),
-        shape = RoundedCornerShape(16.dp),
+        color = theme.surfaceColor,
+        shape = RoundedCornerShape(12.dp),
         border = androidx.compose.foundation.BorderStroke(
-            1.2.dp, 
-            if (alarm.isEnabled) Color(0xFFBFDBFE) else Color(0xFFE2E8F0)
+            1.dp,
+            if (alarm.isEnabled) theme.primaryColor.copy(alpha = 0.55f) else theme.tableBorderColor
         ),
-        shadowElevation = if (alarm.isEnabled) 2.dp else 0.dp,
+        shadowElevation = if (alarm.isEnabled && !theme.isDark) 1.dp else 0.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Period Number Badge
             Surface(
-                color = if (alarm.isEnabled) Color(0xFF2563EB) else Color(0xFFCBD5E1),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.size(44.dp)
+                color = if (alarm.isEnabled) theme.primaryColor.copy(alpha = 0.14f) else theme.tableAltCellBg,
+                shape = RoundedCornerShape(9.dp),
+                modifier = Modifier.size(34.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = "${alarm.lessonIndex}",
-                        color = Color.White,
+                        color = if (alarm.isEnabled) theme.primaryColor else theme.textSecondaryColor,
                         fontWeight = FontWeight.Black,
-                        fontSize = 20.sp
+                        fontSize = 16.sp
                     )
                 }
             }
 
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(8.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        text = "الحصة ${alarm.lessonIndex}", 
-                        fontSize = 12.sp, 
+                        text = "الحصة ${alarm.lessonIndex}",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (alarm.isEnabled) Color(0xFF1E3A8A) else Color.Gray
+                        color = if (alarm.isEnabled) theme.textPrimaryColor else theme.textSecondaryColor
                     )
+                    if (isMergedWithPrevious || isMergedWithNext) {
+                        Text(
+                            text = "🔗 مدمجة",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = theme.primaryColor
+                        )
+                    }
                 }
 
-                // Lesson name / subject note
                 BasicTextField(
                     value = name,
-                    onValueChange = { 
+                    onValueChange = {
                         name = it
-                        onUpdate(it, alarm.startTime, alarm.endTime) 
+                        onUpdate(it, alarm.startTime, alarm.endTime)
                     },
                     textStyle = androidx.compose.ui.text.TextStyle(
-                        fontSize = 14.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (alarm.isEnabled) Color(0xFF0F172A) else Color.Gray
+                        color = if (alarm.isEnabled) theme.textPrimaryColor else theme.textSecondaryColor
                     ),
                     decorationBox = { innerTextField ->
                         Box {
                             if (name.isEmpty()) {
-                                Text("اسم المادة/الشعبة (اختياري)", color = Color.LightGray, fontSize = 13.sp)
+                                Text("اسم المادة/الشعبة", color = theme.textSecondaryColor, fontSize = 10.sp)
                             }
                             innerTextField()
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)
                 )
 
-                // Time Span Buttons
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        color = Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(8.dp),
+                        color = theme.tableAltCellBg,
+                        shape = RoundedCornerShape(6.dp),
                         modifier = Modifier.clickable {
                             val (h, m) = alarm.startTime.split(":").map { it.toInt() }
-                            TimePickerDialog(context, { _, nh, nm -> 
+                            TimePickerDialog(context, { _, nh, nm ->
                                 onUpdate(name, String.format(Locale.US, "%02d:%02d", nh, nm), alarm.endTime)
                             }, h, m, true).show()
                         }
                     ) {
                         Text(
                             text = alarm.startTime,
-                            fontSize = 13.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF2563EB),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            color = theme.primaryColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                         )
                     }
 
-                    Text(" إلى ", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(horizontal = 4.dp))
+                    Text("–", fontSize = 10.sp, color = theme.textSecondaryColor, modifier = Modifier.padding(horizontal = 3.dp))
 
                     Surface(
-                        color = Color(0xFFF1F5F9),
-                        shape = RoundedCornerShape(8.dp),
+                        color = theme.tableAltCellBg,
+                        shape = RoundedCornerShape(6.dp),
                         modifier = Modifier.clickable {
                             val (h, m) = alarm.endTime.split(":").map { it.toInt() }
-                            TimePickerDialog(context, { _, nh, nm -> 
+                            TimePickerDialog(context, { _, nh, nm ->
                                 onUpdate(name, alarm.startTime, String.format(Locale.US, "%02d:%02d", nh, nm))
                             }, h, m, true).show()
                         }
                     ) {
                         Text(
                             text = alarm.endTime,
-                            fontSize = 13.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF059669),
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            color = theme.secondaryColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
                         )
                     }
                 }
             }
 
-            Spacer(Modifier.width(8.dp))
-
             Switch(
-                checked = alarm.isEnabled, 
+                checked = alarm.isEnabled,
                 onCheckedChange = { onToggle(it) },
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = Color(0xFF2563EB)
-                )
+                    checkedThumbColor = theme.surfaceColor,
+                    checkedTrackColor = theme.primaryColor,
+                    uncheckedThumbColor = theme.textSecondaryColor,
+                    uncheckedTrackColor = theme.tableBorderColor
+                ),
+                modifier = Modifier.height(40.dp)
             )
         }
     }
 }
 
+private fun areAdjacentLessons(previous: LessonAlarm?, next: LessonAlarm?): Boolean =
+    previous != null &&
+        next != null &&
+        previous.lessonIndex + 1 == next.lessonIndex &&
+        previous.endTime.trim() == next.startTime.trim()
+
 @Composable
 fun WeeklyGridView(alarms: List<LessonAlarm>, viewModel: SmartBellViewModel) {
     val scrollState = rememberScrollState()
+    val theme = LocalAppTheme.current
     val daysList = listOf("الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس")
     val daysValues = listOf(Calendar.SUNDAY, Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY, Calendar.THURSDAY)
 
@@ -759,12 +871,12 @@ fun WeeklyGridView(alarms: List<LessonAlarm>, viewModel: SmartBellViewModel) {
     ) {
         // Header Row
         Row {
-            Box(Modifier.width(80.dp).height(44.dp).background(Color(0xFFE2E8F0)), contentAlignment = Alignment.Center) {
-                Text("اليوم", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Box(Modifier.width(80.dp).height(44.dp).background(theme.tableHeaderBg), contentAlignment = Alignment.Center) {
+                Text("اليوم", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = theme.textPrimaryColor)
             }
             for (i in 1..6) {
-                Box(Modifier.width(110.dp).height(44.dp).background(Color(0xFFE2E8F0)), contentAlignment = Alignment.Center) {
-                    Text("حصة $i", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Box(Modifier.width(110.dp).height(44.dp).background(theme.tableHeaderBg), contentAlignment = Alignment.Center) {
+                    Text("حصة $i", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = theme.textPrimaryColor)
                 }
             }
         }
@@ -773,19 +885,23 @@ fun WeeklyGridView(alarms: List<LessonAlarm>, viewModel: SmartBellViewModel) {
         daysValues.forEachIndexed { index, dayVal ->
             val dayName = daysList[index]
             Row {
-                Box(Modifier.width(80.dp).height(65.dp).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
-                    Text(dayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Box(Modifier.width(80.dp).height(65.dp).background(theme.tableAltCellBg), contentAlignment = Alignment.Center) {
+                    Text(dayName, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = theme.textPrimaryColor)
                 }
                 for (i in 1..6) {
                     val alarm = alarms.find { it.dayOfWeek == dayVal && it.lessonIndex == i }
                     if (alarm != null) {
+                        val dayAlarms = alarms.filter { it.dayOfWeek == dayVal }
+                        val previous = dayAlarms.find { it.lessonIndex == i - 1 }
+                        val next = dayAlarms.find { it.lessonIndex == i + 1 }
                         GridCell(
-                            alarm = alarm, 
+                            alarm = alarm,
+                            isMerged = areAdjacentLessons(previous, alarm) || areAdjacentLessons(alarm, next),
                             onToggle = { viewModel.toggleAlarm(alarm, it) },
                             onUpdate = { name -> viewModel.updateAlarmDetails(alarm, name, alarm.startTime, alarm.endTime) }
                         )
                     } else {
-                        Box(Modifier.width(110.dp).height(65.dp).border(0.5.dp, Color.LightGray))
+                        Box(Modifier.width(110.dp).height(65.dp).border(0.5.dp, theme.tableBorderColor))
                     }
                 }
             }
@@ -794,13 +910,14 @@ fun WeeklyGridView(alarms: List<LessonAlarm>, viewModel: SmartBellViewModel) {
 }
 
 @Composable
-fun GridCell(alarm: LessonAlarm, onToggle: (Boolean) -> Unit, onUpdate: (String) -> Unit) {
+fun GridCell(alarm: LessonAlarm, isMerged: Boolean, onToggle: (Boolean) -> Unit, onUpdate: (String) -> Unit) {
+    val theme = LocalAppTheme.current
     Box(
         modifier = Modifier
             .width(110.dp)
             .height(65.dp)
-            .border(0.5.dp, Color(0xFFE2E8F0))
-            .background(if (alarm.isEnabled) Color(0xFFEFF6FF) else Color.White)
+            .border(0.5.dp, theme.tableBorderColor)
+            .background(if (alarm.isEnabled) theme.primaryColor.copy(alpha = if (theme.isDark) 0.18f else 0.08f) else theme.surfaceColor)
             .clickable { onToggle(!alarm.isEnabled) }
             .padding(4.dp),
         contentAlignment = Alignment.Center
@@ -810,8 +927,11 @@ fun GridCell(alarm: LessonAlarm, onToggle: (Boolean) -> Unit, onUpdate: (String)
                 text = "${alarm.startTime} - ${alarm.endTime}", 
                 fontSize = 10.sp, 
                 fontWeight = FontWeight.Bold,
-                color = if (alarm.isEnabled) Color(0xFF2563EB) else Color.Gray
+                color = if (alarm.isEnabled) theme.primaryColor else theme.textSecondaryColor
             )
+            if (isMerged) {
+                Text("🔗 مدمجة", fontSize = 8.sp, color = theme.primaryColor, fontWeight = FontWeight.Bold)
+            }
             BasicTextField(
                 value = alarm.lessonName,
                 onValueChange = { onUpdate(it) },
@@ -819,12 +939,12 @@ fun GridCell(alarm: LessonAlarm, onToggle: (Boolean) -> Unit, onUpdate: (String)
                     fontSize = 11.sp, 
                     textAlign = TextAlign.Center,
                     fontWeight = FontWeight.Bold,
-                    color = if (alarm.isEnabled) Color(0xFF0F172A) else Color.LightGray
+                    color = if (alarm.isEnabled) theme.textPrimaryColor else theme.textSecondaryColor
                 ),
                 decorationBox = { inner ->
                     Box(contentAlignment = Alignment.Center) {
                         if (alarm.lessonName.isEmpty()) {
-                            Text("الحصة ${alarm.lessonIndex}", fontSize = 10.sp, color = Color.LightGray)
+                            Text("الحصة ${alarm.lessonIndex}", fontSize = 10.sp, color = theme.textSecondaryColor)
                         }
                         inner()
                     }

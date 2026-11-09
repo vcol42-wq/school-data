@@ -321,8 +321,14 @@ function normalizeForSearch(str: string): string {
   const [showTranscript, setShowTranscript] = useState(false);
   const [sortOption, setSortOption] = useState<'name' | 'record' | 'marks'>('name');
 
-  const uniqueGrades = sortGradesList(['الكل', ...Array.from(new Set(students.map(s => s.currentGrade).filter(Boolean)))]);
-  const uniqueSections = sortSectionsAlphabetically(['الكل', ...Array.from(new Set(students.map(s => s.section).filter(Boolean)))]);
+  const gradeNames: string[] = students
+    .map(student => student.currentGrade)
+    .filter((grade): grade is string => typeof grade === 'string' && grade.length > 0);
+  const sectionNames: string[] = students
+    .map(student => student.section)
+    .filter((section): section is string => typeof section === 'string' && section.length > 0);
+  const uniqueGrades = sortGradesList(['الكل', ...Array.from(new Set(gradeNames))]);
+  const uniqueSections = sortSectionsAlphabetically(['الكل', ...Array.from(new Set(sectionNames))]);
 
   // Extract all distinct Grade + Section pairs for the top Section Cards
   const sectionCards = React.useMemo(() => {

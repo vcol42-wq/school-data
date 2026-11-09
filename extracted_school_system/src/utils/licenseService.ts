@@ -133,42 +133,10 @@ export async function activateDesktopLicense(
 
     if (error) {
       console.warn('License verification error:', error);
-      // Fallback: If offline or table not yet migrated, verify format
-      if (isValidUnifiedLicenseKey(cleanKey)) {
-        const fallbackLic: LicenseRecord = {
-          license_key: cleanKey,
-          school_name: schoolNameInput || 'مدرستنا الكريمة',
-          machine_fingerprint: currentFp,
-          is_activated: true,
-          activated_at: new Date().toISOString()
-        };
-        localStorage.setItem(LOCAL_LICENSE_STORAGE_KEY, JSON.stringify(fallbackLic));
-        return {
-          success: true,
-          message: 'تم تفعيل المنظومة بنجاح (وضع الحفظ المحلي الموثق) ✓',
-          license: fallbackLic
-        };
-      }
       return { success: false, message: 'تعذر الاتصال بالسحابة للتحقق من الكود.' };
     }
 
     if (!data) {
-      // If not in Supabase yet (e.g. issued offline from phone), test unified algorithm
-      if (isValidUnifiedLicenseKey(cleanKey)) {
-        const fallbackLic: LicenseRecord = {
-          license_key: cleanKey,
-          school_name: schoolNameInput || 'مدرستنا الكريمة',
-          machine_fingerprint: currentFp,
-          is_activated: true,
-          activated_at: new Date().toISOString()
-        };
-        localStorage.setItem(LOCAL_LICENSE_STORAGE_KEY, JSON.stringify(fallbackLic));
-        return {
-          success: true,
-          message: 'تهانينا! تم التحقق من الكود المعتمد وتفعيل المنظومة بنجاح 💎✓',
-          license: fallbackLic
-        };
-      }
       return { success: false, message: 'كود التفعيل المدخل غير صحيح، يرجى التأكد من الرمز.' };
     }
 
@@ -195,6 +163,10 @@ export async function activateDesktopLicense(
 
     if (updateErr) {
       console.warn('Failed to update remote activation:', updateErr);
+      return {
+        success: false,
+        message: 'تعذر تسجيل التفعيل في السحابة. لم يتم حفظ الترخيص على هذا الجهاز.'
+      };
     }
 
     const activatedRecord: LicenseRecord = {

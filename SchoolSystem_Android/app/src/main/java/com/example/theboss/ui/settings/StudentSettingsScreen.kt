@@ -279,16 +279,20 @@ fun StudentSettingsScreen(
     viewModel: StudentSettingsViewModel = hiltViewModel(),
     onBack: () -> Unit,
     onNavigateToLogin: () -> Unit,
+    isAppLockEnabled: Boolean = false,
+    onAppLockEnabledChange: (Boolean) -> Unit = {},
     onNavigateToQrScanner: () -> Unit = {},
     navController: androidx.navigation.NavController? = null
 ) {
     val context = LocalContext.current
+    val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
     val testStatus by viewModel.testStatus.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
     var showUnpairConfirmDialog by remember { mutableStateOf(false) }
     var showHelpGuideDialog by remember { mutableStateOf(false) }
     var showEditStudentDialog by remember { mutableStateOf(false) }
+    var showManualCodeDialog by remember { mutableStateOf(false) }
 
     // Listen to barcode scanned from QrScannerScreen
     val scannedCode = navController?.currentBackStackEntry
@@ -336,9 +340,10 @@ fun StudentSettingsScreen(
     }
 
     Scaffold(
+        containerColor = currentTheme.backgroundColor,
         topBar = {
             TopAppBar(
-                title = { Text("إعدادات بوابة الطالب ⚙️", fontWeight = FontWeight.Bold) },
+                title = { Text("إعدادات بوابة الطالب ⚙️", fontWeight = FontWeight.Bold, color = currentTheme.textPrimaryColor) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع")
@@ -348,7 +353,8 @@ fun StudentSettingsScreen(
                     IconButton(onClick = { showHelpGuideDialog = true }) {
                         Icon(Icons.Default.MenuBook, contentDescription = "دليل الاستخدام", tint = Color(0xFF059669))
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = currentTheme.surfaceColor)
             )
         }
     ) { padding ->
@@ -356,27 +362,65 @@ fun StudentSettingsScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Card 1: Student & School Profile
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shape = RoundedCornerShape(15.dp),
+                colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFEEF2FF)),
+                border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFC7D2FE)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = Color(0xFFDBEAFE),
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF2563EB), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(9.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("قفل التطبيق 🔒", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        Text(
+                            if (isAppLockEnabled) "سيطلب البصمة أو رمز الهاتف عند كل فتح"
+                            else "بالبصمة أو رمز الهاتف",
+                            fontSize = 10.5.sp,
+                            color = currentTheme.textSecondaryColor
+                        )
+                    }
+                    Switch(
+                        checked = isAppLockEnabled,
+                        onCheckedChange = onAppLockEnabledChange
+                    )
+                }
+            }
+
+            // Card 1: Student & School Profile
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFF0F9FF)),
+                border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFBAE6FD)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.School, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("بيانات الطالب والمدرسة", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                     }
                     HorizontalDivider(color = Color(0xFFE2E8F0))
-                    Text("اسم الطالب: ${viewModel.studentName}", fontSize = 13.5.sp, fontWeight = FontWeight.Black, color = Color(0xFF0F172A))
-                    Text("المدرسة: ${viewModel.schoolName}", fontSize = 13.sp, color = Color(0xFF334155), fontWeight = FontWeight.Bold)
-                    Text("الصف والشعبة: ${viewModel.studentGrade} - (${viewModel.studentSection})", fontSize = 12.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+                    Text("اسم الطالب: ${viewModel.studentName}", fontSize = 13.5.sp, fontWeight = FontWeight.Black, color = currentTheme.textPrimaryColor)
+                    Text("المدرسة: ${viewModel.schoolName}", fontSize = 13.sp, color = currentTheme.textPrimaryColor, fontWeight = FontWeight.Bold)
+                    Text("الصف والشعبة: ${viewModel.studentGrade} - (${viewModel.studentSection})", fontSize = 12.5.sp, color = if (currentTheme.isDark) currentTheme.textSecondaryColor else Color(0xFF0284C7), fontWeight = FontWeight.Bold)
 
                     Button(
                         onClick = { showEditStudentDialog = true },
@@ -393,34 +437,51 @@ fun StudentSettingsScreen(
 
             // Card 2: Barcode Scanner & Cloud Sync (Super Clean & Direct)
             Card(
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
-                border = BorderStroke(1.5.dp, Color(0xFF86EFAC)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFF0FDF4)),
+                border = BorderStroke(1.5.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFF86EFAC)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = null, tint = Color(0xFF16A34A), modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("قارئ الباركود والمزامنة السحابية 📷", fontWeight = FontWeight.Black, fontSize = 15.sp, color = Color(0xFF166534))
+                        Text("قارئ الباركود والمزامنة السحابية 📷", fontWeight = FontWeight.Black, fontSize = 15.sp, color = currentTheme.textPrimaryColor)
                     }
 
                     Text(
-                        "امسح باركود المدرسة المعروض في شاشة المدير لربط التطبيق أو تحديث الجداول فورياً.",
+                        "امسح باركود المدرسة أو أدخل رمز المدرسة المعتمد لتحديث الجداول وربط التطبيق فورياً.",
                         fontSize = 11.5.sp,
-                        color = Color(0xFF15803D)
+                        color = currentTheme.textSecondaryColor
                     )
 
-                    // Prominent Barcode Scanner Button
-                    Button(
-                        onClick = onNavigateToQrScanner,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    // Buttons: QR Scanner & Manual School Code Entry
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("مسح باركود المدرسة (QR Scanner) 📸", fontWeight = FontWeight.Black, fontSize = 13.sp)
+                        Button(
+                            onClick = onNavigateToQrScanner,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).height(46.dp)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("مسح الباركود 📸", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = { showManualCodeDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).height(46.dp)
+                        ) {
+                            Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("إدخال الرمز 🔢", fontWeight = FontWeight.Black, fontSize = 12.sp)
+                        }
                     }
 
                     // Sync & Update Now Button
@@ -450,18 +511,38 @@ fun StudentSettingsScreen(
                     }
 
                     if (testStatus != null) {
+                        val isSuccess = testStatus!!.contains("✓") || testStatus!!.contains("🔄")
                         Surface(
-                            color = if (testStatus!!.contains("✓") || testStatus!!.contains("🔄")) Color(0xFFDCFCE7) else Color(0xFFFEE2E2),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            color = if (isSuccess) Color(0xFFDCFCE7) else Color(0xFFFEE2E2),
+                            border = BorderStroke(1.dp, if (isSuccess) Color(0xFF86EFAC) else Color(0xFFFECACA)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
                         ) {
-                            Text(
-                                text = testStatus!!,
-                                modifier = Modifier.padding(10.dp),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.5.sp,
-                                color = if (testStatus!!.contains("✓") || testStatus!!.contains("🔄")) Color(0xFF166534) else Color(0xFF991B1B)
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = if (isSuccess) Color(0xFF16A34A) else Color(0xFFDC2626),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = testStatus!!,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    softWrap = true,
+                                    lineHeight = 18.sp,
+                                    color = if (isSuccess) Color(0xFF166534) else Color(0xFF991B1B),
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                            }
                         }
                     }
                 }
@@ -474,13 +555,14 @@ fun StudentSettingsScreen(
             }
 
             Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFFFFBEB)),
+                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -519,15 +601,16 @@ fun StudentSettingsScreen(
 
             // Card 4: Student User Guide
             Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFF5F3FF)),
+                border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { showHelpGuideDialog = true }
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -553,7 +636,7 @@ fun StudentSettingsScreen(
                             color = Color(0xFF166534)
                         )
                         Text(
-                            text = "إرشادات الجدول، الواجبات، ومتابعة الدروس",
+                            text = "الجدول والواجبات",
                             fontSize = 11.sp,
                             color = Color(0xFF15803D)
                         )
@@ -571,12 +654,13 @@ fun StudentSettingsScreen(
             Card(
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (viewModel.isIndependent()) Color(0xFFF0FDF4) else Color(0xFFF8FAFC)
+                containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else if (viewModel.isIndependent()) Color(0xFFECFDF5) else Color(0xFFF0FDFA)
                 ),
-                border = BorderStroke(1.2.dp, if (viewModel.isIndependent()) Color(0xFF16A34A) else Color(0xFFCBD5E1)),
+                border = BorderStroke(1.2.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else if (viewModel.isIndependent()) Color(0xFF16A34A) else Color(0xFF99F6E4)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -595,12 +679,12 @@ fun StudentSettingsScreen(
                                     "وضع الطالب المستقل 👤",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.5.sp,
-                                    color = Color(0xFF0F172A)
+                                    color = currentTheme.textPrimaryColor
                                 )
                                 Text(
-                                    if (viewModel.isIndependent()) "الحالة: مفعّل كطالب مستقل (بدون ربط مدرسي)" else "استخدام التطبيق بدون ربط بأي مدرسة لمتابعة الدروس شخصياً",
+                                    if (viewModel.isIndependent()) "مفعّل" else "استخدمه دون ربط مدرسي",
                                     fontSize = 11.sp,
-                                    color = if (viewModel.isIndependent()) Color(0xFF15803D) else Color(0xFF64748B)
+                                    color = if (viewModel.isIndependent() && !currentTheme.isDark) Color(0xFF15803D) else currentTheme.textSecondaryColor
                                 )
                             }
                         }
@@ -620,7 +704,7 @@ fun StudentSettingsScreen(
                         }
                     } else {
                         Surface(
-                            color = Color(0xFFDCFCE7),
+                            color = if (currentTheme.isDark) currentTheme.tableAltCellBg else Color(0xFFDCFCE7),
                             shape = RoundedCornerShape(8.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -628,24 +712,9 @@ fun StudentSettingsScreen(
                                 "✓ وضع الطالب المستقل نشط حالياً. يمكنك مسح باركود المدرسة في أي وقت للارتباط.",
                                 modifier = Modifier.padding(8.dp),
                                 fontSize = 11.sp,
-                                color = Color(0xFF166534),
+                                color = currentTheme.textPrimaryColor,
                                 fontWeight = FontWeight.SemiBold
                             )
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                com.school.system.utils.RoleManager.resetRoleBeforeLock(context)
-                                navController?.navigate("role_selection") {
-                                    popUpTo(0) { inclusive = true }
-                                }
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF0F766E)),
-                            border = BorderStroke(1.2.dp, Color(0xFF0D9488)),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("الرجوع إلى اختيار البوابات ↩️ (طالب / أستاذ / مدير)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         }
                     }
                 }
@@ -653,19 +722,20 @@ fun StudentSettingsScreen(
 
             // Card 5: Unlink School
             Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF1F2)),
-                border = BorderStroke(1.dp, Color(0xFFFECDD3)),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFFFF1F2)),
+                border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFFECDD3)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("إلغاء الارتباط مع المدرسة", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFFBE123C))
-                        Text("للربط مع مدرسة أخرى أو إعادة المسح", fontSize = 11.sp, color = Color(0xFF881337))
+                        Text("إلغاء الارتباط مع المدرسة", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (currentTheme.isDark) currentTheme.textPrimaryColor else Color(0xFFBE123C))
+                        Text("يمكنك إعادة الربط لاحقاً", fontSize = 11.sp, color = currentTheme.textSecondaryColor)
                     }
                     Button(
                         onClick = { showUnpairConfirmDialog = true },
@@ -695,7 +765,7 @@ fun StudentSettingsScreen(
                 Text(
                     "هل أنت متأكد من إلغاء الارتباط بالمدرسة الحالية؟ ستتمكن من مسح باركود مدرسة جديدة أو إعادة الانضمام في أي وقت.",
                     fontSize = 12.5.sp,
-                    color = Color(0xFF334155),
+                    color = currentTheme.textPrimaryColor,
                     lineHeight = 18.sp
                 )
             },
@@ -715,7 +785,7 @@ fun StudentSettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showUnpairConfirmDialog = false }) {
-                    Text("تراجع", fontWeight = FontWeight.Bold, color = Color(0xFF64748B))
+                    Text("تراجع", fontWeight = FontWeight.Bold, color = currentTheme.textSecondaryColor)
                 }
             }
         )
@@ -728,10 +798,70 @@ fun StudentSettingsScreen(
             initialSection = viewModel.studentSection,
             initialSchoolCode = viewModel.schoolCode,
             onDismiss = { showEditStudentDialog = false },
-            onSave = { newName, newGrade, newSection, newCode ->
-                viewModel.updateStudentAndSchool(newName, newGrade, newSection, newCode)
+            onSave = { newName, newGrade, newSection, _ ->
+                viewModel.updateStudentInfo(newName, newGrade, newSection)
                 showEditStudentDialog = false
                 Toast.makeText(context, "تم حفظ بيانات الطالب بنجاح 🎓", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    if (showManualCodeDialog) {
+        var manualCodeInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showManualCodeDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("ربط المدرسة بواسطة الرمز 🔢", fontWeight = FontWeight.Black, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "أدخل رمز المدرسة المعتمد الممنوح لك من قبل الإدارة لربط التطبيق وتحميل الجداول والبيانات:",
+                        fontSize = 12.5.sp,
+                        color = currentTheme.textSecondaryColor,
+                        lineHeight = 18.sp
+                    )
+                    OutlinedTextField(
+                        value = manualCodeInput,
+                        onValueChange = { manualCodeInput = it },
+                        label = { Text("رمز أو كود المدرسة") },
+                        placeholder = { Text("أدخل رمز المدرسة...") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = manualCodeInput.trim()
+                        if (clean.isNotBlank()) {
+                            viewModel.updateStudentAndSchool(
+                                viewModel.studentName,
+                                viewModel.studentGrade,
+                                viewModel.studentSection,
+                                clean
+                            )
+                            showManualCodeDialog = false
+                            Toast.makeText(context, "جاري التحقق من رمز المدرسة والربط... ⚡", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                    shape = RoundedCornerShape(10.dp),
+                    enabled = manualCodeInput.isNotBlank() && !isLoading
+                ) {
+                    Text("ربط ومزامنة ⚡", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualCodeDialog = false }) {
+                    Text("إلغاء", fontWeight = FontWeight.Bold, color = currentTheme.textSecondaryColor)
+                }
             }
         )
     }

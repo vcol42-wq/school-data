@@ -32,13 +32,6 @@ interface SupabaseApi {
         @Query("select") select: String = "*"
     ): Response<List<JoinRequest>>
 
-    @GET("grades")
-    suspend fun getStudentGrades(
-        @Query("student_record_number") recordFilter: String,
-        @Query("school_id") schoolFilter: String? = null,
-        @Query("select") select: String = "*"
-    ): Response<List<GradeDto>>
-
     @GET("students")
     suspend fun getStudents(
         @Query("school_id") schoolFilter: String,
@@ -141,4 +134,3 @@ interface SupabaseApi {
         @Query("select") select: String = "*"
     ): Response<List<TeacherDto>>
 }
-

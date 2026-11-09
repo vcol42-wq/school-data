@@ -70,12 +70,12 @@ DROP POLICY IF EXISTS directives_tenant_policy ON directives;
 -- Tenant Policy for Daily Assignments
 CREATE POLICY daily_assignments_tenant_policy ON daily_assignments
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
         OR current_user = 'postgres'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
         OR current_user = 'postgres'
     );
@@ -83,12 +83,12 @@ CREATE POLICY daily_assignments_tenant_policy ON daily_assignments
 -- Tenant Policy for Direct Messages
 CREATE POLICY direct_messages_tenant_policy ON direct_messages
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
         OR current_user = 'postgres'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
         OR current_user = 'postgres'
     );
@@ -96,12 +96,12 @@ CREATE POLICY direct_messages_tenant_policy ON direct_messages
 -- Tenant Policy for Directives
 CREATE POLICY directives_tenant_policy ON directives
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
         OR current_user = 'postgres'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
         OR current_user = 'postgres'
     );
@@ -112,3 +112,6 @@ CREATE POLICY directives_tenant_policy ON directives
 GRANT ALL ON daily_assignments TO anon, authenticated, service_role;
 GRANT ALL ON direct_messages TO anon, authenticated, service_role;
 GRANT ALL ON directives TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE daily_assignments, direct_messages, directives
+    FROM anon, authenticated;
+GRANT ALL ON TABLE daily_assignments, direct_messages, directives TO service_role;

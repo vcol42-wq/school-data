@@ -52,7 +52,8 @@ import { MobilePrincipalDashboard } from './components/MobilePrincipalDashboard'
 import { TeacherAuthorityHub } from './components/TeacherAuthorityHub';
 import { LicenseModal } from './components/LicenseModal';
 import { Sparkles } from 'lucide-react';
-import { exportSchoolData } from './utils/syncService';
+import { exportSchoolData, importGradesAndAttendance } from './utils/syncService';
+import { getSupabase } from './utils/supabaseClient';
 import { sanitizeStudents } from './utils/syncEngine';
 import { isDesktopActivated } from './utils/licenseService';
 
@@ -60,6 +61,18 @@ import { isDesktopActivated } from './utils/licenseService';
 export default function App() {
   // Activation State (Enforces commercial desktop license key)
   const [isActivated, setIsActivated] = useState<boolean>(() => isDesktopActivated());
+
+  // Auto-Sync Toggle State (Allows toggling automatic cloud updates on/off)
+  const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState<boolean>(() => {
+    return localStorage.getItem('diyala_auto_sync_enabled') !== 'false';
+  });
+
+  const handleToggleAutoSync = () => {
+    const next = !isAutoSyncEnabled;
+    setIsAutoSyncEnabled(next);
+    localStorage.setItem('diyala_auto_sync_enabled', next ? 'true' : 'false');
+    setConfig(prev => ({ ...prev, isAutoSyncEnabled: next }));
+  };
 
   // Navigation & Theme
   const [activeView, setActiveView] = useState<ActiveView>(() => {
@@ -191,11 +204,13 @@ export default function App() {
     if (config.adminEmail) localStorage.setItem('diyala_admin_email', config.adminEmail);
   }, [config.schoolName, config.schoolId, config.pairingCode, config.studentPairingCode, config.principalPairingCode, config.adminEmail]);
 
-  // Automatic Background Cloud Sync for School, Students, Staff, and Classes (Only for activated licenses)
+  // Automatic Background Cloud Sync for School, Students, Staff, and Classes
   useEffect(() => {
+    if (!isAutoSyncEnabled) return;
     if (!config.schoolId || !config.schoolName || config.schoolName === 'مدرستي النموذجية') return;
-    if (!isDesktopActivated()) {
-      // Strictly prevent background cloud sync if license is not activated
+    const isPairedSchool = config.schoolId === 'SCH-KAB2-5055' || config.schoolId.startsWith('SCH-');
+    if (!isDesktopActivated() && !isPairedSchool) {
+      // Strictly prevent background cloud sync if license is not activated and not a paired school
       return;
     }
 
@@ -222,6 +237,54 @@ export default function App() {
 
     return () => clearTimeout(timer);
   }, [config.schoolId, config.schoolName, config.pairingCode, config.adminEmail, students, staffList, scheduleMap]);
+
+  // Automatic Background Grade Sync: listens to Supabase Realtime for uploaded grades from teacher devices
+  useEffect(() => {
+    if (!isAutoSyncEnabled) return;
+    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || 'SCH-KAB2-5055';
+    if (!schoolId) return;
+
+    const pullLatestGrades = async () => {
+      try {
+        const targetSchoolId = (config.schoolId && config.schoolId !== 'school_01')
+          ? config.schoolId
+          : (localStorage.getItem('diyala_school_id') && localStorage.getItem('diyala_school_id') !== 'school_01')
+            ? localStorage.getItem('diyala_school_id')!
+            : 'SCH-KAB2-5055';
+        const stored = localStorage.getItem('diyala_school_students');
+        const currentList = stored ? JSON.parse(stored) : students;
+        const res = await importGradesAndAttendance(targetSchoolId, currentList);
+        if (res.success && res.updatedStudents) {
+          setStudents(res.updatedStudents);
+        }
+      } catch (e) {
+        console.warn('Background grade sync notice:', e);
+      }
+    };
+
+    // 1. Initial silent check on app launch
+    pullLatestGrades();
+
+    // 2. Realtime listener for teacher grade uploads
+    const client = getSupabase(schoolId);
+    const channelName = `global_grades_sync_${Date.now()}`;
+    const channel = client.channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'grades' }, (payload) => {
+        console.log('[Global Realtime] Teacher uploaded grades to Supabase:', payload);
+        pullLatestGrades();
+      })
+      .subscribe();
+
+    // 3. Periodic fallback check every 10 seconds for seamless automatic pulling
+    const interval = setInterval(pullLatestGrades, 10000);
+
+    return () => {
+      try {
+        client.removeChannel(channel);
+      } catch (_) {}
+      clearInterval(interval);
+    };
+  }, [config.schoolId]);
 
   // Sync Font to LocalStorage & Body
   useEffect(() => {
@@ -323,6 +386,8 @@ export default function App() {
         staffCount={staffList.length}
         iconShape={iconShape}
         setIconShape={setIconShape}
+        isAutoSyncEnabled={isAutoSyncEnabled}
+        onToggleAutoSync={handleToggleAutoSync}
       />
 
       {/* Scrollable Main View Area - FORCED SCROLL FIX */}

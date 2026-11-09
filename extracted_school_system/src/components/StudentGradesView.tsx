@@ -25,6 +25,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { importGradesAndAttendance, normalizeArabic } from '../utils/syncService';
+import { getSupabase } from '../utils/supabaseClient';
 import { 
   standardizeSubjectName, 
   standardizeGradeName, 
@@ -217,30 +218,102 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
     });
   };
 
-  // سحب الدرجات المرفوعة من تطبيق الأستاذ
-  const handlePullCloudGrades = async () => {
-    const schoolId = config.schoolId || localStorage.getItem('diyala_school_id') || '';
-    if (!schoolId) {
-      setPullMsg('⚠️ يرجى ضبط ومعايرة معرف المدرسة أولاً من الإعدادات قبل سحب الدرجات.');
-      return;
+  // سحب الدرجات المرفوعة من تطبيق الأستاذ مع دعم الوضع الصامت للعمل التلقائي
+  const handlePullCloudGrades = async (silent: boolean = false) => {
+    const schoolId = (config.schoolId && config.schoolId !== 'school_01')
+      ? config.schoolId
+      : (localStorage.getItem('diyala_school_id') && localStorage.getItem('diyala_school_id') !== 'school_01')
+        ? localStorage.getItem('diyala_school_id')!
+        : 'SCH-KAB2-5055';
+    if (!silent) {
+      setIsPulling(true);
+      setPullMsg('جارٍ جلب وتحديث درجات الطلاب من سحابة تطبيق الأستاذ...');
     }
-    setIsPulling(true);
-    setPullMsg('جارٍ جلب وتحديث درجات الطلاب من سحابة تطبيق الأستاذ...');
     try {
       const result = await importGradesAndAttendance(schoolId, students, config.customSupabaseUrl, config.customSupabaseKey);
-      if (result.success && result.students) {
-        setStudents(result.students);
-        setPullMsg(`✅ تم تحديث ${result.gradesCount || 0} سجلاً للدرجات بنجاح من تطبيق الأستاذ!`);
-      } else {
-        setPullMsg(`⚠️ تعذر جلب الدرجات: ${result.error || 'تحقق من اتصال الإنترنت'}`);
+      if (result.success && result.updatedStudents) {
+        setStudents(result.updatedStudents);
+        // Refresh subject list from localStorage if new subjects were added
+        try {
+          const updatedSubs = localStorage.getItem('diyala_school_grade_subjects');
+          if (updatedSubs) setSubjectList(JSON.parse(updatedSubs));
+        } catch (_) {}
+
+        if (!silent) {
+          setPullMsg(`✅ تم تحديث ${result.gradesCount || 0} سجلاً للدرجات بنجاح من تطبيق الأستاذ!`);
+        } else if (result.gradesCount && result.gradesCount > 0) {
+          setPullMsg(`⚡ مزامنة تلقائية: تم استلام ${result.gradesCount} سجلاً للدرجات وتحديث السجل فوراً!`);
+        }
+      } else if (!silent) {
+        setPullMsg(`⚠️ تعذر جلب الدرجات: ${result.message || 'تحقق من اتصال الإنترنت'}`);
       }
     } catch (err: any) {
-      setPullMsg(`❌ خطأ في الاتصال: ${err.message || err}`);
+      if (!silent) {
+        setPullMsg(`❌ خطأ في الاتصال: ${err.message || err}`);
+      }
     } finally {
-      setIsPulling(false);
+      if (!silent) {
+        setIsPulling(false);
+      }
       setTimeout(() => setPullMsg(''), 6000);
     }
   };
+
+  // 1. مزامنة فورية صامتة عند فتح شاشة الدرجات
+  useEffect(() => {
+    handlePullCloudGrades(true);
+  }, []);
+
+  // 2. الاستماع اللحظي (Supabase Realtime) للتحديث التلقائي الفوري فور قيام أي أستاذ بالرفع
+  useEffect(() => {
+    const schoolId = (config.schoolId && config.schoolId !== 'school_01')
+      ? config.schoolId
+      : (localStorage.getItem('diyala_school_id') && localStorage.getItem('diyala_school_id') !== 'school_01')
+        ? localStorage.getItem('diyala_school_id')!
+        : 'SCH-KAB2-5055';
+    const client = getSupabase(schoolId);
+    const channelName = `grades_live_${Date.now()}`;
+    const channel = client.channel(channelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'grades' }, (payload) => {
+        console.log('[Realtime] Grades updated in cloud:', payload);
+        handlePullCloudGrades(true);
+      })
+      .subscribe();
+
+    return () => {
+      try {
+        client.removeChannel(channel);
+      } catch (_) {}
+    };
+  }, [config.schoolId]);
+
+  // 3. فحص دوري كل 10 ثوانٍ كضمان إضافي لجلب الدرجات تلقائياً
+  useEffect(() => {
+    if (localStorage.getItem('diyala_auto_sync_enabled') === 'false') return;
+    const interval = setInterval(() => {
+      if (localStorage.getItem('diyala_auto_sync_enabled') === 'false') return;
+      handlePullCloudGrades(true);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [students]);
+
+  // استكشاف المواد التي تحتوي على درجات فعلية مسجلة
+  const subjectsWithGrades = React.useMemo(() => {
+    const set = new Set<string>();
+    students.forEach(s => {
+      (s.marksHistory || []).forEach(m => {
+        const hasScore = (m.total && m.total > 0) || 
+                         (m.finalGrade && m.finalGrade > 0) ||
+                         (m.m1MonthAvg && m.m1MonthAvg > 0) ||
+                         (m.m1Written && m.m1Written > 0) ||
+                         (Array.isArray(m.m1Daily) && m.m1Daily.some(d => d > 0));
+        if (hasScore && m.subject) {
+          set.add(m.subject);
+        }
+      });
+    });
+    return Array.from(set);
+  }, [students]);
 
   // تصفية الطلاب
   const filteredStudents = students
@@ -301,7 +374,7 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
           {/* Cloud Pull Button */}
           <button
             type="button"
-            onClick={handlePullCloudGrades}
+            onClick={() => handlePullCloudGrades(false)}
             disabled={isPulling}
             className={`px-4 py-2.5 rounded-xl font-black text-xs shadow-md transition-all flex items-center gap-2 cursor-pointer ${
               isPulling 
@@ -330,14 +403,37 @@ export const StudentGradesView: React.FC<StudentGradesViewProps> = ({
       {/* Cloud Pull Status Notice */}
       {pullMsg && (
         <div className={`p-3.5 rounded-2xl text-xs font-bold flex items-center gap-2 border shadow-xs animate-in fade-in duration-200 ${
-          pullMsg.startsWith('✅') 
+          pullMsg.startsWith('✅') || pullMsg.startsWith('⚡')
             ? 'bg-emerald-50 text-emerald-900 border-emerald-300' 
             : pullMsg.startsWith('❌') 
               ? 'bg-rose-50 text-rose-900 border-rose-300' 
               : 'bg-amber-50 text-amber-900 border-amber-300'
         }`}>
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
           <span>{pullMsg}</span>
+        </div>
+      )}
+
+      {/* Discovered Grades Live Badge */}
+      {subjectsWithGrades.length > 0 && (
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 border border-emerald-200/80 p-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950 font-bold shadow-xs">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span className="font-black text-slate-800">درجات مستلمة من الأستاذ ومحفوظة في السجل للمواد:</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {subjectsWithGrades.map(subj => (
+                <span key={subj} className="bg-emerald-600 text-white px-2.5 py-0.5 rounded-lg text-[11px] font-black shadow-2xs">
+                  {subj}
+                </span>
+              ))}
+            </div>
+          </div>
+          <span className="text-[10px] text-emerald-800 bg-emerald-100/70 px-2.5 py-1 rounded-lg border border-emerald-300/60 font-black">
+            مزامنة سحابية لحظية نشطة ⚡
+          </span>
         </div>
       )}
 

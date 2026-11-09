@@ -21,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
@@ -245,7 +244,6 @@ fun SchoolSystemTheme(
             }
             val activity = ctx as? Activity
             activity?.window?.let { window ->
-                window.statusBarColor = activeTheme.primaryColor.toArgb()
                 WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !activeTheme.isDark
             }
         }

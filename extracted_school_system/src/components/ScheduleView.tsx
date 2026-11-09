@@ -116,8 +116,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
           lessonDurationMinutes: Number(config.lessonDurationMinutes) || 45,
           breakDurationMinutes: Number(config.breakDurationMinutes) || 10,
           customLessonDurations: config.customLessonDurations || [45, 45, 45, 45, 45, 45],
-          customBreakDurations: config.customBreakDurations || [10, 10, 10, 10, 10],
-          customLessonDurations: config.customLessonDurations || [45, 45, 45, 45, 45, 45],
           customBreakDurations: config.customBreakDurations || [10, 10, 10, 10, 10]
         }
       };
@@ -347,8 +345,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             schoolStartHour: config.schoolStartHour || '08:00',
             lessonDurationMinutes: Number(config.lessonDurationMinutes) || 45,
             breakDurationMinutes: Number(config.breakDurationMinutes) || 10,
-          customLessonDurations: config.customLessonDurations || [45, 45, 45, 45, 45, 45],
-          customBreakDurations: config.customBreakDurations || [10, 10, 10, 10, 10],
             customLessonDurations: config.customLessonDurations || [45, 45, 45, 45, 45, 45],
             customBreakDurations: config.customBreakDurations || [10, 10, 10, 10, 10]
           }

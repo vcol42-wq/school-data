@@ -174,10 +174,7 @@ CREATE TABLE IF NOT EXISTS app_config (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Insert Default Gemini Key in app_config
-INSERT INTO app_config (key, value, description)
-VALUES ('gemini_api_key', 'AIzaSyA92sLsbAsl9HXjEQb2fsADFeOTsvi6aGQ', 'Default Gemini AI Key for all apps')
-ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+-- Store Gemini credentials only through a trusted, access-controlled server.
 
 -- ==============================================================================
 -- ENABLE ROW LEVEL SECURITY (RLS) ON ALL TABLES
@@ -208,166 +205,150 @@ BEGIN
         SELECT policyname, tablename 
         FROM pg_policies 
         WHERE schemaname = 'public'
+          AND tablename = ANY (ARRAY[
+              'schools', 'teachers', 'classes', 'subjects', 'teacher_assignments',
+              'students', 'grades', 'attendance', 'daily_assignments',
+              'direct_messages', 'schedules', 'directives', 'join_requests',
+              'app_config', 'session_upload_tokens', 'subject_assignments'
+          ])
     LOOP
         EXECUTE format('DROP POLICY IF EXISTS %I ON %I', pol.policyname, pol.tablename);
     END LOOP;
 END $$;
 
 -- ==============================================================================
--- DEFINE HIGH-PERFORMANCE RLS POLICIES (Multi-Tenant Isolation via x-school-id)
+-- TENANT POLICIES FOR EXISTING DIRECT-SYNC TABLES
+-- Grades are restricted to the server-verified RPC in secure_grade_access.sql.
 -- ==============================================================================
 
--- 1. Schools Policies:
--- Allow SELECT for all clients (Needed for Pairing Code / ID discovery during onboarding)
 CREATE POLICY school_select_policy ON schools
     FOR SELECT USING (true);
 
--- Allow INSERT / UPDATE / DELETE only when matching header or service_role
 CREATE POLICY school_modify_policy ON schools
     FOR ALL USING (
-        id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 2. Teachers Policy:
 CREATE POLICY teachers_tenant_policy ON teachers
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 3. Classes Policy:
 CREATE POLICY classes_tenant_policy ON classes
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 4. Subjects Policy:
 CREATE POLICY subjects_tenant_policy ON subjects
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 5. Teacher Assignments Policy:
 CREATE POLICY assignments_tenant_policy ON teacher_assignments
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 6. Students Policy:
 CREATE POLICY students_tenant_policy ON students
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 7. Grades Policy:
 CREATE POLICY grades_tenant_policy ON grades
-    FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR current_user = 'service_role'
-    )
-    WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR current_user = 'service_role'
-    );
+    FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
 
--- 8. Attendance Policy:
 CREATE POLICY attendance_tenant_policy ON attendance
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 9. Daily Assignments Policy:
 CREATE POLICY daily_assignments_tenant_policy ON daily_assignments
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 10. Direct Messages Policy:
 CREATE POLICY direct_messages_tenant_policy ON direct_messages
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 11. Schedules Policy:
 CREATE POLICY schedules_tenant_policy ON schedules
     FOR ALL USING (
-        id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
+        OR school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
+        OR school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 12. Directives Policy:
 CREATE POLICY directives_tenant_policy ON directives
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 13. Join Requests Policy:
 CREATE POLICY join_requests_tenant_policy ON join_requests
     FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     )
     WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
+        school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', '')
         OR current_user = 'service_role'
     );
 
--- 14. App Config Policy:
 CREATE POLICY app_config_read_policy ON app_config
     FOR SELECT USING (true);
 
@@ -403,16 +384,10 @@ ALTER TABLE session_upload_tokens ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS session_tokens_tenant_policy ON session_upload_tokens;
 CREATE POLICY session_tokens_tenant_policy ON session_upload_tokens
-    FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
-        OR current_user = 'service_role'
-    )
-    WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '')
-        OR current_user = 'service_role'
-    );
+    FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON session_upload_tokens TO anon, authenticated;
+REVOKE ALL ON TABLE session_upload_tokens FROM anon, authenticated;
+GRANT ALL ON TABLE session_upload_tokens TO service_role;
 
 -- ==============================================================================
 -- 16. Subject Assignments Table (for staff authority, teaching quotas & PIN verification)
@@ -437,15 +412,11 @@ ALTER TABLE subject_assignments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS subject_assignments_tenant_policy ON subject_assignments;
 CREATE POLICY subject_assignments_tenant_policy ON subject_assignments
-    FOR ALL USING (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR current_user = 'service_role'
-        OR current_user = 'postgres'
-    )
-    WITH CHECK (
-        school_id = coalesce(current_setting('request.headers', true)::json->>'x-school-id', '') 
-        OR current_user = 'service_role'
-        OR current_user = 'postgres'
-    );
+    FOR SELECT TO anon, authenticated
+    USING (school_id = COALESCE(current_setting('request.headers', true)::json->>'x-school-id', ''));
 
-GRANT ALL ON subject_assignments TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE subject_assignments FROM anon, authenticated;
+GRANT SELECT (school_id, grade, section, subject, is_locked, teacher_name, last_updated_at)
+    ON subject_assignments TO anon, authenticated;
+GRANT ALL ON TABLE subject_assignments TO service_role;
+GRANT ALL ON SEQUENCE subject_assignments_id_seq TO service_role;

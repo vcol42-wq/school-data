@@ -23,6 +23,9 @@ interface AbsenceDao {
 
     @Query("SELECT studentId, COUNT(*) as count FROM absences WHERE dateString < :cutoffDate GROUP BY studentId")
     suspend fun getExpiredAbsencesCount(cutoffDate: String): List<StudentAbsenceCount>
+
+    @Query("DELETE FROM absences")
+    suspend fun clearAll()
 }
 
 data class StudentAbsenceCount(

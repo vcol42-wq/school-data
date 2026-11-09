@@ -49,12 +49,46 @@ class SyncService : Service() {
                 try {
                     val config = configDao.getConfig().first()
                     if (config != null && (config.isActivated || config.isVerified) && config.schoolId.isNotBlank() && config.schoolId != "school_01") {
+                        // 1. Validate session integrity first
+                        val isSessionValid = syncManager.validateSessionIntegrity()
+                        if (!isSessionValid) {
+                            Log.w("SyncService", "Session integrity validation failed: locked! Aborting class sync.")
+                            delay(60000)
+                            continue
+                        }
+
+                        // التحقق من تفعيل التحديث والمزامنة السحابية من قبل المستخدم
+                        if (!config.isCloudSyncEnabled) {
+                            Log.d("SyncService", "SyncService background execution paused: isCloudSyncEnabled is false")
+                            delay(30000)
+                            continue
+                        }
+
                         Log.d("SyncService", "SyncService background execution - syncing all classes")
                         val packages = packageDao.getAllPackagesList()
                         for (pkg in packages) {
                             val success = syncManager.syncGrades(pkg.grade, pkg.section, pkg.subject)
                             Log.d("SyncService", "Synced class: ${pkg.grade}-${pkg.section} [${pkg.subject}] - success = $success")
+
+                            // 2. تحديث أسماء الطلاب والقوائم آلياً من السحابة
+                            try {
+                                syncManager.downloadSimpleRosterForClass(pkg.grade, pkg.section, pkg.subject)
+                            } catch (e: Exception) {
+                                Log.e("SyncService", "Error auto-updating roster for ${pkg.grade}-${pkg.section}: ${e.message}")
+                            }
                         }
+
+                        // 3. تحديث جدول الحصص الأسبوعي والودجت آلياً من السحابة
+                        try {
+                            val schedOk = syncManager.downloadSchedule(applicationContext)
+                            if (schedOk) {
+                                com.school.system.widget.WidgetScheduleHelper.updateAllWidgets(applicationContext)
+                                com.school.system.widget.WidgetScheduleHelper.scheduleNextLessonWidgetUpdate(applicationContext)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("SyncService", "Error auto-downloading schedule: ${e.message}")
+                        }
+
                         // Check for new directives and broadcast notification
                         try {
                             syncRepository.fetchAndNotifyDirectives(config.schoolId)

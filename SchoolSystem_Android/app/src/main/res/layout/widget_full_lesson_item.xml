@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:background="@drawable/widget_item_bg"
-    android:padding="12dp"
+    android:padding="14dp"
     android:gravity="center_vertical">
 
     <!-- Class, Subject & Teacher Info -->
@@ -53,8 +53,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="الصف الخامس (أ) • أ. محمد علي"
-            android:textColor="#94A3B8"
-            android:textSize="12.5sp"
+            android:textColor="#CBD5E1"
+            android:textSize="13sp"
             android:layout_marginTop="3dp" />
     </LinearLayout>
 

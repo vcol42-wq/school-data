@@ -33,7 +33,13 @@ export const TeacherGraduatedRegister: React.FC<TeacherGraduatedRegisterProps> =
   selectedSection,
   schoolName
 }) => {
-  const [selectedSubject, setSelectedSubject] = useState<string>(() => subjectsList[0] || 'الرياضيات');
+  const [selectedSubject, setSelectedSubject] = useState<string>(() => {
+    const subjWithMarks = subjectsList.find(s => {
+      const norm = normalizeArabic(s);
+      return students.some(std => (std.marksHistory || []).some(m => normalizeArabic(m.subject) === norm && ((m.total && m.total > 0) || (m.m1MonthAvg && m.m1MonthAvg > 0) || (m.m1Written && m.m1Written > 0))));
+    });
+    return subjWithMarks || subjectsList[0] || 'الرياضيات';
+  });
   const [showThirdMonthTerm1, setShowThirdMonthTerm1] = useState<boolean>(false);
   const [showThirdMonthTerm2, setShowThirdMonthTerm2] = useState<boolean>(false);
 

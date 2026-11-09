@@ -52,43 +52,29 @@ ALTER TABLE public.desktop_licenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.app_releases ENABLE ROW LEVEL SECURITY;
 
 -- 5. RLS Policies:
--- Allow anyone to read active release links
+-- Allow anyone to read active release links only.
 DROP POLICY IF EXISTS "Public can view active releases" ON public.app_releases;
 CREATE POLICY "Public can view active releases"
-ON public.app_releases FOR SELECT
+ON public.app_releases FOR SELECT TO anon, authenticated
 USING (is_active = true);
 
--- Allow public update of releases (if needed for link refresh)
 DROP POLICY IF EXISTS "Allow release links update" ON public.app_releases;
-CREATE POLICY "Allow release links update"
-ON public.app_releases FOR ALL
-USING (true)
-WITH CHECK (true);
+REVOKE ALL ON TABLE public.app_releases FROM anon, authenticated;
+GRANT SELECT ON TABLE public.app_releases TO anon, authenticated;
+GRANT ALL ON TABLE public.app_releases TO service_role;
 
--- Allow reading license status by license_key
+-- License reads and mutations require the trusted server role.
 DROP POLICY IF EXISTS "Anyone can check license validity" ON public.desktop_licenses;
-CREATE POLICY "Anyone can check license validity"
-ON public.desktop_licenses FOR SELECT
-USING (true);
-
--- Allow activating an unactivated license
 DROP POLICY IF EXISTS "Allow activation of unused license" ON public.desktop_licenses;
-CREATE POLICY "Allow activation of unused license"
-ON public.desktop_licenses FOR UPDATE
-USING (is_activated = false OR machine_fingerprint IS NOT NULL)
-WITH CHECK (true);
-
--- Allow insert by anon/authenticated (for license generation)
 DROP POLICY IF EXISTS "Allow license generation" ON public.desktop_licenses;
-CREATE POLICY "Allow license generation"
-ON public.desktop_licenses FOR INSERT
-WITH CHECK (true);
+DROP POLICY IF EXISTS "Deny public license access" ON public.desktop_licenses;
+CREATE POLICY "Deny public license access"
+ON public.desktop_licenses FOR ALL TO anon, authenticated
+USING (false)
+WITH CHECK (false);
 
--- 6. Grant Permissions to API Roles (Crucial for PostgREST & Anon Key)
-GRANT ALL ON public.desktop_licenses TO anon, authenticated, service_role;
-GRANT ALL ON public.app_releases TO anon, authenticated, service_role;
+REVOKE ALL ON TABLE public.desktop_licenses FROM anon, authenticated;
+GRANT ALL ON TABLE public.desktop_licenses TO service_role;
 
 -- 7. Reload Schema Cache for PostgREST API
 NOTIFY pgrst, 'reload schema';
-
-

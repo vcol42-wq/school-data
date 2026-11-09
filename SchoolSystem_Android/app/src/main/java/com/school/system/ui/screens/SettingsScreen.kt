@@ -1,6 +1,7 @@
 package com.school.system.ui.screens
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -97,7 +98,7 @@ class SettingsViewModel @Inject constructor(
         try {
             val current = configDao.getConfig().first() ?: SchoolConfig()
             if (current.schoolId.isEmpty() || !current.isVerified) {
-                _connectionStatus.value = "الوضع المحلي (أوفلاين) 👤"
+                _connectionStatus.value = "غير متصل"
                 return
             }
 
@@ -133,18 +134,13 @@ class SettingsViewModel @Inject constructor(
             }
             
             if (response == null) {
-                _connectionStatus.value = "السحابة: تعذر الوصول إلى الخادم (تأكد من الإنترنت)"
+                _connectionStatus.value = "غير متصل"
                 return
             }
 
-            _connectionStatus.value = when (response.code) {
-                200 -> "السحابة: متصل ومصادق ✓ (المزامنة السحابية نشطة)"
-                401, 403 -> "السحابة: متصل ولكن يتطلب تفعيل الصلاحيات (401)"
-                404 -> "السحابة: تعذر العثور على بيانات المدرسة"
-                else -> "السحابة: تعذر إكمال الفحص (رمز ${response.code})"
-            }
+            _connectionStatus.value = "متصل"
         } catch (e: Exception) {
-            _connectionStatus.value = "السحابة: تعذر إكمال الفحص، حاول مرة أخرى"
+            _connectionStatus.value = "غير متصل"
         }
     }
 
@@ -197,7 +193,26 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { syncManager.fetchDataFromPrincipal() }
     }
 
-    fun unpairSchool() {
+    fun unpairSchool(context: Context? = null) {
+        viewModelScope.launch {
+            if (context != null) {
+                syncManager.purgeEnrolledSchoolData(context)
+            } else {
+                val current = configDao.getConfig().first() ?: SchoolConfig()
+                configDao.saveConfig(current.copy(
+                    schoolId = "",
+                    schoolName = "",
+                    pairingCode = "",
+                    isVerified = false,
+                    isActivated = false,
+                    syncSealToken = null
+                ))
+            }
+            _connectionStatus.value = "غير متصل"
+        }
+    }
+
+    private fun legacyUnpair() {
         viewModelScope.launch {
             val current = configDao.getConfig().first() ?: SchoolConfig()
             configDao.saveConfig(current.copy(
@@ -208,7 +223,7 @@ class SettingsViewModel @Inject constructor(
                 isActivated = false,
                 syncSealToken = null
             ))
-            _connectionStatus.value = "الوضع المحلي (أوفلاين) 👤"
+            _connectionStatus.value = "غير متصل"
         }
     }
 
@@ -225,10 +240,18 @@ class SettingsViewModel @Inject constructor(
     fun updateTeacherProfile(name: String, email: String) {
         viewModelScope.launch {
             val current = configDao.getConfig().first() ?: SchoolConfig()
+            val newManager = if (current.role == "supervisor") name.trim() else current.managerName
             configDao.saveConfig(current.copy(
-                managerName = name.trim(),
+                managerName = newManager,
                 userEmail = email.trim()
             ))
+        }
+    }
+
+    fun setCloudSyncEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = configDao.getConfig().first() ?: SchoolConfig()
+            configDao.saveConfig(current.copy(isCloudSyncEnabled = enabled))
         }
     }
 
@@ -244,8 +267,9 @@ class SettingsViewModel @Inject constructor(
     fun saveTeacherProfileAndSubject(name: String, email: String, subject: String, gender: String) {
         viewModelScope.launch {
             val current = configDao.getConfig().first() ?: SchoolConfig()
+            val newManager = if (current.role == "supervisor") name.trim() else current.managerName
             configDao.saveConfig(current.copy(
-                managerName = name.trim(),
+                managerName = newManager,
                 userEmail = email.trim()
             ))
             if (subject.isNotBlank()) {
@@ -265,7 +289,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun saveSchoolIdentity(schoolName: String, directorateName: String, managerName: String) {
+    fun saveSchoolIdentity(schoolName: String, directorateName: String, managerName: String = "") {
         viewModelScope.launch {
             val current = configDao.getConfig().first() ?: SchoolConfig()
             val cleanSchool = schoolName.trim()
@@ -438,18 +462,28 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun exportBackup(context: Context, onReady: (java.io.File) -> Unit) {
+    fun exportBackup(
+        context: Context,
+        onReady: (java.io.File) -> Unit,
+        onError: (String) -> Unit = {}
+    ) {
         viewModelScope.launch {
             try {
                 val packages = packageDao.getAllPackagesList()
                 val students = studentDao.getAllStudentsList()
                 val currentConfig = configDao.getConfig().first()
 
+                val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                val resolvedTeacher = prefs.getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                    ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                    ?: (if (currentConfig?.role == "supervisor") currentConfig?.managerName else "")
+                    ?: ""
+
                 val backupJson = org.json.JSONObject().apply {
                     put("appName", "SmartTeacherRegister")
                     put("version", "2.5")
                     put("exportDate", java.time.LocalDateTime.now().toString())
-                    put("teacherName", currentConfig?.managerName ?: "")
+                    put("teacherName", resolvedTeacher)
                     put("teacherEmail", currentConfig?.userEmail ?: "")
 
                     val pkgsArray = org.json.JSONArray()
@@ -481,6 +515,7 @@ class SettingsViewModel @Inject constructor(
                 onReady(backupFile)
             } catch (e: Exception) {
                 e.printStackTrace()
+                onError(e.localizedMessage ?: "تعذر إنشاء النسخة الاحتياطية")
             }
         }
     }
@@ -491,6 +526,8 @@ class SettingsViewModel @Inject constructor(
 fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToQrScanner: () -> Unit,
+    isAppLockEnabled: Boolean = false,
+    onAppLockEnabledChange: (Boolean) -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     navController: androidx.navigation.NavController? = null
 ) {
@@ -510,6 +547,15 @@ fun SettingsScreen(
 
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE) }
+    val currentTheme = com.school.system.ui.theme.LocalAppTheme.current
+    val settingsFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = currentTheme.textPrimaryColor,
+        unfocusedTextColor = currentTheme.textPrimaryColor,
+        focusedContainerColor = currentTheme.surfaceColor,
+        unfocusedContainerColor = currentTheme.surfaceColor,
+        focusedLabelColor = currentTheme.primaryColor,
+        unfocusedLabelColor = currentTheme.textSecondaryColor
+    )
 
     val quickSubjects = listOf(
         "اللغة العربية", "الرياضيات", "التربية الإسلامية", "اللغة الإنكليزية",
@@ -535,16 +581,34 @@ fun SettingsScreen(
     var showUnpairConfirmDialog by remember { mutableStateOf(false) }
     var showConnectWarningDialog by remember { mutableStateOf(false) }
     var showManualCodeDialog by remember { mutableStateOf(false) }
+    var showCloudBackupDialog by remember { mutableStateOf(false) }
+    var cloudBackupEmail by remember {
+        mutableStateOf(prefs.getString("cloud_backup_email", "") ?: "")
+    }
     var directCodeInput by remember { mutableStateOf("") }
     val clipboardManager = LocalClipboardManager.current
     val connectionStatus by viewModel.connectionStatus.collectAsState()
 
     val scope = rememberCoroutineScope()
     val isPaired = config?.isVerified == true && !config?.schoolId.isNullOrEmpty()
+    var currentSubPage by remember { mutableIntStateOf(0) }
+
+    if (currentSubPage == 1) {
+        BackHandler { currentSubPage = 0 }
+    }
 
     LaunchedEffect(config) {
         config?.let { 
-            if (it.managerName.isNotBlank()) teacherName = it.managerName
+            val activeRole = com.school.system.utils.RoleManager.getSelectedRole(context)
+            val isSuper = (it.role == "supervisor" && activeRole == com.school.system.utils.AppRole.PRINCIPAL)
+            isSupervisorMode = isSuper
+            val savedTeacher = prefs.getString("teacher_name", "")?.takeIf { s -> s.isNotBlank() }
+                ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("teacher_name", "")?.takeIf { s -> s.isNotBlank() }
+            if (!savedTeacher.isNullOrBlank()) {
+                teacherName = savedTeacher
+            } else if (isSuper && it.managerName.isNotBlank()) {
+                teacherName = it.managerName
+            }
             if (it.schoolName.isNotBlank() && it.schoolName != "مدرسة سحابية" && it.schoolName != "سجل مستقل (أوفلاين)") {
                 schoolNameInput = it.schoolName
             }
@@ -554,24 +618,22 @@ fun SettingsScreen(
             teacherEmail = it.userEmail
             geminiApiKeyInput = it.geminiApiKey
             isAiEnabled = it.isAiActivated
-            val activeRole = com.school.system.utils.RoleManager.getSelectedRole(context)
-            isSupervisorMode = (it.role == "supervisor" && activeRole == com.school.system.utils.AppRole.PRINCIPAL)
         }
     }
 
     Scaffold(
-        containerColor = Color(0xFFF8FAFC),
+        containerColor = currentTheme.backgroundColor,
         topBar = {
             TopAppBar(
                 title = { 
                     Column {
-                        Text("إعدادات المنظومة ⚙️", fontWeight = FontWeight.Black, fontSize = 17.sp, color = Color(0xFF0F172A))
-                        Text("إدارة الحساب والمزامنة السحابية", fontSize = 11.sp, color = Color(0xFF64748B), fontWeight = FontWeight.Normal)
+                        Text(if (currentSubPage == 0) "الإعدادات ⚙️" else "المزيد ⚙️", fontWeight = FontWeight.Black, fontSize = 17.sp, color = currentTheme.textPrimaryColor)
+                        Text(if (currentSubPage == 0) "الحساب والربط" else "النسخ الاحتياطي", fontSize = 11.sp, color = currentTheme.textSecondaryColor, fontWeight = FontWeight.Normal)
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع", tint = Color(0xFF1E293B))
+                    IconButton(onClick = { if (currentSubPage == 0) onBack() else currentSubPage = 0 }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "رجوع", tint = currentTheme.textPrimaryColor)
                     }
                 },
                 actions = {
@@ -579,7 +641,7 @@ fun SettingsScreen(
                         Icon(Icons.Default.Info, contentDescription = "دليل الاستخدام والتعليمات", tint = Color(0xFF2563EB))
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = currentTheme.surfaceColor)
             )
         }
     ) { padding ->
@@ -587,22 +649,104 @@ fun SettingsScreen(
             modifier = Modifier
                 .padding(padding)
                 .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // بطاقة ملخص هوية الأستاذ وحالة المزامنة
+            if (currentSubPage == 0) {
+                // بطاقة بيانات الأستاذ وحفظ المعلومات
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFF0F9FF),
+                    border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFBAE6FD)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                                modifier = Modifier.size(42.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = Color(0xFF2563EB),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "اسم الأستاذ 👤",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 15.sp,
+                                    color = currentTheme.textPrimaryColor
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = teacherName,
+                            onValueChange = { 
+                                teacherName = it 
+                                prefs.edit().putString("teacher_name", it.trim()).apply()
+                            },
+                            label = { Text("اسم الأستاذ الكامل") },
+                            placeholder = { Text("اكتب اسمك الكامل") },
+                            leadingIcon = { Icon(Icons.Default.Badge, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = settingsFieldColors
+                        )
+
+                        Button(
+                            onClick = {
+                                prefs.edit()
+                                    .putString("teacher_name", teacherName.trim())
+                                    .apply()
+                                viewModel.saveTeacherProfileAndSubject(teacherName, teacherEmail, teacherSubject, schoolGender)
+                                Toast.makeText(context, "تم حفظ المعلومات بنجاح ✓", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "حفظ المعلومات 💾", 
+                                    fontWeight = FontWeight.Black, 
+                                    fontSize = 13.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (currentSubPage == 1 && false) {
             Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                shadowElevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFF0FDF4),
+                border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFBBF7D0)),
+                shadowElevation = 4.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
@@ -625,13 +769,13 @@ fun SettingsScreen(
                             text = teacherName.ifBlank { "أستاذ المادة" },
                             fontWeight = FontWeight.Black,
                             fontSize = 15.sp,
-                            color = Color(0xFF0F172A)
+                            color = currentTheme.textPrimaryColor
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(
                             text = "مادة: $teacherSubject • $schoolGender",
                             fontSize = 12.sp,
-                            color = Color(0xFF64748B),
+                            color = currentTheme.textSecondaryColor,
                             fontWeight = FontWeight.Medium
                         )
                     }
@@ -641,7 +785,7 @@ fun SettingsScreen(
                         border = BorderStroke(1.dp, if (isPaired) Color(0xFF86EFAC) else Color(0xFFCBD5E1))
                     ) {
                         Text(
-                            text = if (isPaired) "🟢 متصل" else "⚪ أوفلاين",
+                            text = if (isPaired) "متصل" else "غير متصل",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isPaired) Color(0xFF166534) else Color(0xFF475569),
@@ -651,15 +795,18 @@ fun SettingsScreen(
                 }
             }
 
-            // CARD 1: الربط السحابي ومزامنة المدرسة (باركود + رمز المدرسة)
+            }
+
+            if (currentSubPage == 0) {
+                // CARD 1: الربط السحابي ومزامنة المدرسة (باركود + رمز المدرسة)
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                shadowElevation = 2.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFF0F9FF),
+                    border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFBAE6FD)),
+                    shadowElevation = 4.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -684,10 +831,10 @@ fun SettingsScreen(
                                 text = "الربط مع سحابة المدرسة ☁️",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 14.5.sp,
-                                color = Color(0xFF0F172A)
+                                color = currentTheme.textPrimaryColor
                             )
                             Text(
-                                text = if (isPaired) "الحالة: مقترن بسحابة (${config?.schoolName})" else "الحالة: غير مقترن (الوضع المحلي المستقل)",
+                                text = if (isPaired) "متصل" else "غير متصل",
                                 fontSize = 11.5.sp,
                                 color = if (isPaired) Color(0xFF059669) else Color(0xFF64748B),
                                 fontWeight = FontWeight.Bold
@@ -697,9 +844,9 @@ fun SettingsScreen(
 
                     if (isPaired) {
                         Surface(
-                            color = Color(0xFFF0FDF4),
+                            color = if (currentTheme.isDark) currentTheme.tableAltCellBg else Color(0xFFF0FDF4),
                             shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                            border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFBBF7D0)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -707,13 +854,56 @@ fun SettingsScreen(
                                     text = "المدرسة المقترنة: ${config?.schoolName?.ifBlank { "مدرستي" } ?: "مدرستي"}",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = Color(0xFF166534)
+                                    color = if (currentTheme.isDark) currentTheme.textPrimaryColor else Color(0xFF166534)
                                 )
-                                Text(
-                                    text = "المزامنة نشطة: يتم حفظ ومزامنة الدرجات وجداول الحصص تلقائياً مع السحابة المركزية.",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF15803D),
-                                    fontWeight = FontWeight.Normal
+                            }
+                        }
+
+                        // مفتاح تفعيل أو إيقاف التحديث والمزامنة الآلية
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (config?.isCloudSyncEnabled != false) Color(0xFFF0FDF4) else Color(0xFFFEF2F2),
+                            border = BorderStroke(1.dp, if (config?.isCloudSyncEnabled != false) Color(0xFF86EFAC) else Color(0xFFFCA5A5))
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(
+                                        if (config?.isCloudSyncEnabled != false) Icons.Default.Sync else Icons.Default.SyncDisabled,
+                                        contentDescription = null,
+                                        tint = if (config?.isCloudSyncEnabled != false) Color(0xFF16A34A) else Color(0xFFDC2626),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = if (config?.isCloudSyncEnabled != false) "التحديث والمزامنة الآلية: مفعّل 🟢" else "التحديث والمزامنة الآلية: متوقف 🔴",
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 12.5.sp,
+                                            color = if (config?.isCloudSyncEnabled != false) Color(0xFF166534) else Color(0xFF991B1B)
+                                        )
+                                        Text(
+                                            text = if (config?.isCloudSyncEnabled != false) "يتم سحب ورفع الدرجات والجدول والأسماء تلقائياً" else "المزامنة اليدوية فقط عبر الأزرار",
+                                            fontSize = 10.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+                                }
+                                Switch(
+                                    checked = config?.isCloudSyncEnabled != false,
+                                    onCheckedChange = { isEnabled ->
+                                        viewModel.setCloudSyncEnabled(isEnabled)
+                                        Toast.makeText(context, if (isEnabled) "تم تفعيل التحديث والمزامنة الآلية 🟢" else "تم إيقاف التحديث الآلي مؤقتاً 🔴", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.White,
+                                        checkedTrackColor = Color(0xFF16A34A),
+                                        uncheckedThumbColor = Color.White,
+                                        uncheckedTrackColor = Color(0xFFDC2626)
+                                    )
                                 )
                             }
                         }
@@ -781,9 +971,9 @@ fun SettingsScreen(
                     } else {
                         // Unpaired State: 2 Prominent Options (Barcode & School Code)
                         Text(
-                            text = "لربط التطبيق مع مدرستك ومزامنة الشعب والطلاب والجدول، يمكنك مسح باركود الـ QR أو إدخال كود المدرسة:",
+                            text = "اربط مدرستك بالباركود أو الرمز:",
                             fontSize = 11.5.sp,
-                            color = Color(0xFF64748B),
+                            color = currentTheme.textSecondaryColor,
                             lineHeight = 17.sp
                         )
 
@@ -826,14 +1016,14 @@ fun SettingsScreen(
 
                     if (connectionStatus.isNotBlank()) {
                         Surface(
-                            color = if (connectionStatus.contains("✓") || connectionStatus.contains("بنجاح")) Color(0xFFF0FDF4) else Color(0xFFFEF3C7),
+                            color = if (currentTheme.isDark) currentTheme.surfaceColor else if (connectionStatus == "متصل") Color(0xFFF0FDF4) else Color(0xFFFEF3C7),
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, if (connectionStatus.contains("✓") || connectionStatus.contains("بنجاح")) Color(0xFFBBF7D0) else Color(0xFFFDE68A)),
+                            border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else if (connectionStatus == "متصل") Color(0xFFBBF7D0) else Color(0xFFFDE68A)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
                                 text = connectionStatus,
-                                color = if (connectionStatus.contains("✓") || connectionStatus.contains("بنجاح")) Color(0xFF15803D) else Color(0xFF92400E),
+                                color = currentTheme.textPrimaryColor,
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
@@ -844,15 +1034,241 @@ fun SettingsScreen(
                 }
             }
 
-            // CARD 1.5: هوية المدرسة الرسمية وترويسة الطباعة
+                if (currentSubPage == 0) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFEEF2FF),
+                        border = BorderStroke(1.dp, Color(0xFFC7D2FE)),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFDBEAFE),
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = null,
+                                            tint = Color(0xFF2563EB),
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.width(9.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "قفل التطبيق 🔒",
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 13.sp,
+                                        color = currentTheme.textPrimaryColor
+                                    )
+                                    Text(
+                                        text = if (isAppLockEnabled) "يُطلب التحقق عند كل فتح" else "بالبصمة أو رمز الهاتف",
+                                        fontSize = 10.5.sp,
+                                        color = currentTheme.textSecondaryColor
+                                    )
+                                }
+                                Switch(
+                                    checked = isAppLockEnabled,
+                                    onCheckedChange = onAppLockEnabledChange
+                                )
+                        }
+                    }
+                }
+
+                // بطاقة "المزيد" للدخول إلى باقي الإعدادات
+                Surface(
+                    onClick = { currentSubPage = 1 },
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFF5F3FF),
+                    border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFEDE9FE),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = null,
+                                    tint = Color(0xFF7C3AED),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "المزيد من الإعدادات ⚙️",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 15.sp,
+                                color = currentTheme.textPrimaryColor
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = "النسخ الاحتياطي",
+                                fontSize = 11.5.sp,
+                                color = currentTheme.textSecondaryColor
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "دخول",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+
+            if (currentSubPage == 1) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFECFDF5),
+                    border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFA7F3D0)),
+                    shadowElevation = 8.dp,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showCloudBackupDialog = true }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (currentTheme.isDark) currentTheme.tableAltCellBg else Color(0xFFD1FAE5),
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.CloudSync,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("النسخ السحابي", fontWeight = FontWeight.Black, fontSize = 16.sp, color = Color(0xFF064E3B))
+                            Text("حفظ نسخة احتياطية من السجلات", fontSize = 12.sp, color = Color(0xFF047857))
+                        }
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Color(0xFF059669))
+                    }
+                }
+            }
+
+            if (currentSubPage == 1) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    colors = CardDefaults.cardColors(containerColor = currentTheme.surfaceColor),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, currentTheme.tableBorderColor),
+                    elevation = CardDefaults.cardElevation(defaultElevation = if (currentTheme.isDark) 0.dp else 2.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Apps,
+                                contentDescription = null,
+                                tint = currentTheme.primaryColor
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "روابط المنظومة",
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 14.sp,
+                                    color = currentTheme.textPrimaryColor
+                                )
+                                Text(
+                                    "تحميل تطبيق سطح المكتب ومتابعة القناة الرسمية",
+                                    fontSize = 11.sp,
+                                    color = currentTheme.textSecondaryColor
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                try {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://apps.microsoft.com/detail/9P0SWQHDT4H5")
+                                        )
+                                    )
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "تعذر فتح رابط تحميل تطبيق سطح المكتب", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            shape = RoundedCornerShape(11.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = currentTheme.primaryColor)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text("تحميل تطبيق سطح المكتب", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                try {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.content.Intent.ACTION_VIEW,
+                                            android.net.Uri.parse("https://whatsapp.com/channel/0029Vb9C7bs0QeaggKCbuI0J")
+                                        )
+                                    )
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "تعذر فتح رابط قناة المنظومة", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(44.dp),
+                            shape = RoundedCornerShape(11.dp),
+                            border = BorderStroke(1.dp, currentTheme.primaryColor.copy(alpha = 0.55f)),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = currentTheme.primaryColor)
+                        ) {
+                            Icon(Icons.Default.Campaign, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text("متابعة قناة المنظومة على واتساب", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            if (currentSubPage == 1 && false) {
+                // CARD 1.5: هوية المدرسة الرسمية وترويسة الطباعة
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                shadowElevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFFFFFBEB),
+                border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                shadowElevation = 4.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             color = Color(0xFF2563EB).copy(alpha = 0.12f),
@@ -870,8 +1286,8 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text("بيانات وهوية المدرسة الرسمية (للترويسة والطباعة) 🏫", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = Color(0xFF0F172A))
-                            Text("تحديد وتعديل اسم المدرسة والمديرية في سجلات الطباعة والـ PDF", fontSize = 11.sp, color = Color(0xFF64748B))
+                            Text("بيانات المدرسة للطباعة 🏫", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = currentTheme.textPrimaryColor)
+                            Text("تظهر في السجلات المطبوعة", fontSize = 11.sp, color = currentTheme.textSecondaryColor)
                         }
                     }
 
@@ -886,7 +1302,8 @@ fun SettingsScreen(
                         leadingIcon = { Icon(Icons.Default.School, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = settingsFieldColors
                     )
 
                     OutlinedTextField(
@@ -900,7 +1317,8 @@ fun SettingsScreen(
                         leadingIcon = { Icon(Icons.Default.AccountBalance, null, tint = Color(0xFF0284C7), modifier = Modifier.size(20.dp)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = settingsFieldColors
                     )
 
                     Button(
@@ -908,11 +1326,18 @@ fun SettingsScreen(
                             val cleanSchool = schoolNameInput.trim()
                             val cleanDir = directorateInput.trim()
                             if (cleanSchool.isNotBlank()) {
-                                viewModel.saveSchoolIdentity(cleanSchool, cleanDir, teacherName)
+                                viewModel.saveSchoolIdentity(cleanSchool, cleanDir)
                                 prefs.edit()
                                     .putString("school_name", cleanSchool)
                                     .putString("directorate_name", cleanDir)
                                     .apply()
+                                try {
+                                    context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+                                        .edit()
+                                        .putString("school_name", cleanSchool)
+                                        .putString("directorate_name", cleanDir)
+                                        .apply()
+                                } catch (_: Exception) {}
                                 Toast.makeText(context, "تم حفظ وتثبيت اسم المدرسة في الطباعة: $cleanSchool ✓", Toast.LENGTH_SHORT).show()
                             } else {
                                 Toast.makeText(context, "يرجى كتابة اسم المدرسة", Toast.LENGTH_SHORT).show()
@@ -931,13 +1356,13 @@ fun SettingsScreen(
 
             // CARD 2: بيانات الأستاذ والمادة التدريسية
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                shadowElevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFF0F9FF),
+                border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFBAE6FD)),
+                shadowElevation = 4.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             color = Color(0xFF0284C7).copy(alpha = 0.12f),
@@ -955,8 +1380,8 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text("بيانات الأستاذ والمادة التدريسية 📝", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = Color(0xFF0F172A))
-                            Text("تعديل الاسم والمادة الأساسية للتطبيق", fontSize = 11.sp, color = Color(0xFF64748B))
+                            Text("بيانات الأستاذ والمادة التدريسية 📝", fontWeight = FontWeight.Black, fontSize = 14.5.sp, color = currentTheme.textPrimaryColor)
+                            Text("تعديل الاسم والمادة الأساسية للتطبيق", fontSize = 11.sp, color = currentTheme.textSecondaryColor)
                         }
                     }
 
@@ -971,7 +1396,8 @@ fun SettingsScreen(
                         leadingIcon = { Icon(Icons.Default.Person, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = settingsFieldColors
                     )
 
                     var settingSubExpanded by remember { mutableStateOf(false) }
@@ -1001,7 +1427,8 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .menuAnchor()
                                 .fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = settingsFieldColors
                         )
 
                         if (filteredSettingSubjects.isNotEmpty()) {
@@ -1015,7 +1442,7 @@ fun SettingsScreen(
                                             Text(
                                                 text = s, 
                                                 fontWeight = if (s == teacherSubject) FontWeight.Black else FontWeight.Medium,
-                                                color = if (s == teacherSubject) Color(0xFF2563EB) else Color(0xFF1E293B)
+                                                color = if (s == teacherSubject) Color(0xFF2563EB) else currentTheme.textPrimaryColor
                                             ) 
                                         },
                                         onClick = {
@@ -1056,7 +1483,8 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .menuAnchor()
                                 .fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            colors = settingsFieldColors
                         )
 
                         if (filteredSettingGenders.isNotEmpty()) {
@@ -1070,7 +1498,7 @@ fun SettingsScreen(
                                             Text(
                                                 text = g, 
                                                 fontWeight = if (g == schoolGender) FontWeight.Black else FontWeight.Medium,
-                                                color = if (g == schoolGender) Color(0xFF2563EB) else Color(0xFF1E293B)
+                                                color = if (g == schoolGender) Color(0xFF2563EB) else currentTheme.textPrimaryColor
                                             ) 
                                         },
                                         onClick = {
@@ -1090,7 +1518,8 @@ fun SettingsScreen(
                         leadingIcon = { Icon(Icons.Default.Email, null, tint = Color(0xFF2563EB), modifier = Modifier.size(20.dp)) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = settingsFieldColors
                     )
 
                     Button(
@@ -1125,13 +1554,13 @@ fun SettingsScreen(
             // CARD 3: المشرف والمدير (فقط في وضع الإشراف)
             if (isSupervisorMode) {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color.White,
-                    shadowElevation = 2.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFFFFBEB),
+                    shadowElevation = 4.dp,
                     border = BorderStroke(1.5.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 color = Color(0xFFF59E0B).copy(alpha = 0.15f),
@@ -1149,7 +1578,7 @@ fun SettingsScreen(
                             }
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text("بوابة الإدارة المدرسية المباشرة 👑", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
+                                Text("بوابة الإدارة المدرسية المباشرة 👑", fontWeight = FontWeight.Black, fontSize = 14.sp, color = currentTheme.textPrimaryColor)
                                 Text(
                                     text = "الوضع الحالي: إشراف وإدارة كاملة للمدرسة",
                                     fontSize = 11.sp,
@@ -1160,14 +1589,14 @@ fun SettingsScreen(
                         }
 
                         Surface(
-                            color = Color(0xFFFEF3C7),
+                            color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFFEF3C7),
                             shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(0.5.dp, Color(0xFFFDE68A)),
+                            border = BorderStroke(0.5.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFFDE68A)),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
                                 text = "🛡️ بصفتك مديراً/مشرفاً: يمكنك سحب كافة بيانات المدرسة والصفوف ومتابعة السجلات فورياً.",
-                                color = Color(0xFF92400E),
+                                color = if (currentTheme.isDark) currentTheme.textPrimaryColor else Color(0xFF92400E),
                                 fontSize = 11.sp,
                                 lineHeight = 16.sp,
                                 modifier = Modifier.padding(10.dp)
@@ -1199,13 +1628,13 @@ fun SettingsScreen(
 
             // CARD 4: النسخ السحابي المستقل عبر Google Drive / البريد الإلكتروني
             Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = Color.White,
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                shadowElevation = 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFECFDF5),
+                border = BorderStroke(1.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFA7F3D0)),
+                shadowElevation = 4.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             color = Color(0xFF059669).copy(alpha = 0.12f),
@@ -1223,20 +1652,20 @@ fun SettingsScreen(
                         }
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text("النسخ السحابي عبر Google Drive / البريد ☁️", fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color(0xFF0F172A))
-                            Text("تصدير وحفظ نسخة احتياطية من سجلاتك بأمان", fontSize = 11.sp, color = Color(0xFF64748B))
+                            Text("النسخ السحابي عبر Google Drive / البريد ☁️", fontWeight = FontWeight.Black, fontSize = 14.sp, color = currentTheme.textPrimaryColor)
+                            Text("تصدير وحفظ نسخة احتياطية من سجلاتك بأمان", fontSize = 11.sp, color = currentTheme.textSecondaryColor)
                         }
                     }
 
                     Surface(
-                        color = Color(0xFFECFDF5),
+                        color = if (currentTheme.isDark) currentTheme.tableAltCellBg else Color(0xFFECFDF5),
                         shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(0.5.dp, Color(0xFFA7F3D0)),
+                        border = BorderStroke(0.5.dp, if (currentTheme.isDark) currentTheme.tableBorderColor else Color(0xFFA7F3D0)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = "💡 في الوضع المستقل (أوفلاين)، يمكنك تصدير نسخة احتياطية من كافة سجلاتك وحفظها بضغطة زر على Google Drive أو إرسالها إلى إيميلك الشخصي.",
-                            color = Color(0xFF065F46),
+                            color = currentTheme.textPrimaryColor,
                             fontSize = 10.5.sp,
                             lineHeight = 15.sp,
                             modifier = Modifier.padding(8.dp)
@@ -1245,7 +1674,7 @@ fun SettingsScreen(
 
                     Button(
                         onClick = {
-                            viewModel.exportBackup(context) { file ->
+                            viewModel.exportBackup(context = context, onReady = { file ->
                                 val uri = androidx.core.content.FileProvider.getUriForFile(
                                     context,
                                     "${context.packageName}.provider",
@@ -1261,7 +1690,7 @@ fun SettingsScreen(
                                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
                                 context.startActivity(android.content.Intent.createChooser(sendIntent, "حفظ في Google Drive أو إرسال بالبريد:"))
-                            }
+                            })
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1291,11 +1720,12 @@ fun SettingsScreen(
             // CARD 5: قنوات التواصل والدعم الفني الرسمي
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F3FF)),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFDDD6FE)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
                             color = Color(0xFF059669).copy(alpha = 0.12f),
@@ -1312,12 +1742,12 @@ fun SettingsScreen(
                                 text = "قنوات التواصل والدعم الفني الرسمي 💬",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 14.sp,
-                                color = Color(0xFF0F172A)
+                                color = currentTheme.textPrimaryColor
                             )
                             Text(
                                 text = "الدعم المباشر ومتابعة تحديثات المنظومة المعتمدة",
                                 fontSize = 11.sp,
-                                color = Color(0xFF64748B)
+                                color = currentTheme.textSecondaryColor
                             )
                         }
                     }
@@ -1370,6 +1800,21 @@ fun SettingsScreen(
                 }
             }
 
+                // زر الرجوع للصفحة الأولى
+                OutlinedButton(
+                    onClick = { currentSubPage = 0 },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF2563EB)),
+                    border = BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.5f))
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("رجوع للإعدادات", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+            }
+
             // Footer Version Info
             Box(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
@@ -1389,6 +1834,82 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+
+        if (showCloudBackupDialog) {
+            AlertDialog(
+                onDismissRequest = { showCloudBackupDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF059669))
+                        Spacer(Modifier.width(8.dp))
+                        Text("النسخ السحابي", fontWeight = FontWeight.Black)
+                    }
+                },
+                text = {
+                    OutlinedTextField(
+                        value = cloudBackupEmail,
+                        onValueChange = { cloudBackupEmail = it },
+                        label = { Text("البريد الإلكتروني") },
+                        placeholder = { Text("name@example.com") },
+                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val email = cloudBackupEmail.trim()
+                            if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                                Toast.makeText(context, "أدخل بريداً إلكترونياً صحيحاً", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            prefs.edit().putString("cloud_backup_email", email).apply()
+                            showCloudBackupDialog = false
+                            viewModel.exportBackup(
+                                context = context,
+                                onReady = { file ->
+                                    try {
+                                        val uri = androidx.core.content.FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.provider",
+                                            file
+                                        )
+                                        val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                            type = "application/json"
+                                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                            putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf(email))
+                                            putExtra(android.content.Intent.EXTRA_SUBJECT, "نسخة احتياطية - سجل المدرس الذكي - $teacherName")
+                                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(
+                                            android.content.Intent.createChooser(sendIntent, "حفظ النسخة الاحتياطية")
+                                        )
+                                    } catch (e: Exception) {
+                                        Toast.makeText(
+                                            context,
+                                            e.localizedMessage ?: "تعذر فتح تطبيق الحفظ أو البريد",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                },
+                                onError = { message ->
+                                    Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                }
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                    ) {
+                        Text("حفظ")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCloudBackupDialog = false }) {
+                        Text("إلغاء")
+                    }
+                }
+            )
         }
 
         // Connect Cloud Warning Dialog

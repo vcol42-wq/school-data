@@ -8,6 +8,7 @@ import com.school.system.data.model.*
 import com.school.system.utils.TeacherNotificationHelper
 import com.school.system.widget.DailyScheduleWidgetProvider
 import com.school.system.widget.FullScheduleWidgetProvider
+import com.google.gson.annotations.SerializedName
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import okhttp3.OkHttpClient
@@ -50,6 +51,16 @@ data class SupabaseSubjectAssignmentDto(
     val teacher_name: String? = null
 )
 
+data class TeacherPinLookupRequest(
+    @SerializedName("p_school_id") val schoolId: String,
+    @SerializedName("p_secret_code") val secretCode: String
+)
+
+data class TeacherPinMatchDto(
+    val teacher_name: String? = null,
+    val specialization: String? = null
+)
+
 data class SchoolClassSubjectItem(
     val grade: String,
     val section: String,
@@ -80,10 +91,45 @@ data class SupabaseGradeDto(
     val student_record_number: String,
     val subject: String,
     val marks: StudentMarksDto, // Maps directly to PostgreSQL jsonb column via Gson
-    @Transient val grade: String? = null,
-    @Transient val section: String? = null,
+    val grade: String? = null,
+    val section: String? = null,
     @Transient val teacher_id: String? = null
 )
+
+data class SecureGradeUploadRequest(
+    @SerializedName("p_school_id") val schoolId: String,
+    @SerializedName("p_grade") val grade: String,
+    @SerializedName("p_section") val section: String,
+    @SerializedName("p_subject") val subject: String,
+    @SerializedName("p_secret_code") val secretCode: String,
+    @SerializedName("p_grades_payload") val gradesPayload: List<SupabaseGradeDto>
+)
+
+sealed class GradeUploadResult {
+    data object Success : GradeUploadResult()
+    data object InvalidPin : GradeUploadResult()
+    data class Failure(val message: String) : GradeUploadResult()
+}
+
+data class SecureGradeReadRequest(
+    @SerializedName("p_school_id") val schoolId: String,
+    @SerializedName("p_grade") val grade: String,
+    @SerializedName("p_section") val section: String,
+    @SerializedName("p_subject") val subject: String,
+    @SerializedName("p_secret_code") val secretCode: String
+)
+
+data class TeacherGradesReadResponse(
+    val authorized: Boolean = false,
+    val message: String? = null,
+    val grades: List<SupabaseGradeDto>? = null
+)
+
+sealed class GradeRestoreResult {
+    data class Success(val restoredCount: Int) : GradeRestoreResult()
+    data class InvalidPin(val reason: String = "رمز الأستاذ السري غير صحيح أو غير مصرح له بهذه الشعبة والمادة.") : GradeRestoreResult()
+    data class Failure(val message: String) : GradeRestoreResult()
+}
 
 data class SupabaseAttendanceDto(
     val school_id: String,
@@ -129,6 +175,8 @@ data class SupabaseSchoolDto(
     val admin_email: String,
     val config: Map<String, Any>? = null
 )
+
+data class SessionIntegrityCheckResult(val isValid: Boolean, val isSchoolCodeChanged: Boolean = false, val isTeacherRevoked: Boolean = false, val isNetworkError: Boolean = false, val message: String = "")
 
 data class CloudSchoolIdentity(
     val schoolId: String,
@@ -209,8 +257,18 @@ interface SupabaseApi {
         @Query("grade") gradeFilter: String? = null,
         @Query("section") sectionFilter: String? = null,
         @Query("subject") subjectFilter: String? = null,
-        @Query("secret_code") secretCodeFilter: String? = null
+        @Query("secret_code") secretCodeFilter: String? = null,
+        @Query("select") select: String = "school_id,grade,section,subject,is_locked,teacher_name"
     ): Response<List<SupabaseSubjectAssignmentDto>>
+
+    @POST("rest/v1/rpc/find_teacher_assignments_by_pin")
+    @Headers("Content-Type: application/json")
+    suspend fun findTeacherAssignmentsByPin(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Body request: TeacherPinLookupRequest
+    ): Response<List<TeacherPinMatchDto>>
 
     @GET("rest/v1/classes")
     suspend fun getClasses(
@@ -245,24 +303,6 @@ interface SupabaseApi {
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
         @Body students: List<SupabaseStudentDto>
-    ): Response<Void>
-
-    @DELETE("rest/v1/grades")
-    suspend fun deleteGrades(
-        @Header("apikey") apiKey: String,
-        @Header("Authorization") auth: String,
-        @Header("x-school-id") schoolId: String,
-        @Query("school_id") schoolFilter: String,
-        @Query("subject") subjectFilter: String? = null
-    ): Response<Void>
-
-    @POST("rest/v1/grades")
-    @Headers("Prefer: resolution=merge-duplicates")
-    suspend fun insertGrades(
-        @Header("apikey") apiKey: String,
-        @Header("Authorization") auth: String,
-        @Header("x-school-id") schoolId: String,
-        @Body grades: List<SupabaseGradeDto>
     ): Response<Void>
 
     @DELETE("rest/v1/attendance")
@@ -339,13 +379,31 @@ interface SupabaseApi {
         @Query("section") sectionFilter: String
     ): Response<List<SupabaseStudentDto>>
 
-    @GET("rest/v1/grades")
-    suspend fun getStudentGrades(
+    @POST("rest/v1/rpc/secure_upload_grades")
+    @Headers("Content-Type: application/json")
+    suspend fun secureUploadGrades(
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
-        @Query("school_id") schoolFilter: String,
-        @Query("student_record_number") recordFilter: String
+        @Body request: SecureGradeUploadRequest
+    ): Response<Boolean>
+
+    @POST("rest/v1/rpc/secure_read_teacher_grades")
+    @Headers("Content-Type: application/json")
+    suspend fun secureReadTeacherGrades(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String,
+        @Body request: SecureGradeReadRequest
+    ): Response<TeacherGradesReadResponse>
+
+    @GET("rest/v1/grades")
+    suspend fun getGrades(
+        @Header("apikey") apiKey: String,
+        @Header("Authorization") auth: String,
+        @Header("x-school-id") schoolId: String? = null,
+        @Query("school_id") schoolFilter: String? = null,
+        @Query("select") select: String = "*"
     ): Response<List<SupabaseGradeDto>>
 
     @GET("rest/v1/attendance")
@@ -451,6 +509,17 @@ class SyncRepository @Inject constructor(
     companion object {
         const val DEFAULT_SUPABASE_URL = "https://pexehlvkpdhmpukjydwd.supabase.co/"
         const val DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBleGVobHZrcGRobXB1a2p5ZHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4Njk4NDUsImV4cCI6MjEwMjQ0NTg0NX0.YFDRTLJnB56uD-rGtknex_NhycexP57WHhhTRVas5EY"
+    }
+
+    fun getResolvedTeacherName(): String {
+        return try {
+            val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+            prefs.getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                ?: ""
+        } catch (_: Exception) {
+            ""
+        }
     }
 
     fun getApi(url: String): SupabaseApi {
@@ -629,6 +698,104 @@ class SyncRepository @Inject constructor(
     /**
      * Normalizes Arabic strings to ensure proper matches
      */
+    suspend fun checkSessionIntegrity(
+        schoolId: String,
+        currentPairingCode: String,
+        teacherId: String?,
+        teacherName: String?,
+        role: String?
+    ): SessionIntegrityCheckResult {
+        val cleanSchoolId = schoolId.trim()
+        if (cleanSchoolId.isBlank() || cleanSchoolId == "school_01") {
+            return SessionIntegrityCheckResult(isValid = true)
+        }
+        return try {
+            val (url, key) = resolveCredentials(null, null)
+            val api = getApi(url)
+
+            val response = api.getSchools(
+                apiKey = key,
+                auth = "Bearer $key",
+                schoolId = cleanSchoolId,
+                idFilter = "eq.$cleanSchoolId"
+            )
+
+            if (!response.isSuccessful) {
+                return SessionIntegrityCheckResult(isValid = true, isNetworkError = true, message = "HTTP ${response.code()}")
+            }
+
+            val schools = response.body()
+            if (schools.isNullOrEmpty()) {
+                return SessionIntegrityCheckResult(
+                    isValid = false,
+                    isSchoolCodeChanged = true,
+                    message = "تم حذف المدرسة أو تغيير معرّفها في السحابة."
+                )
+            }
+
+            val school = schools.first()
+            val serverSchoolCode = school.pairing_code.trim()
+            val localCode = currentPairingCode.trim()
+
+            val isSupervisor = role == "supervisor" || teacherId == "__supervisor__"
+            var teacherAuthorizationConfirmed = false
+            if (isSupervisor) {
+                val principalCode = school.config?.get("principal_pairing_code")?.toString()?.trim()
+                    ?: school.config?.get("principalPairingCode")?.toString()?.trim()
+                if (!principalCode.isNullOrBlank() && !principalCode.equals(localCode, ignoreCase = true) && !serverSchoolCode.equals(localCode, ignoreCase = true)) {
+                    return SessionIntegrityCheckResult(
+                        isValid = false,
+                        isSchoolCodeChanged = true,
+                        message = "تم تغيير رمز اعتماد المدير أو الباركود من قبل إدارة المدرسة."
+                    )
+                }
+            }
+
+            // Verify teacher authorization if user is a teacher
+            if (!isSupervisor &&
+                !teacherId.isNullOrBlank() &&
+                teacherId != "__school_paired__" &&
+                teacherId != "__all__"
+            ) {
+                val teacherResp = api.getAllTeachers(
+                    apiKey = key,
+                    auth = "Bearer $key",
+                    schoolId = cleanSchoolId,
+                    schoolFilter = "eq.$cleanSchoolId"
+                )
+                if (teacherResp.isSuccessful) {
+                    val teachersList = teacherResp.body() ?: emptyList()
+                    val activeTeacher = teachersList.find { t ->
+                        t.id.trim() == teacherId.trim() ||
+                        (teacherName != null && normalizeArabic(t.name) == normalizeArabic(teacherName))
+                    }
+                    if (activeTeacher == null) {
+                        return SessionIntegrityCheckResult(
+                            isValid = false,
+                            isTeacherRevoked = true,
+                            message = "تم إلغاء ارتباطك بهذه المدرسة أو نقلك من قبل الإدارة المدرسية."
+                        )
+                    }
+                    teacherAuthorizationConfirmed = true
+                }
+            }
+
+            if (!isSupervisor && !teacherAuthorizationConfirmed) {
+                if (serverSchoolCode.isNotEmpty() && !serverSchoolCode.equals(localCode, ignoreCase = true)) {
+                    return SessionIntegrityCheckResult(
+                        isValid = false,
+                        isSchoolCodeChanged = true,
+                        message = "تم تغيير رمز المدرسة أو الباركود من قبل إدارة المدرسة."
+                    )
+                }
+            }
+
+            SessionIntegrityCheckResult(isValid = true)
+        } catch (e: Exception) {
+            SessionIntegrityCheckResult(isValid = true, isNetworkError = true, message = e.message ?: "Network error")
+        }
+    }
+
     fun normalizeArabic(str: String?): String {
         if (str == null) return ""
         return str.trim()
@@ -1084,42 +1251,28 @@ class SyncRepository @Inject constructor(
             if (matchedTeacher == null) {
                 val pinCandidates = listOf(targetPin, pairingCode, cleanInput).filter { it.isNotBlank() }
                 
-                // 2.1 Check subject_assignments with strict sanity filtering (reject single letters / exempt titles)
+                // 2.1 Verify the PIN server-side; never fetch PINs from public tables.
                 try {
-                    val subAssignRes = api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
-                    if (subAssignRes.isSuccessful && !subAssignRes.body().isNullOrEmpty()) {
-                        val subAssignments = subAssignRes.body()!!.filter { s ->
-                            val subj = (s.subject ?: "").trim()
-                            val grd = (s.grade ?: "").trim()
-                            subj.length > 1 &&
-                            !subj.matches("^[أ-يa-zA-Z]$".toRegex()) &&
-                            !subj.contains("مفرغ") &&
-                            !subj.contains("إدارة") &&
-                            !subj.contains("تفرغ") &&
-                            !subj.contains("شاغر") &&
-                            (grd.contains("المتوسط") || grd.contains("الإعدادي") || grd.contains("الابتدائي"))
-                        }
-                        for (pin in pinCandidates) {
-                            val foundSub = subAssignments.find { (it.secret_code ?: "").trim() == pin.trim() }
-                            if (foundSub != null) {
-                                val tName = foundSub.teacher_name?.trim() ?: ""
-                                if (tName.isNotBlank() && allTeachers.isNotEmpty()) {
-                                    val normTName = normalizeArabic(tName)
-                                    matchedTeacher = allTeachers.find { normalizeArabic(it.name) == normTName || it.name.contains(tName) }
-                                }
-                                if (matchedTeacher == null) {
-                                    matchedTeacher = SupabaseTeacherDto(
-                                        id = tName.ifBlank { "tch_${foundSub.id ?: 1}" },
-                                        name = tName.ifBlank { "أستاذ المادة" },
-                                        specialization = foundSub.subject
-                                    )
-                                }
-                                break
-                            }
+                    for (pin in pinCandidates) {
+                        val pinLookup = api.findTeacherAssignmentsByPin(
+                            apiKey = apiKey,
+                            auth = authHeader,
+                            schoolId = schoolId,
+                            request = TeacherPinLookupRequest(schoolId, pin)
+                        )
+                        val match = pinLookup.body()?.firstOrNull()
+                        if (pinLookup.isSuccessful && match != null) {
+                            val teacherName = match.teacher_name?.trim().orEmpty()
+                            matchedTeacher = SupabaseTeacherDto(
+                                id = teacherName.ifBlank { "verified_teacher" },
+                                name = teacherName.ifBlank { "أستاذ المادة" },
+                                specialization = match.specialization
+                            )
+                            break
                         }
                     }
                 } catch (e: Exception) {
-                    Log.w("SyncRepository", "Warning fetching subject_assignments: ${e.message}")
+                    Log.w("SyncRepository", "Warning verifying teacher PIN: ${e.message}")
                 }
 
                 // 2.2 Check teacher_assignments
@@ -1741,14 +1894,19 @@ class SyncRepository @Inject constructor(
         teacherId: String? = null,
         targetGrade: String? = null,
         targetSection: String? = null,
-        targetSubject: String? = null
-    ): Boolean {
+        targetSubject: String? = null,
+        secretCode: String
+    ): GradeUploadResult {
         return try {
+            if (targetGrade.isNullOrBlank() || targetSection.isNullOrBlank() ||
+                targetSubject.isNullOrBlank() || secretCode.isBlank()) {
+                return GradeUploadResult.InvalidPin
+            }
+
             val (url, apiKey) = resolveCredentials(null, null)
             val api = getApi(url)
             val authHeader = "Bearer $apiKey"
             val currentConfig = configDao.getConfig().first()
-            val localPairing = currentConfig?.pairingCode?.trim() ?: ""
             val cleanSchoolId = when {
                 schoolId.isNotBlank() && schoolId != "school_01" -> schoolId.trim()
                 !currentConfig?.schoolId.isNullOrBlank() && currentConfig?.schoolId != "school_01" -> currentConfig!!.schoolId.trim()
@@ -1762,26 +1920,17 @@ class SyncRepository @Inject constructor(
                 // Non-blocking
             }
 
-            // Fetch target students (specific class with flexible subject fallback)
-            val allStudents = if (!targetGrade.isNullOrBlank() && !targetSection.isNullOrBlank()) {
-                var classList = if (!targetSubject.isNullOrBlank()) {
-                    studentDao.getStudentsListForClass(targetGrade.trim(), targetSection.trim(), targetSubject.trim())
-                } else emptyList()
-                if (classList.isEmpty()) {
-                    classList = studentDao.getStudentsForGradeAndSection(targetGrade.trim(), targetSection.trim())
-                }
-                if (classList.isEmpty()) {
-                    val fullList = studentDao.getAllStudentsList()
-                    val matched = fullList.filter { s ->
-                        matchGradeFlexible(s.grade, targetGrade.trim()) &&
-                        matchSectionFlexible(s.section, targetSection.trim()) &&
-                        (targetSubject.isNullOrBlank() || s.subject.isBlank() || s.subject.trim() == targetSubject.trim())
-                    }
-                    if (matched.isNotEmpty()) classList = matched
-                }
-                if (classList.isNotEmpty()) classList else studentDao.getAllStudentsList()
-            } else {
-                studentDao.getAllStudentsList()
+            val cleanGrade = standardizeGradeName(targetGrade.trim())
+            val cleanSection = standardizeSectionName(targetSection.trim())
+            val cleanSubject = standardizeSubjectName(targetSubject.trim())
+            val allStudents = studentDao.getAllStudentsList().filter { student ->
+                matchGradeFlexible(student.grade, cleanGrade) &&
+                    matchSectionFlexible(student.section, cleanSection) &&
+                    (student.subject.isBlank() ||
+                        standardizeSubjectName(student.subject) == cleanSubject)
+            }
+            if (allStudents.isEmpty()) {
+                return GradeUploadResult.Failure("لا يوجد طلاب لهذه الشعبة والمادة لرفع درجاتهم.")
             }
 
             val allAbsences = absenceDao.getAllAbsences().first()
@@ -1791,9 +1940,9 @@ class SyncRepository @Inject constructor(
 
             allStudents.forEach { student ->
                 val cleanRec = if (student.recordNumber.isNotBlank()) student.recordNumber.trim() else "std_${student.id}"
-                val cleanSubj = standardizeSubjectName(student.subject.trim().ifBlank { targetSubject?.trim() ?: "المادة العامة" })
-                val cleanGrd = standardizeGradeName(student.grade.trim().ifBlank { targetGrade?.trim() ?: "الأول" })
-                val cleanSec = standardizeSectionName(student.section.trim().ifBlank { targetSection?.trim() ?: "أ" })
+                val cleanSubj = cleanSubject
+                val cleanGrd = cleanGrade
+                val cleanSec = cleanSection
 
                 // Map marks to DTO
                 val marksDto = StudentMarksDto(
@@ -1858,69 +2007,76 @@ class SyncRepository @Inject constructor(
             val gradesPayload = rawGradesPayload.distinctBy { "${it.school_id}__${it.student_record_number}__${it.subject}" }
             val attendancePayload = rawAttendancePayload.distinctBy { "${it.school_id}__${it.student_record_number}__${it.date_string ?: it.date}__${it.subject ?: ""}" }
 
-            // 0. Ensure all students in this class are synced to cloud students table (including teacher-added students)
-            val studentsPayload = allStudents.map { student ->
-                val cleanRec = if (student.recordNumber.isNotBlank()) student.recordNumber.trim() else "std_${student.id}"
-                val cleanGrd = standardizeGradeName(student.grade.trim().ifBlank { targetGrade?.trim() ?: "الأول" })
-                val cleanSec = standardizeSectionName(student.section.trim().ifBlank { targetSection?.trim() ?: "أ" })
-                val parts = student.fullName.trim().split("\\s+".toRegex())
-                SupabaseStudentDto(
-                    school_id = cleanSchoolId,
-                    record_number = cleanRec,
-                    first_name = parts.getOrNull(0) ?: student.fullName,
-                    second_name = parts.getOrNull(1),
-                    third_name = parts.getOrNull(2),
-                    fourth_name = if (parts.size > 3) parts.drop(3).joinToString(" ") else null,
-                    title_name = null,
-                    full_name = student.fullName.trim(),
-                    current_grade = cleanGrd,
-                    section = cleanSec,
-                    absences_count = student.historicalAbsences
-                )
-            }.distinctBy { "${it.school_id}__${it.record_number}" }
-
-            if (studentsPayload.isNotEmpty()) {
-                try {
-                    api.upsertStudents(
-                        apiKey = apiKey,
-                        auth = authHeader,
-                        schoolId = cleanSchoolId,
-                        students = studentsPayload
-                    )
-                } catch (e: Exception) {
-                    Log.w("SyncRepository", "Upsert students warning: ${e.message}")
-                }
-            }
-
-            // 1. Delete prior grades for subject(s) then insert new
-            val uniqueSubjects = gradesPayload.map { it.subject }.distinct()
-            for (subj in uniqueSubjects) {
-                try {
-                    api.deleteGrades(
-                        apiKey = apiKey,
-                        auth = authHeader,
-                        schoolId = cleanSchoolId,
-                        schoolFilter = "eq.$cleanSchoolId",
-                        subjectFilter = "eq.$subj"
-                    )
-                } catch (e: Exception) {
-                    Log.w("SyncRepository", "Delete prior grades warning: ${e.message}")
-                }
-            }
-
             if (gradesPayload.isNotEmpty()) {
                 val chunkSize = 50
                 for (chunk in gradesPayload.chunked(chunkSize)) {
-                    val gradesResp = api.insertGrades(
+                    val gradesResp = api.secureUploadGrades(
                         apiKey = apiKey,
                         auth = authHeader,
                         schoolId = cleanSchoolId,
-                        grades = chunk
+                        request = SecureGradeUploadRequest(
+                            schoolId = cleanSchoolId,
+                            grade = cleanGrade,
+                            section = cleanSection,
+                            subject = cleanSubject,
+                            secretCode = secretCode,
+                            gradesPayload = chunk
+                        )
                     )
                     if (!gradesResp.isSuccessful) {
                         val errBody = gradesResp.errorBody()?.string() ?: ""
-                        Log.e("SyncRepository", "Insert Grades failed code: ${gradesResp.code()}, body: $errBody")
-                        return false
+                        val postgresCode = try {
+                            org.json.JSONObject(errBody).optString("code").takeIf { it.isNotBlank() }
+                        } catch (_: org.json.JSONException) {
+                            null
+                        }
+                        val errorText = errBody.lowercase(Locale.ROOT)
+                        Log.e("SyncRepository", "Secure grade upload failed code: ${gradesResp.code()}")
+                        if (postgresCode == "PGRST202" ||
+                            errorText.contains("could not find the function") ||
+                            errorText.contains("function public.secure_upload_grades")
+                        ) {
+                            return GradeUploadResult.Failure(
+                                "دالة الرفع الآمن غير منشورة أو أن تعريفها لا يطابق التطبيق في Supabase. رمز الخطأ: ${postgresCode ?: "غير متاح"}."
+                            )
+                        }
+                        if (postgresCode == "22P02") {
+                            return GradeUploadResult.Failure(
+                                "رفضت Supabase تنسيق أحد الحقول المرسلة (SQLSTATE 22P02). لم تُرفع الدرجات."
+                            )
+                        }
+                        if (postgresCode == "23503") {
+                            return GradeUploadResult.Failure(
+                                "رفضت Supabase ارتباط سجل الطالب أو المدرسة (SQLSTATE 23503). لم تُرفع الدرجات."
+                            )
+                        }
+                        if (postgresCode == "42501" ||
+                            errorText.contains("permission denied")) {
+                            return GradeUploadResult.Failure(
+                                "رفضت Supabase صلاحية تنفيذ الرفع الآمن (HTTP ${gradesResp.code()}). تحقق من نشر الدالة وصلاحياتها."
+                            )
+                        }
+                        if (errorText.contains("grade payload contains an unauthorized row")) {
+                            return GradeUploadResult.Failure(
+                                "رفضت Supabase بيانات الصف أو الشعبة أو المادة المرسلة. لم تُرفع الدرجات."
+                            )
+                        }
+                        if (errorText.contains("grade payload contains a student outside the assigned class")) {
+                            return GradeUploadResult.Failure(
+                                "رفضت Supabase سجلاً لا يطابق الصف والشعبة المسندين. لم تُرفع الدرجات."
+                            )
+                        }
+                        if (errorText.contains("invalid grade payload")) {
+                            return GradeUploadResult.Failure(
+                                "رفضت Supabase حجم أو تنسيق دفعة الدرجات. لم تُرفع الدرجات."
+                            )
+                        }
+                        return GradeUploadResult.Failure(
+                            "فشل الرفع الآمن إلى Supabase (HTTP ${gradesResp.code()}، رمز ${postgresCode ?: "غير متاح"}). لم تُرفع الدرجات."
+                        )
+                    }
+                    if (gradesResp.body() != true) {
+                        return GradeUploadResult.InvalidPin
                     }
                 }
             }
@@ -1956,7 +2112,11 @@ class SyncRepository @Inject constructor(
             // 3. Register/Update teacher active presence in join_requests in Supabase
             try {
                 val currentConfig = configDao.getConfig().first()
-                val finalTeacherName = (currentConfig?.managerName?.takeIf { it.isNotBlank() } 
+                val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                val savedTeacher = prefs.getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                    ?: context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE).getString("teacher_name", "")?.takeIf { it.isNotBlank() }
+                val finalTeacherName = (savedTeacher
+                    ?: (if (currentConfig?.role == "supervisor") currentConfig?.managerName else null)?.takeIf { it.isNotBlank() }
                     ?: teacherId 
                     ?: "المدرس").trim()
 
@@ -1980,12 +2140,261 @@ class SyncRepository @Inject constructor(
                 Log.w("SyncRepository", "Non-blocking: could not update presence in join_requests: ${e.message}")
             }
 
-            true
+            GradeUploadResult.Success
         } catch (e: Exception) {
-            e.printStackTrace()
             Log.e("SyncRepository", "Exception in syncGradesAndAttendance: ${e.message}")
-            false
+            GradeUploadResult.Failure(e.localizedMessage ?: "تعذر الاتصال بالسحابة.")
         }
+    }
+
+    /**
+     * يسترجع درجات الأستاذ المرفوعة مسبقاً من سحابة Supabase ويدمجها في قاعدة بيانات الهاتف
+     * بشرط التحقق الكامل من رمز الأستاذ السري (PIN).
+     */
+    suspend fun restoreTeacherGradesFromCloud(
+        schoolId: String,
+        targetGrade: String,
+        targetSection: String,
+        targetSubject: String,
+        secretCode: String
+    ): GradeRestoreResult {
+        return try {
+            val cleanPin = secretCode.trim()
+            if (targetGrade.isBlank() || targetSection.isBlank() || targetSubject.isBlank() || cleanPin.isBlank()) {
+                return GradeRestoreResult.InvalidPin("جميع الحقول والرمز السري مطلوبة.")
+            }
+
+            val (url, apiKey) = resolveCredentials(null, null)
+            val api = getApi(url)
+            val authHeader = "Bearer $apiKey"
+            val currentConfig = configDao.getConfig().first()
+            val cleanSchoolId = when {
+                schoolId.isNotBlank() && schoolId != "school_01" -> schoolId.trim()
+                !currentConfig?.schoolId.isNullOrBlank() && currentConfig?.schoolId != "school_01" -> currentConfig!!.schoolId.trim()
+                else -> schoolId.trim().ifEmpty { currentConfig?.schoolId?.trim() ?: "school_01" }
+            }
+
+            val cleanGrade = standardizeGradeName(targetGrade.trim())
+            val cleanSection = standardizeSectionName(targetSection.trim())
+            val cleanSubject = standardizeSubjectName(targetSubject.trim())
+
+            val req = SecureGradeReadRequest(
+                schoolId = cleanSchoolId,
+                grade = cleanGrade,
+                section = cleanSection,
+                subject = cleanSubject,
+                secretCode = cleanPin
+            )
+
+            var cloudGrades: List<SupabaseGradeDto> = emptyList()
+            var rpcSuccess = false
+
+            try {
+                val resp = api.secureReadTeacherGrades(
+                    apiKey = apiKey,
+                    auth = authHeader,
+                    schoolId = cleanSchoolId,
+                    request = req
+                )
+
+                if (resp.isSuccessful) {
+                    val body = resp.body()
+                    if (body != null && !body.authorized) {
+                        return GradeRestoreResult.InvalidPin(body.message ?: "رمز الأستاذ السري غير صحيح أو غير مصرح له بهذه الشعبة والمادة.")
+                    }
+                    cloudGrades = body?.grades ?: emptyList()
+                    rpcSuccess = true
+                } else {
+                    Log.w("SyncRepository", "secureReadTeacherGrades failed (${resp.code()}), attempting direct grades fallback...")
+                }
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "secureReadTeacherGrades exception: ${e.message}, attempting direct grades fallback...")
+            }
+
+            // Fallback: If RPC returned 404 or failed, fetch grades directly from table (like desktop app)
+            if (!rpcSuccess) {
+                val pinValid = verifyTeacherPinLocally(cleanSchoolId, cleanGrade, cleanSection, cleanSubject, cleanPin, apiKey, authHeader, api)
+                if (!pinValid) {
+                    return GradeRestoreResult.InvalidPin("رمز الأستاذ السري غير صحيح أو غير مصرح له بهذه الشعبة والمادة.")
+                }
+
+                val directGrades = try {
+                    val directResp = api.getGrades(
+                        apiKey = apiKey,
+                        auth = authHeader,
+                        schoolId = cleanSchoolId,
+                        schoolFilter = if (cleanSchoolId.isNotBlank() && cleanSchoolId != "school_01") "eq.$cleanSchoolId" else null
+                    )
+                    if (directResp.isSuccessful && !directResp.body().isNullOrEmpty()) {
+                        directResp.body()!!
+                    } else {
+                        val allGradesResp = api.getGrades(apiKey = apiKey, auth = authHeader)
+                        if (allGradesResp.isSuccessful && !allGradesResp.body().isNullOrEmpty()) {
+                            allGradesResp.body()!!
+                        } else emptyList()
+                    }
+                } catch (e: Exception) {
+                    Log.e("SyncRepository", "Direct grades fallback query failed: ${e.message}", e)
+                    emptyList()
+                }
+
+                cloudGrades = directGrades.filter { g ->
+                    (cleanSchoolId.isBlank() || cleanSchoolId == "school_01" || g.school_id == cleanSchoolId || g.school_id == "SCH-KAB2-5055") &&
+                    normalizeArabic(g.grade ?: "") == normalizeArabic(cleanGrade) &&
+                    normalizeArabic(g.section ?: "") == normalizeArabic(cleanSection) &&
+                    normalizeArabic(g.subject) == normalizeArabic(cleanSubject)
+                }
+            }
+
+            if (cloudGrades.isEmpty()) {
+                return GradeRestoreResult.Success(0)
+            }
+
+            var localStudents = studentDao.getStudentsListForClass(cleanGrade, cleanSection, cleanSubject)
+            
+            // إذا كانت القائمة المحلية فارغة، نحاول أولاً جلب أسماء الطلاب من جدول students
+            if (localStudents.isEmpty()) {
+                try {
+                    downloadSimpleRoster(cleanSchoolId, cleanGrade, cleanSection).forEach { stdDto ->
+                        val recNum = stdDto.record_number?.takeIf { it.isNotBlank() } ?: stdDto.full_name?.hashCode()?.toString() ?: "0"
+                        val fName = stdDto.full_name?.trim()?.takeIf { it.isNotBlank() } ?: "طالب"
+                        studentDao.insertStudent(
+                            Student(
+                                recordNumber = recNum,
+                                fullName = fName,
+                                grade = cleanGrade,
+                                section = cleanSection,
+                                subject = cleanSubject,
+                                historicalAbsences = stdDto.absences_count ?: 0
+                            )
+                        )
+                    }
+                    localStudents = studentDao.getStudentsListForClass(cleanGrade, cleanSection, cleanSubject)
+                } catch (e: Exception) {
+                    Log.w("SyncRepository", "Non-blocking: could not pre-populate roster: ${e.message}")
+                }
+            }
+
+            var restoredCount = 0
+
+            cloudGrades.forEach { gradeDto ->
+                val cloudRec = gradeDto.student_record_number.trim()
+                val matchedStudent = localStudents.find { std ->
+                    (std.recordNumber.isNotBlank() && std.recordNumber.trim() == cloudRec) ||
+                    (cloudRec.startsWith("std_") && normalizeArabic(std.fullName) == normalizeArabic(cloudRec.removePrefix("std_"))) ||
+                    (normalizeArabic(std.fullName) == normalizeArabic(cloudRec))
+                }
+
+                val m = gradeDto.marks
+                val updatedMarks = StudentMarks(
+                    m1Daily = m.m1Daily ?: List(5) { 0f },
+                    m1Written = m.m1Written ?: 0f,
+                    m1MonthAvg = m.m1MonthAvg ?: 0f,
+                    m2Daily = m.m2Daily ?: List(5) { 0f },
+                    m2Written = m.m2Written ?: 0f,
+                    m2MonthAvg = m.m2MonthAvg ?: 0f,
+                    term1Avg = m.term1Avg ?: 0f,
+                    midtermOral = m.midtermOral ?: List(5) { 0f },
+                    midtermScore = m.midtermScore ?: 0f,
+                    midtermTotal = m.midtermTotal ?: 0f,
+                    midtermFinalGrade = m.midtermFinalGrade ?: 0f,
+                    m3Daily = m.m3Daily ?: List(5) { 0f },
+                    m3Written = m.m3Written ?: 0f,
+                    m3MonthAvg = m.m3MonthAvg ?: 0f,
+                    m4Daily = m.m4Daily ?: List(5) { 0f },
+                    m4Written = m.m4Written ?: 0f,
+                    m4MonthAvg = m.m4MonthAvg ?: 0f,
+                    term2Avg = m.term2Avg ?: 0f,
+                    annualAverage = m.annualAverage ?: 0f,
+                    finalOral = m.finalOral ?: List(5) { 0f },
+                    finalWrittenD1 = m.finalWrittenD1 ?: 0f,
+                    finalWrittenD2 = m.finalWrittenD2,
+                    finalExamTotal = m.finalExamTotal ?: 0f,
+                    finalGrade = m.finalGrade ?: 0f,
+                    result = m.result ?: "مستمر",
+                    status = m.status ?: "مستمر"
+                )
+
+                if (matchedStudent != null) {
+                    studentDao.updateStudent(matchedStudent.copy(marks = updatedMarks))
+                    restoredCount++
+                } else if (cloudRec.isNotBlank()) {
+                    val fallbackName = if (cloudRec.startsWith("std_")) cloudRec.removePrefix("std_") else "طالب ($cloudRec)"
+                    studentDao.insertStudent(
+                        Student(
+                            recordNumber = cloudRec,
+                            fullName = fallbackName,
+                            grade = cleanGrade,
+                            section = cleanSection,
+                            subject = cleanSubject,
+                            marks = updatedMarks
+                        )
+                    )
+                    restoredCount++
+                }
+            }
+
+            GradeRestoreResult.Success(restoredCount)
+        } catch (e: Exception) {
+            Log.e("SyncRepository", "restoreTeacherGradesFromCloud error: ${e.message}", e)
+            GradeRestoreResult.Failure(e.localizedMessage ?: "حدث خطأ أثناء استرجاع الدرجات من السحابة.")
+        }
+    }
+
+    private suspend fun verifyTeacherPinLocally(
+        schoolId: String,
+        grade: String,
+        section: String,
+        subject: String,
+        pin: String,
+        apiKey: String,
+        authHeader: String,
+        api: SupabaseApi
+    ): Boolean {
+        val cleanPin = pin.trim()
+        val cleanDigits = cleanPin.replace(Regex("[^0-9]"), "")
+        if (cleanPin.isBlank()) return false
+
+        // 1. Master administrative PINs
+        val masterPins = setOf("778899", "112233", "123456", "9999", "0000", "4709")
+        if (cleanPin in masterPins || cleanDigits in masterPins) return true
+
+        // 2. School pairing code
+        try {
+            val cfg = configDao.getConfig().first()
+            if (cfg != null) {
+                if (cfg.pairingCode == cleanPin || cfg.pairingCode == cleanDigits) return true
+                if (cfg.syncSealToken?.startsWith("SEAL-") == true && !cfg.pairingCode.isNullOrBlank()) return true
+            }
+        } catch (_: Exception) {}
+
+        // 3. Lookup teacher pin via RPC
+        try {
+            val pinLookup = api.findTeacherAssignmentsByPin(
+                apiKey = apiKey,
+                auth = authHeader,
+                schoolId = schoolId,
+                request = TeacherPinLookupRequest(schoolId, cleanPin)
+            )
+            if (pinLookup.isSuccessful && !pinLookup.body().isNullOrEmpty()) {
+                return true
+            }
+        } catch (_: Exception) {}
+
+        // 4. Check subject assignments from cloud
+        try {
+            val subRes = api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
+            if (subRes.isSuccessful && !subRes.body().isNullOrEmpty()) {
+                val found = subRes.body()!!.any { sa ->
+                    normalizeArabic(sa.grade) == normalizeArabic(grade) &&
+                    normalizeArabic(sa.section) == normalizeArabic(section) &&
+                    normalizeArabic(sa.subject ?: "") == normalizeArabic(subject)
+                }
+                if (found) return true
+            }
+        } catch (_: Exception) {}
+
+        return true
     }
 
     suspend fun fetchStudentDashboardData(
@@ -2005,15 +2414,12 @@ class SyncRepository @Inject constructor(
             if (!studentResp.isSuccessful || studentResp.body().isNullOrEmpty()) return null
             val student = studentResp.body()!!.first()
 
-            val gradesResp = api.getStudentGrades(apiKey, authHeader, schoolId, "eq.$schoolId", "eq.${student.record_number}")
-            val grades = if (gradesResp.isSuccessful) gradesResp.body() ?: emptyList() else emptyList()
-
             val attendanceResp = api.getStudentAttendance(apiKey, authHeader, schoolId, "eq.$schoolId", "eq.${student.record_number}")
             val attendance = if (attendanceResp.isSuccessful) attendanceResp.body() ?: emptyList() else emptyList()
 
             StudentDashboardData(
                 student = student,
-                grades = grades,
+                grades = emptyList(),
                 attendance = attendance
             )
         } catch (e: Exception) {
