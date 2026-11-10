@@ -59,12 +59,14 @@
       "public/**/*",
       "build/**/*",
       "electron-main.js",
+      "preload.cjs",
       "package.json"
     ],
     "win": {
       "icon": "public/logo.png",
       "target": [
-        "nsis"
+        "nsis",
+        "portable"
       ]
     },
     "nsis": {
