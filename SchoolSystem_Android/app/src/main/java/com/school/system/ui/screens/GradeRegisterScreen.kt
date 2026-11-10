@@ -265,10 +265,19 @@ fun GradeRegisterScreen(
         }
     }
 
-    // تحديث أسماء وبيانات طلاب الشعبة آلياً في الخلفية فور فتح السجل (إذا كانت المزامنة مفعلة)
+    // تحميل الطلاب وتحديث السجل آلياً فور فتح الشاشة بأعلى معايير الأمان والاستقرار
     LaunchedEffect(grade, section, subject) {
-        if (config?.isCloudSyncEnabled != false) {
-            viewModel.refreshStudentsFromCloud(grade, section, subject) { _, _ -> }
+        try {
+            viewModel.loadStudents(grade, section, subject)
+            val savedPin = viewModel.getStoredPin(grade, section, subject)
+            if (!savedPin.isNullOrBlank()) {
+                viewModel.restoreGradesSecurely(grade, section, subject, savedPin) { /* silent restore with stored PIN */ }
+            }
+            if (config?.isCloudSyncEnabled != false) {
+                viewModel.refreshStudentsFromCloud(grade, section, subject) { _, _ -> }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("GradeRegister", "Error loading class data", e)
         }
     }
 
@@ -368,13 +377,7 @@ fun GradeRegisterScreen(
         config?.isVerified == true && config?.syncSealToken?.startsWith("SEAL-") == true
     }
 
-    LaunchedEffect(grade, section, subject) {
-        viewModel.loadStudents(grade, section, subject)
-        val savedPin = viewModel.getStoredPin(grade, section, subject)
-        if (!savedPin.isNullOrBlank()) {
-            viewModel.restoreGradesSecurely(grade, section, subject, savedPin) { /* silent restore with stored PIN */ }
-        }
-    }
+
 
     var headerHeightPx by remember { mutableFloatStateOf(0f) }
     var headerOffsetPx by remember { mutableFloatStateOf(0f) }

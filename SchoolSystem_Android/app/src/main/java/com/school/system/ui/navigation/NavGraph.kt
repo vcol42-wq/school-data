@@ -201,7 +201,10 @@ fun SchoolSystemNavHost(
             TeacherPortalScreen(
                 config = config ?: com.school.system.data.model.SchoolConfig(),
                 onStartSession = { grade, section, subject, isVerified ->
-                    navController.navigate("grades/$grade/$section/$subject")
+                    val g = android.net.Uri.encode(grade.replace("/", "___"))
+                    val s = android.net.Uri.encode(section.replace("/", "___"))
+                    val sub = android.net.Uri.encode(subject.replace("/", "___"))
+                    navController.navigate("grades/$g/$s/$sub")
                 }
             )
         }
@@ -209,7 +212,10 @@ fun SchoolSystemNavHost(
         composable("dashboard") {
             DashboardScreen(
                 onNavigateToGrades = { grade, section, subject ->
-                    navController.navigate("grades/$grade/$section/$subject")
+                    val g = android.net.Uri.encode(grade.replace("/", "___"))
+                    val s = android.net.Uri.encode(section.replace("/", "___"))
+                    val sub = android.net.Uri.encode(subject.replace("/", "___"))
+                    navController.navigate("grades/$g/$s/$sub")
                 },
                 onNavigateToSettings = {
                     navController.navigate("settings")
@@ -248,7 +254,10 @@ fun SchoolSystemNavHost(
                 syncManager = dashboardViewModel.syncManager,
                 onBack = { navController.popBackStack() },
                 onNavigateToGrades = { grade, section, subject ->
-                    navController.navigate("grades/$grade/$section/$subject")
+                    val g = android.net.Uri.encode(grade.replace("/", "___"))
+                    val s = android.net.Uri.encode(section.replace("/", "___"))
+                    val sub = android.net.Uri.encode(subject.replace("/", "___"))
+                    navController.navigate("grades/$g/$s/$sub")
                 }
             )
         }
@@ -277,9 +286,13 @@ fun SchoolSystemNavHost(
                 navArgument("subject") { type = NavType.StringType }
             )
         ) { backStackEntry ->
-            val grade = backStackEntry.arguments?.getString("grade") ?: ""
-            val section = backStackEntry.arguments?.getString("section") ?: ""
-            val subject = backStackEntry.arguments?.getString("subject") ?: ""
+            val rawGrade = backStackEntry.arguments?.getString("grade") ?: ""
+            val rawSection = backStackEntry.arguments?.getString("section") ?: ""
+            val rawSubject = backStackEntry.arguments?.getString("subject") ?: ""
+
+            val grade = android.net.Uri.decode(rawGrade).replace("___", "/")
+            val section = android.net.Uri.decode(rawSection).replace("___", "/")
+            val subject = android.net.Uri.decode(rawSubject).replace("___", "/")
             
             GradeRegisterScreen(
                 grade = grade,

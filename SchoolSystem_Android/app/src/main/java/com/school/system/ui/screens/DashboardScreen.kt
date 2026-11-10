@@ -447,11 +447,6 @@ fun DashboardScreen(
                             )
                         }
                     }
-                    if (!isSupervisor) {
-                        item {
-                            TeacherPromotionCard()
-                        }
-                    }
                     items(packages) { pkg ->
                         RegisterCardItem(
                             pkg = pkg,
@@ -2966,9 +2961,9 @@ fun TeacherPromotionCard() {
             )
 
             Spacer(Modifier.height(10.dp))
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = {
@@ -2986,13 +2981,14 @@ fun TeacherPromotionCard() {
                             context.startActivity(shareIntent)
                         } catch (_: Exception) {}
                     },
-                    modifier = Modifier.weight(1f).height(38.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                    modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 44.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Icon(Icons.Default.Share, null, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("مشاركة عبر واتساب", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("مشاركة رابط المنظومة عبر واتساب 📲", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
                 OutlinedButton(
@@ -3002,11 +2998,12 @@ fun TeacherPromotionCard() {
                         clipboard.setPrimaryClip(clip)
                         Toast.makeText(context, "تم نسخ رابط برنامج الحاسوب بنجاح ✓", Toast.LENGTH_SHORT).show()
                     },
-                    modifier = Modifier.weight(0.7f).height(38.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFF16A34A))
+                    modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 40.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFF16A34A)),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
-                    Text("نسخ الرابط 📋", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
+                    Text("نسخ رابط متجر مايكروسوفت 📋", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
                 }
             }
         }

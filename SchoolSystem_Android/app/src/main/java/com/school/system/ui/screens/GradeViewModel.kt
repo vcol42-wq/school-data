@@ -96,24 +96,40 @@ class GradeViewModel @Inject constructor(
         currentSubject = subject
         loadGradeLocks()
         viewModelScope.launch {
-            studentDao.getStudentsForClass(grade, section, subject).collectLatest { list ->
-                val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
-                    strength = java.text.Collator.PRIMARY
+            try {
+                studentDao.getStudentsForClass(grade, section, subject).collectLatest { list ->
+                    try {
+                        val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
+                            strength = java.text.Collator.PRIMARY
+                        }
+                        val cleanedList = list.map { s ->
+                            try {
+                                val recalculated = calculateTotals(s.marks, s.subject)
+                                if (recalculated != s.marks) s.copy(marks = recalculated) else s
+                            } catch (_: Exception) {
+                                s
+                            }
+                        }
+                        _students.value = cleanedList.sortedWith { s1, s2 ->
+                            val n1 = (s1.fullName ?: "").trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                            val n2 = (s2.fullName ?: "").trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
+                            collator.compare(n1, n2)
+                        }
+                    } catch (e: Exception) {
+                        _students.value = list
+                    }
                 }
-                val cleanedList = list.map { s ->
-                    val recalculated = calculateTotals(s.marks, s.subject)
-                    if (recalculated != s.marks) s.copy(marks = recalculated) else s
-                }
-                _students.value = cleanedList.sortedWith { s1, s2 ->
-                    val n1 = s1.fullName.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
-                    val n2 = s2.fullName.trim().replace("^\\d+[\\.\\-\\s]+".toRegex(), "")
-                    collator.compare(n1, n2)
-                }
+            } catch (e: Exception) {
+                android.util.Log.e("GradeViewModel", "Failed to collect students", e)
             }
         }
         viewModelScope.launch {
-            absenceDao.getAllAbsences().collectLatest {
-                _absences.value = it
+            try {
+                absenceDao.getAllAbsences().collectLatest {
+                    _absences.value = it
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("GradeViewModel", "Failed to collect absences", e)
             }
         }
     }
