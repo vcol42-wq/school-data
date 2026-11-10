@@ -72,8 +72,8 @@ export const AppLogo: React.FC<AppLogoProps> = ({
             <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-indigo-600 text-white shadow-xs">
               المُدير
             </span>
-            <span className="text-[9.5px] font-mono font-black px-1.5 py-0.5 rounded-md bg-amber-400 text-slate-950 border border-amber-500 shadow-xs" title="إصدار المنظومة v7.0.0 Super Edition">
-              v7.0.0
+            <span className="text-[9.5px] font-mono font-black px-1.5 py-0.5 rounded-md bg-amber-400 text-slate-950 border border-amber-500 shadow-xs" title="إصدار المنظومة v7.0.1 Super Edition">
+              v7.0.1
             </span>
           </div>
           <span className="text-[11px] text-slate-500 font-bold tracking-normal hidden sm:inline">

@@ -26,6 +26,14 @@
             android:name="com.google.mlkit.vision.DEPENDENCIES"
             android:value="barcode" />
 
+        <!-- تعطيل استدعاء أو جمع المعرف الإعلاني نهائياً من أي خدمات تحليلات -->
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="google_analytics_default_allow_ad_personalization_signals"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

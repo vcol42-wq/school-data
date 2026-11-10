@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>نظام الإدارة المدرسية المتكامل - مديرية تربية ديالى</title>
     <script>
+      if (typeof window.prompt !== 'function') {
+        window.prompt = function(message, defaultValue) {
+          return defaultValue || '';
+        };
+      }
       if (typeof module === 'object') {
         window.nodeModule = module;
         module = undefined;

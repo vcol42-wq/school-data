@@ -1,15 +1,15 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "7.0.0",
-  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v7.0.0 Super Edition",
+  "version": "7.0.1",
+  "description": "نظام الإدارة المدرسية المتكامل - الإصدار المحدث v7.0.1 Super Edition",
   "author": "School Management System",
   "type": "module",
   "main": "electron-main.js",
   "scripts": {
     "dev": "tsx server.ts",
     "web": "vite",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs --external:vite --external:electron --define:process.env.NODE_ENV=\\\"production\\\"",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs --external:vite --external:electron",
     "dist": "npm run build && electron-builder --win nsis portable",
     "dist:appx": "npm run build && electron-builder --win appx",
     "start": "node dist/server.js",
@@ -48,7 +48,7 @@
   },
   "build": {
     "appId": "com.school.management",
-    "productName": "The Principal v7.0.0 Super Edition",
+    "productName": "The Principal v7.0.1 Super Edition",
     "icon": "public/logo.png",
     "directories": {
       "output": "dist_electron"
@@ -73,11 +73,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "The Principal v7.0.0",
-      "artifactName": "The_Principal_Setup_v7.0.0.exe"
+      "shortcutName": "The Principal v7.0.1",
+      "artifactName": "The_Principal_Setup_v7.0.1.exe"
     },
     "portable": {
-      "artifactName": "The_Principal_Portable_v7.0.0.exe"
+      "artifactName": "The_Principal_Portable_v7.0.1.exe"
     },
     "appx": {
       "identityName": "waleedal-hasson.ThePrincipal-",
@@ -90,7 +90,7 @@
         "ar",
         "en-US"
       ],
-      "artifactName": "The_Principal_v7.0.0_MicrosoftStore.appx"
+      "artifactName": "The_Principal_v7.0.1_MicrosoftStore.appx"
     }
   }
 }

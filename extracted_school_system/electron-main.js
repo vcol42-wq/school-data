@@ -50,7 +50,7 @@ function createWindow() {
     minWidth: 720,
     minHeight: 480,
     center: true,
-    title: 'نظام الإدارة المدرسية المتكامل - The Principal v6.5.1 Super Edition',
+    title: 'نظام الإدارة المدرسية المتكامل - The Principal v7.0.1 Super Edition',
     icon: iconPath,
     backgroundColor: '#f8fafc',
     show: false,

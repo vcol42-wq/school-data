@@ -217,7 +217,7 @@ async function startServer() {
   }
 
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Principal AI Engine v6.5.1 Active on port ${PORT}`);
+    console.log(`Principal AI Engine v7.0.1 Active on port ${PORT}`);
   });
 
   server.on('error', (err: any) => {
