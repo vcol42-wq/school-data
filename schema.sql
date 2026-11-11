@@ -424,7 +424,7 @@ GRANT ALL ON SEQUENCE subject_assignments_id_seq TO service_role;
 -- ==============================================================================
 -- 17. RPC Helper: admin_manage_subject_assignments
 -- ==============================================================================
-CREATE OR REPLACE FUNCTION admin_manage_subject_assignments(
+CREATE OR REPLACE FUNCTION public.admin_manage_subject_assignments(
     p_school_id TEXT,
     p_supervisor_pin TEXT,
     p_action TEXT DEFAULT 'clear',
@@ -434,17 +434,47 @@ CREATE OR REPLACE FUNCTION admin_manage_subject_assignments(
 RETURNS BOOLEAN
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = pg_catalog, public, extensions
 AS $$
+DECLARE
+    clean_school_id TEXT := BTRIM(COALESCE(p_school_id, ''));
+    clean_pin TEXT := BTRIM(COALESCE(p_supervisor_pin, ''));
+    clean_digits TEXT := REGEXP_REPLACE(clean_pin, '[^0-9]', '', 'g');
+    is_authorized BOOLEAN := FALSE;
 BEGIN
+    IF clean_school_id = '' OR clean_pin = '' THEN
+        RAISE EXCEPTION 'School ID and supervisor PIN are required';
+    END IF;
+
+    SELECT EXISTS (
+        SELECT 1 FROM public.schools s
+        WHERE s.id = clean_school_id
+          AND (
+              s.pairing_code = clean_pin
+              OR (clean_digits <> '' AND s.pairing_code = clean_digits)
+              OR s.config->>'pairing_code' = clean_pin
+              OR s.config->>'principal_pairing_code' = clean_pin
+              OR s.config->>'supervisor_code' = clean_pin
+              OR (clean_digits <> '' AND REGEXP_REPLACE(COALESCE(s.config->>'supervisor_code', ''), '[^0-9]', '', 'g') = clean_digits)
+              OR (clean_digits <> '' AND REGEXP_REPLACE(COALESCE(s.config->>'principal_pairing_code', ''), '[^0-9]', '', 'g') = clean_digits)
+          )
+    ) INTO is_authorized;
+
+    IF NOT is_authorized THEN
+        RAISE EXCEPTION 'Unauthorized supervisor or pairing PIN for school %', clean_school_id;
+    END IF;
+
     IF p_action = 'clear' THEN
-        DELETE FROM subject_assignments WHERE school_id = p_school_id;
+        DELETE FROM public.subject_assignments WHERE school_id = clean_school_id;
         RETURN TRUE;
-    ELSIF p_action = 'delete_teacher' AND p_teacher_name IS NOT NULL THEN
-        DELETE FROM subject_assignments WHERE school_id = p_school_id AND teacher_name = p_teacher_name;
+    ELSIF p_action = 'delete_teacher' AND NULLIF(BTRIM(p_teacher_name), '') IS NOT NULL THEN
+        DELETE FROM public.subject_assignments
+        WHERE school_id = clean_school_id AND teacher_name = BTRIM(p_teacher_name);
         RETURN TRUE;
     END IF;
     RETURN TRUE;
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION admin_manage_subject_assignments TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_manage_subject_assignments(TEXT, TEXT, TEXT, TEXT, JSONB) TO anon, authenticated, service_role;
+NOTIFY pgrst, 'reload schema';

@@ -1329,8 +1329,18 @@ export async function clearCloudTable(
     }
 
     if (tableName === 'subject_assignments') {
-      // Direct delete from subject_assignments table
-      await client.from('subject_assignments').delete().eq('school_id', schoolId);
+      const supervisorPin = (typeof window !== 'undefined' ? (localStorage.getItem(`diyala_supervisor_code_${schoolId}`) || localStorage.getItem('diyala_supervisor_code')) : null) ||
+        (typeof window !== 'undefined' ? localStorage.getItem('diyala_pairing_code') : null) ||
+        '';
+      const { error: directErr } = await client.from('subject_assignments').delete().eq('school_id', schoolId);
+      if (directErr) {
+        const { error: rpcErr } = await client.rpc('admin_manage_subject_assignments', {
+          p_school_id: schoolId,
+          p_supervisor_pin: supervisorPin.trim(),
+          p_action: 'clear'
+        });
+        if (rpcErr) throw rpcErr;
+      }
       return { success: true, message: 'تم تفريغ جدول رموز وإسنادات المعلمين من السحابة بنجاح!' };
     }
 
@@ -1354,13 +1364,27 @@ export async function deepCleanSchoolCloudData(
     const client = getSupabase(schoolId);
     const supervisorPin = (typeof window !== 'undefined' ? (localStorage.getItem(`diyala_supervisor_code_${schoolId}`) || localStorage.getItem('diyala_supervisor_code')) : null) ||
       (typeof window !== 'undefined' ? localStorage.getItem('diyala_pairing_code') : null) ||
-      '778899';
+      '';
     
     // Purge classes, subjects, and assignments to clean all duplicates and single letter artifacts
-    await client.from('classes').delete().eq('school_id', schoolId);
-    await client.from('subjects').delete().eq('school_id', schoolId);
-    await client.from('teacher_assignments').delete().eq('school_id', schoolId);
-    await client.from('subject_assignments').delete().eq('school_id', schoolId);
+    const { error: clsErr } = await client.from('classes').delete().eq('school_id', schoolId);
+    if (clsErr) throw clsErr;
+
+    const { error: subErr } = await client.from('subjects').delete().eq('school_id', schoolId);
+    if (subErr) throw subErr;
+
+    const { error: assignErr } = await client.from('teacher_assignments').delete().eq('school_id', schoolId);
+    if (assignErr) throw assignErr;
+
+    const { error: subAssignErr } = await client.from('subject_assignments').delete().eq('school_id', schoolId);
+    if (subAssignErr) {
+      const { error: rpcErr } = await client.rpc('admin_manage_subject_assignments', {
+        p_school_id: schoolId,
+        p_supervisor_pin: supervisorPin.trim(),
+        p_action: 'clear'
+      });
+      if (rpcErr) throw rpcErr;
+    }
 
     return { 
       success: true, 
