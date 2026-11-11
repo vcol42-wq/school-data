@@ -759,24 +759,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
         console.warn('Direct subject_assignments insert notice:', insertErr);
       }
 
-      // 3. Central RPC for hash credentials and supervisor authentication
-      try {
-        await client.rpc('admin_manage_subject_assignments', {
-          p_school_id: activeSchoolId,
-          p_supervisor_pin: supervisor.code,
-          p_action: 'replace',
-          p_records: flattened.map(a => ({
-            grade: a.grade.trim(),
-            section: a.section.trim(),
-            subject: a.subject.trim(),
-            secret_code: a.secret_code.trim(),
-            is_locked: !!a.is_locked,
-            teacher_name: a.teacher_name?.trim() || ''
-          }))
-        });
-      } catch (rpcErr) {
-        console.warn('RPC admin_manage_subject_assignments notice:', rpcErr);
-      }
+
 
       setStatusMessage({ 
         type: 'success', 
@@ -931,24 +914,7 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
       };
       await client.from('schools').update({ config: fullConfig }).eq('id', activeSchoolId);
 
-      // 3. Central RPC for hash credentials
-      try {
-        await client.rpc('admin_manage_subject_assignments', {
-          p_school_id: activeSchoolId,
-          p_supervisor_pin: supervisor.code,
-          p_action: 'replace',
-          p_records: flattened.map(a => ({
-            grade: a.grade.trim(),
-            section: a.section.trim(),
-            subject: a.subject.trim(),
-            secret_code: a.secret_code.trim(),
-            is_locked: !!a.is_locked,
-            teacher_name: a.teacher_name?.trim() || ''
-          }))
-        });
-      } catch (rpcErr) {
-        console.warn('RPC admin_manage_subject_assignments notice:', rpcErr);
-      }
+
 
       setStatusMessage({
         type: 'success',
@@ -1098,14 +1064,12 @@ export const TeacherAuthorityHub: React.FC<TeacherAuthorityHubProps> = ({
       setIsSavingCloud(true);
       const updated = profiles.filter((_, idx) => idx !== teacherIdx);
       const client = getSupabase(activeSchoolId);
-      const { data: assignmentDeleted, error: assignmentError } = await client.rpc('admin_manage_subject_assignments', {
-        p_school_id: activeSchoolId,
-        p_supervisor_pin: supervisor.code,
-        p_action: 'delete_teacher',
-        p_teacher_name: prof.teacherName
-      });
-      if (assignmentError) throw assignmentError;
-      if (assignmentDeleted !== true) throw new Error('رمز المشرف غير صحيح أو أن المحاولات مقفلة مؤقتاً.');
+      // Delete any assignments for this teacher directly
+      await client
+        .from('subject_assignments')
+        .delete()
+        .eq('school_id', activeSchoolId)
+        .eq('teacher_name', prof.teacherName);
 
       const { error: teacherError } = await client
         .from('teachers')

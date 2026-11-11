@@ -245,6 +245,7 @@ interface SupabaseApi {
         @Header("apikey") apiKey: String,
         @Header("Authorization") auth: String,
         @Header("x-school-id") schoolId: String,
+        @Query("school_id") schoolFilter: String? = null,
         @Query("teacher_id") teacherFilter: String? = null
     ): Response<List<SupabaseAssignmentDto>>
 
@@ -781,7 +782,20 @@ class SyncRepository @Inject constructor(
             }
 
             if (!isSupervisor && !teacherAuthorizationConfirmed) {
-                if (serverSchoolCode.isNotEmpty() && !serverSchoolCode.equals(localCode, ignoreCase = true)) {
+                val cfg = school.config
+                val configProfiles = cfg?.get("teacher_profiles") as? List<*>
+                val isTeacherPin = configProfiles?.any { raw ->
+                    (raw as? Map<*, *>)?.get("secretCode")?.toString()?.trim() == localCode
+                } == true
+                val isStudentCode = (cfg?.get("student_pairing_code") ?: cfg?.get("studentPairingCode"))?.toString()?.trim() == localCode
+                val isPrincipalCode = (cfg?.get("principal_pairing_code") ?: cfg?.get("principalPairingCode"))?.toString()?.trim() == localCode
+                val isSchoolIdMatch = school.id.equals(localCode, ignoreCase = true)
+                val isPairedToken = teacherId == "__school_paired__" || teacherId == "__all__"
+
+                if (serverSchoolCode.isNotEmpty() && 
+                    !serverSchoolCode.equals(localCode, ignoreCase = true) &&
+                    !isTeacherPin && !isStudentCode && !isPrincipalCode && !isSchoolIdMatch && !isPairedToken
+                ) {
                     return SessionIntegrityCheckResult(
                         isValid = false,
                         isSchoolCodeChanged = true,
@@ -1467,9 +1481,9 @@ class SyncRepository @Inject constructor(
             // 1. Fetch assignments: If supervisor or all, fetch ALL assignments without teacher filter!
             val assignmentsResponse = try { 
                 if (isSupervisor) {
-                    api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
+                    api.getTeacherAssignments(apiKey, authHeader, schoolId, "eq.$schoolId", null)
                 } else {
-                    api.getTeacherAssignments(apiKey, authHeader, schoolId, "eq.$teacherId")
+                    api.getTeacherAssignments(apiKey, authHeader, schoolId, "eq.$schoolId", "eq.$teacherId")
                 }
             } catch (e: Exception) { null }
             
@@ -1480,7 +1494,7 @@ class SyncRepository @Inject constructor(
             // Fallback: If filtered query returned empty, try fetching all assignments and match strictly by ID or Name
             if (assignments.isEmpty() && !isSupervisor) {
                 val allAssignRes = try {
-                    api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
+                    api.getTeacherAssignments(apiKey, authHeader, schoolId, "eq.$schoolId", null)
                 } catch (e: Exception) { null }
 
                 if (allAssignRes?.isSuccessful == true && !allAssignRes.body().isNullOrEmpty()) {
@@ -1673,7 +1687,7 @@ class SyncRepository @Inject constructor(
 
             // 1. Fetch from teacher_assignments
             try {
-                val assignRes = api.getTeacherAssignments(apiKey, authHeader, schoolId, null)
+                val assignRes = api.getTeacherAssignments(apiKey, authHeader, schoolId, "eq.$schoolId", null)
                 if (assignRes.isSuccessful && !assignRes.body().isNullOrEmpty()) {
                     assignRes.body()!!.forEach { a ->
                         val stdGrd = standardizeGradeName(a.class_name)
@@ -1720,6 +1734,73 @@ class SyncRepository @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.w("SyncRepository", "getSubjectAssignments error: ${e.message}")
+            }
+
+            // 2.5 Fetch from schools.config (subject_assignments and teacher_profiles)
+            try {
+                val schoolRes = api.getSchools(apiKey, authHeader, schoolId, "eq.$schoolId")
+                if (schoolRes.isSuccessful && !schoolRes.body().isNullOrEmpty()) {
+                    val schoolDto = schoolRes.body()!!.firstOrNull()
+                    val configAssignments = schoolDto?.config?.get("subject_assignments") as? List<*>
+                    if (!configAssignments.isNullOrEmpty()) {
+                        for (raw in configAssignments) {
+                            if (raw !is Map<*, *>) continue
+                            val g = raw["grade"]?.toString() ?: continue
+                            val sec = raw["section"]?.toString() ?: continue
+                            val subj = raw["subject"]?.toString() ?: continue
+                            val tName = raw["teacher_name"]?.toString()
+                            val stdGrd = standardizeGradeName(g)
+                            val stdSec = standardizeSectionName(sec)
+                            val stdSubj = standardizeSubjectName(subj)
+                            if (stdSubj.isBlank() || stdSubj.length <= 1) continue
+                            val key = "$stdGrd-$stdSec-$stdSubj"
+                            if (!resultMap.containsKey(key)) {
+                                resultMap[key] = SchoolClassSubjectItem(
+                                    grade = stdGrd,
+                                    section = stdSec,
+                                    subject = stdSubj,
+                                    teacherName = tName?.takeIf { it.isNotBlank() }
+                                )
+                            }
+                        }
+                    }
+                    val configProfiles = schoolDto?.config?.get("teacher_profiles") as? List<*>
+                    if (!configProfiles.isNullOrEmpty()) {
+                        for (rawProf in configProfiles) {
+                            if (rawProf !is Map<*, *>) continue
+                            val isExempt = rawProf["isExempt"] == true || rawProf["isExempt"]?.toString() == "true"
+                            if (isExempt) continue
+                            val tName = rawProf["teacherName"]?.toString()
+                            val classes = rawProf["classes"] as? List<*>
+                            val subjects = rawProf["subjects"] as? List<*>
+                            if (!classes.isNullOrEmpty() && !subjects.isNullOrEmpty()) {
+                                for (cls in classes) {
+                                    if (cls !is Map<*, *>) continue
+                                    val g = cls["grade"]?.toString() ?: continue
+                                    val sec = cls["section"]?.toString() ?: continue
+                                    for (sb in subjects) {
+                                        val subj = sb?.toString() ?: continue
+                                        val stdGrd = standardizeGradeName(g)
+                                        val stdSec = standardizeSectionName(sec)
+                                        val stdSubj = standardizeSubjectName(subj)
+                                        if (stdSubj.isBlank() || stdSubj.length <= 1) continue
+                                        val key = "$stdGrd-$stdSec-$stdSubj"
+                                        if (!resultMap.containsKey(key)) {
+                                            resultMap[key] = SchoolClassSubjectItem(
+                                                grade = stdGrd,
+                                                section = stdSec,
+                                                subject = stdSubj,
+                                                teacherName = tName?.takeIf { it.isNotBlank() }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SyncRepository", "Notice checking config in getSchoolAvailableClasses: ${e.message}")
             }
 
             // 3. Resolve teacher names and specializations from teachers table

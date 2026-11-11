@@ -420,3 +420,31 @@ GRANT SELECT (school_id, grade, section, subject, is_locked, teacher_name, last_
     ON subject_assignments TO anon, authenticated;
 GRANT ALL ON TABLE subject_assignments TO service_role;
 GRANT ALL ON SEQUENCE subject_assignments_id_seq TO service_role;
+
+-- ==============================================================================
+-- 17. RPC Helper: admin_manage_subject_assignments
+-- ==============================================================================
+CREATE OR REPLACE FUNCTION admin_manage_subject_assignments(
+    p_school_id TEXT,
+    p_supervisor_pin TEXT,
+    p_action TEXT DEFAULT 'clear',
+    p_teacher_name TEXT DEFAULT NULL,
+    p_records JSONB DEFAULT '[]'::jsonb
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    IF p_action = 'clear' THEN
+        DELETE FROM subject_assignments WHERE school_id = p_school_id;
+        RETURN TRUE;
+    ELSIF p_action = 'delete_teacher' AND p_teacher_name IS NOT NULL THEN
+        DELETE FROM subject_assignments WHERE school_id = p_school_id AND teacher_name = p_teacher_name;
+        RETURN TRUE;
+    END IF;
+    RETURN TRUE;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION admin_manage_subject_assignments TO anon, authenticated, service_role;

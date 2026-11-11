@@ -918,17 +918,20 @@ export async function exportSchoolDataWithProgress(
 
       if (uniqueAssignments.length > 0) {
         try {
-          const { data: assignmentsSaved, error: assignmentError } = await client.rpc('admin_manage_subject_assignments', {
-            p_school_id: schoolId,
-            p_supervisor_pin: supervisorPin,
-            p_action: 'replace',
-            p_records: uniqueAssignments
-          });
-          if (assignmentError) {
-            console.warn('RPC admin_manage_subject_assignments notice:', assignmentError.message);
-          }
-        } catch (rpcErr) {
-          console.warn('RPC notice:', rpcErr);
+          const assignmentRows = uniqueAssignments.map(a => ({
+            school_id: schoolId,
+            grade: a.grade.trim(),
+            section: a.section.trim(),
+            subject: a.subject.trim(),
+            secret_code: a.secret_code.trim(),
+            is_locked: !!a.is_locked,
+            teacher_name: a.teacher_name?.trim() || '',
+            last_updated_at: new Date().toISOString()
+          }));
+          await client.from('subject_assignments').delete().eq('school_id', schoolId);
+          await client.from('subject_assignments').insert(assignmentRows);
+        } catch (subTableErr) {
+          console.warn('Direct subject_assignments insert error:', subTableErr);
         }
         emit('step_secrets', 7, 'تصدير وتأمين الرموز السرية وتفويض الكادر والمشرف', 88, `تم تأمين وحفظ ${uniqueAssignments.length} إسناداً للمعلمين بنجاح ✓`, 'success', uniqueAssignments.length);
       } else {
@@ -1326,19 +1329,8 @@ export async function clearCloudTable(
     }
 
     if (tableName === 'subject_assignments') {
-      // 1. Direct delete from subject_assignments table
+      // Direct delete from subject_assignments table
       await client.from('subject_assignments').delete().eq('school_id', schoolId);
-      
-      // 2. Also try RPC clear if available without throwing if not in schema cache
-      try {
-        const supCode = localStorage.getItem('diyala_supervisor_pin') || '112233';
-        await client.rpc('admin_manage_subject_assignments', {
-          p_school_id: schoolId,
-          p_supervisor_pin: supCode,
-          p_action: 'clear'
-        });
-      } catch (_) {}
-
       return { success: true, message: 'تم تفريغ جدول رموز وإسنادات المعلمين من السحابة بنجاح!' };
     }
 
@@ -1369,15 +1361,6 @@ export async function deepCleanSchoolCloudData(
     await client.from('subjects').delete().eq('school_id', schoolId);
     await client.from('teacher_assignments').delete().eq('school_id', schoolId);
     await client.from('subject_assignments').delete().eq('school_id', schoolId);
-
-    // Optional RPC call if installed in database, safely ignored if function does not exist
-    try {
-      await client.rpc('admin_manage_subject_assignments', {
-        p_school_id: schoolId,
-        p_supervisor_pin: supervisorPin.trim(),
-        p_action: 'clear'
-      });
-    } catch (_) {}
 
     return { 
       success: true, 
