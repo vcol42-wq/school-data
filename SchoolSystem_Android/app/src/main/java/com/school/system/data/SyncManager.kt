@@ -211,15 +211,29 @@ class SyncManager @Inject constructor(
                 val mapType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
                 val data: Map<String, Any> = gson.fromJson(trimmed, mapType)
 
-                url = data["url"]?.toString() ?: data["supabaseUrl"]?.toString() ?: data["cloudUrl"]?.toString() ?: SyncRepository.DEFAULT_SUPABASE_URL
-                apiKey = data["apiKey"]?.toString() ?: data["cloudKey"]?.toString() ?: data["api_key"]?.toString() ?: data["anonKey"]?.toString() ?: SyncRepository.DEFAULT_ANON_KEY
-                schoolId = data["schoolId"]?.toString() ?: data["school_id"]?.toString() ?: data["id"]?.toString() ?: schoolId
-                pairingCode = data["pairingCode"]?.toString() ?: data["pairing_code"]?.toString() ?: pairingCode
-                teacherName = data["teacherName"]?.toString() ?: data["teacher_name"]?.toString() ?: data["name"]?.toString() ?: ""
-                schoolName = data["schoolName"]?.toString() ?: data["school_name"]?.toString() ?: ""
-                directorateName = data["directorateName"]?.toString() ?: data["directorate_name"]?.toString() ?: ""
+                fun jsonField(vararg keys: String): String? {
+                    for (k in keys) {
+                        val raw = data[k] ?: continue
+                        val str = if (raw is Number) {
+                            val d = raw.toDouble()
+                            if (d % 1.0 == 0.0) d.toLong().toString() else raw.toString()
+                        } else {
+                            raw.toString().trim()
+                        }
+                        if (str.isNotBlank()) return str
+                    }
+                    return null
+                }
 
-                val roleStr = data["role"]?.toString() ?: ""
+                url = jsonField("url", "supabaseUrl", "cloudUrl") ?: SyncRepository.DEFAULT_SUPABASE_URL
+                apiKey = jsonField("apiKey", "cloudKey", "api_key", "anonKey") ?: SyncRepository.DEFAULT_ANON_KEY
+                schoolId = jsonField("schoolId", "school_id", "id") ?: schoolId
+                pairingCode = jsonField("pairingCode", "pairing_code") ?: pairingCode
+                teacherName = jsonField("teacherName", "teacher_name", "name") ?: ""
+                schoolName = jsonField("schoolName", "school_name") ?: ""
+                directorateName = jsonField("directorateName", "directorate_name") ?: ""
+
+                val roleStr = jsonField("role") ?: ""
                 if (roleStr.equals("principal", ignoreCase = true) || roleStr.equals("supervisor", ignoreCase = true)) {
                     isPrincipal = true
                 }
@@ -363,7 +377,8 @@ class SyncManager @Inject constructor(
         return syncRepository.downloadRoster(
             schoolId = cleanSchoolId,
             teacherId = token,
-            providedUrl = currentConfig.cloudUrl
+            providedUrl = currentConfig.cloudUrl,
+            providedKey = currentConfig.cloudKey
         )
     }
 

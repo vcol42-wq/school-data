@@ -15,8 +15,8 @@ android {
         applicationId "com.theprincipal.student"
         minSdk 26
         targetSdk 36
-        versionCode 21
-        versionName "7.5.20"
+        versionCode 22
+        versionName "7.5.21"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

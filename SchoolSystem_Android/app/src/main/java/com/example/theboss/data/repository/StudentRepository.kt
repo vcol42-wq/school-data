@@ -445,9 +445,9 @@ class StudentRepository @Inject constructor(
             val stdSec = standardizeSectionName(studentSection)
 
             // 0. جلب تعيينات المعلمين والجدول والأساتذة من السحابة
-            val assignRes = try { api.getTeacherAssignments("eq.$schoolId") } catch (e: Exception) { null }
-            val subAssignRes = try { api.getSubjectAssignments("eq.$schoolId") } catch (e: Exception) { null }
-            val teachersRes = try { api.getTeachers("eq.$schoolId") } catch (e: Exception) { null }
+            val assignRes = try { api.getTeacherAssignments("eq.$cleanSchoolId") } catch (e: Exception) { null }
+            val subAssignRes = try { api.getSubjectAssignments("eq.$cleanSchoolId") } catch (e: Exception) { null }
+            val teachersRes = try { api.getTeachers("eq.$cleanSchoolId") } catch (e: Exception) { null }
 
             val assignments = if (assignRes?.isSuccessful == true) assignRes.body() ?: emptyList() else emptyList()
             val rawSubAssignments = if (subAssignRes?.isSuccessful == true) subAssignRes.body() ?: emptyList() else emptyList()
@@ -775,7 +775,7 @@ class StudentRepository @Inject constructor(
             val studentSection = prefs.getString("student_section", "أ") ?: "أ"
             val stdSec = standardizeSectionName(studentSection)
 
-            val response = api.getDailyAssignments(schoolFilter = "eq.$schoolId")
+            val response = api.getDailyAssignments(schoolFilter = "eq.$cleanSchoolId")
             if (response.isSuccessful) {
                 val remoteAssignments = response.body() ?: emptyList()
                 val existingAssignments = dao.getAllAssignments().firstOrNull() ?: emptyList()

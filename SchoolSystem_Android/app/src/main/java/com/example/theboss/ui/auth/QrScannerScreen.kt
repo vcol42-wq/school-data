@@ -28,7 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import java.util.concurrent.Executors
 
@@ -106,13 +108,34 @@ fun CameraPreviewWithAnalysis(onCodeScanned: (String) -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val scanner = remember { BarcodeScanning.getClient() }
+    val scanner = remember {
+        val options = BarcodeScannerOptions.Builder()
+            .setBarcodeFormats(
+                Barcode.FORMAT_QR_CODE,
+                Barcode.FORMAT_DATA_MATRIX,
+                Barcode.FORMAT_AZTEC
+            )
+            .build()
+        BarcodeScanning.getClient(options)
+    }
 
     var isScanned by remember { mutableStateOf(false) }
+    val onCodeScannedState = rememberUpdatedState(onCodeScanned)
+
+    DisposableEffect(Unit) {
+        onDispose {
+            try {
+                executor.shutdown()
+                scanner.close()
+            } catch (_: Exception) {}
+        }
+    }
 
     AndroidView(
         factory = { ctx ->
-            val previewView = PreviewView(ctx)
+            val previewView = PreviewView(ctx).apply {
+                implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            }
             cameraProviderFuture.addListener({
                 val cameraProvider = cameraProviderFuture.get()
                 val preview = Preview.Builder().build().also {
@@ -120,27 +143,35 @@ fun CameraPreviewWithAnalysis(onCodeScanned: (String) -> Unit) {
                 }
 
                 val imageAnalysis = ImageAnalysis.Builder()
+                    .setTargetResolution(android.util.Size(1280, 720))
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
 
                 imageAnalysis.setAnalyzer(executor) { imageProxy ->
                     val mediaImage = imageProxy.image
                     if (mediaImage != null && !isScanned) {
-                        val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
-                        scanner.process(image)
-                            .addOnSuccessListener { barcodes ->
-                                for (barcode in barcodes) {
-                                    val rawValue = barcode.rawValue
-                                    if (rawValue != null) {
-                                        isScanned = true
-                                        onCodeScanned(rawValue)
-                                        break
+                        try {
+                            val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+                            scanner.process(image)
+                                .addOnSuccessListener { barcodes ->
+                                    for (barcode in barcodes) {
+                                        val rawValue = barcode.rawValue
+                                        if (!rawValue.isNullOrBlank()) {
+                                            isScanned = true
+                                            ContextCompat.getMainExecutor(ctx).execute {
+                                                onCodeScannedState.value(rawValue)
+                                            }
+                                            break
+                                        }
                                     }
                                 }
-                            }
-                            .addOnCompleteListener {
-                                imageProxy.close()
-                            }
+                                .addOnCompleteListener {
+                                    imageProxy.close()
+                                }
+                        } catch (e: Exception) {
+                            Log.e("QrScanner", "Image analysis failed", e)
+                            imageProxy.close()
+                        }
                     } else {
                         imageProxy.close()
                     }

@@ -1536,7 +1536,7 @@ class SyncRepository @Inject constructor(
                             normalizeArabic(tName) == normalizeArabic(teacherName) ||
                             (tName.length >= 3 && normalizeArabic(teacherName).contains(normalizeArabic(tName)))
                         }
-                        (if (filtered.isNotEmpty()) filtered else subList).map {
+                        filtered.map {
                             SupabaseAssignmentDto(
                                 school_id = schoolId,
                                 teacher_id = it.teacher_name ?: teacherId,
@@ -2436,20 +2436,16 @@ class SyncRepository @Inject constructor(
         val cleanDigits = cleanPin.replace(Regex("[^0-9]"), "")
         if (cleanPin.isBlank()) return false
 
-        // 1. Master administrative PINs
-        val masterPins = setOf("778899", "112233", "123456", "9999", "0000", "4709")
-        if (cleanPin in masterPins || cleanDigits in masterPins) return true
-
-        // 2. School pairing code
+        // 1. Local school pairing code
         try {
             val cfg = configDao.getConfig().first()
-            if (cfg != null) {
-                if (cfg.pairingCode == cleanPin || cfg.pairingCode == cleanDigits) return true
-                if (cfg.syncSealToken?.startsWith("SEAL-") == true && !cfg.pairingCode.isNullOrBlank()) return true
+            if (cfg != null && cfg.pairingCode.isNotBlank()) {
+                val cfgCode = cfg.pairingCode.trim()
+                if (cfgCode == cleanPin || (cleanDigits.isNotEmpty() && cfgCode == cleanDigits)) return true
             }
         } catch (_: Exception) {}
 
-        // 3. Lookup teacher pin via RPC
+        // 2. Lookup teacher pin via RPC
         try {
             val pinLookup = api.findTeacherAssignmentsByPin(
                 apiKey = apiKey,
@@ -2462,20 +2458,33 @@ class SyncRepository @Inject constructor(
             }
         } catch (_: Exception) {}
 
-        // 4. Check subject assignments from cloud
+        // 3. Check school pairing/supervisor codes in schools table
         try {
-            val subRes = api.getSubjectAssignments(apiKey, authHeader, schoolId, "eq.$schoolId")
-            if (subRes.isSuccessful && !subRes.body().isNullOrEmpty()) {
-                val found = subRes.body()!!.any { sa ->
-                    normalizeArabic(sa.grade) == normalizeArabic(grade) &&
-                    normalizeArabic(sa.section) == normalizeArabic(section) &&
-                    normalizeArabic(sa.subject ?: "") == normalizeArabic(subject)
+            val schoolRes = api.getSchools(apiKey, authHeader, schoolId, "eq.$schoolId")
+            val school = if (schoolRes.isSuccessful) schoolRes.body()?.firstOrNull() else null
+            if (school != null) {
+                val pairing = school.pairing_code.trim()
+                if (pairing.isNotBlank() && (pairing == cleanPin || (cleanDigits.isNotEmpty() && pairing == cleanDigits))) {
+                    return true
                 }
-                if (found) return true
+                val cfg = school.config
+                val supCode = cfg?.get("supervisor_code")?.toString()?.trim() ?: ""
+                val prinCode = cfg?.get("principal_pairing_code")?.toString()?.trim() ?: ""
+                if ((supCode.isNotBlank() && (supCode == cleanPin || (cleanDigits.isNotEmpty() && supCode == cleanDigits))) ||
+                    (prinCode.isNotBlank() && (prinCode == cleanPin || (cleanDigits.isNotEmpty() && prinCode == cleanDigits)))
+                ) {
+                    return true
+                }
+                val profiles = cfg?.get("teacher_profiles") as? List<*>
+                val matchesTeacherProfile = profiles?.any { raw ->
+                    val code = (raw as? Map<*, *>)?.get("secretCode")?.toString()?.trim() ?: ""
+                    code.isNotBlank() && (code == cleanPin || (cleanDigits.isNotEmpty() && code == cleanDigits))
+                } == true
+                if (matchesTeacherProfile) return true
             }
         } catch (_: Exception) {}
 
-        return true
+        return false
     }
 
     suspend fun fetchStudentDashboardData(
