@@ -1726,6 +1726,7 @@ fun SelectTeacherClassesDialog(
     var searchQuery by remember { mutableStateOf("") }
     val availableClasses = remember { mutableStateListOf<SchoolClassSubjectItem>() }
     val selectedItems = remember { mutableStateMapOf<String, Boolean>() }
+    val currentLocalPackages = remember { viewModel.packages.value }
 
     LaunchedEffect(Unit) {
         isLoading = true
@@ -1734,7 +1735,18 @@ fun SelectTeacherClassesDialog(
             availableClasses.clear()
             availableClasses.addAll(classes)
 
-            // Auto-select classes assigned to this teacher if name matches
+            // 1. Pre-select classes that already exist locally on device
+            currentLocalPackages.forEach { localPkg ->
+                classes.find { item ->
+                    viewModel.syncRepository.isGradeMatch(item.grade, localPkg.grade) &&
+                    viewModel.syncRepository.standardizeSectionName(item.section) == viewModel.syncRepository.standardizeSectionName(localPkg.section) &&
+                    viewModel.syncRepository.standardizeSubjectName(item.subject) == viewModel.syncRepository.standardizeSubjectName(localPkg.subject)
+                }?.let { matched ->
+                    selectedItems["${matched.grade}-${matched.section}-${matched.subject}"] = true
+                }
+            }
+
+            // 2. Auto-select classes assigned to this teacher if name matches
             val normCurrentTeacher = viewModel.syncRepository.normalizeArabic(currentTeacherName.replace("^(أ\\.|أستاذ\\s*)\\s*".toRegex(), "").trim())
             classes.forEach { item ->
                 val key = "${item.grade}-${item.section}-${item.subject}"
@@ -1799,7 +1811,7 @@ fun SelectTeacherClassesDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "المدرسة: $schoolName\nحدد فقط الشعب والمواد التي تدرسها لتنزيلها دون بقية المدرسة:",
+                        text = "المدرسة: $schoolName\nحدد الشعب والمواد التي ترغب في إضافتها وتنزيلها إلى هاتفك (لن يتم مسح أي شعب حالية مسجلة لديك):",
                         fontSize = 11.5.sp,
                         color = Color(0xFF1E40AF),
                         lineHeight = 16.sp,
@@ -1990,7 +2002,7 @@ fun SelectTeacherClassesDialog(
                         val ok = viewModel.downloadSelectedClasses(toDownload)
                         isDownloading = false
                         if (ok) {
-                            Toast.makeText(context, "تم تنزيل ${toDownload.size} شعبة بنجاح وتحديث السجلات ✓", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "تم تنزيل وإضافة ${toDownload.size} شعبة بنجاح دون التأثير على الشعب الحالية ✓", Toast.LENGTH_LONG).show()
                             onDismiss()
                         } else {
                             Toast.makeText(context, "فشل تنزيل الشعب، يرجى التأكد من اتصال الإنترنت والمحاولة مجدداً.", Toast.LENGTH_LONG).show()
@@ -2009,7 +2021,7 @@ fun SelectTeacherClassesDialog(
                     Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        if (selectedCount > 0) "تنزيل الشعب المحددة فقط 📥 ($selectedCount)" else "اختر الشعب للتنزيل",
+                        if (selectedCount > 0) "إضافة وتنزيل الشعب المحددة 📥 ($selectedCount)" else "اختر الشعب للتنزيل",
                         fontWeight = FontWeight.Black,
                         fontSize = 12.sp
                     )

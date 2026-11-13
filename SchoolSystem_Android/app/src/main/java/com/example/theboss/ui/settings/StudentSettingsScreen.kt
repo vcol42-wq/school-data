@@ -366,6 +366,51 @@ fun StudentSettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // بطاقة التبديل والعودة لشاشة البوابات الثلاث (طالب • أستاذ • مدير)
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFFEF3C7)),
+                border = BorderStroke(1.2.dp, Color(0xFFF59E0B)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("تغيير بوابة الدخول 🔄", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = if (currentTheme.isDark) currentTheme.textPrimaryColor else Color(0xFF92400E))
+                        Text(
+                            text = "العودة لاختيار بوابة (طالب • أستاذ • مدير)",
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp,
+                            color = currentTheme.textSecondaryColor,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            com.school.system.utils.RoleManager.resetToRoleSelection(context)
+                            navController?.navigate("role_selection") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier.defaultMinSize(minHeight = 40.dp)
+                    ) {
+                        Text(
+                            text = "تغيير البوابة 🚪",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        )
+                    }
+                }
+            }
+
             Card(
                 shape = RoundedCornerShape(15.dp),
                 colors = CardDefaults.cardColors(containerColor = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFEEF2FF)),

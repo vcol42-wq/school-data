@@ -232,7 +232,6 @@ object WidgetScheduleHelper {
     ): Boolean {
         val cleanTeacherCfg = cleanTeacherTwoPartName(teacherConfigName)
         val normTeacherCfg = normArabic(cleanTeacherCfg)
-        if (normTeacherCfg.isEmpty()) return false
 
         val enrolledClasses = getTeacherEnrolledClasses(context)
         val rowGradeNorm = normArabic(cleanClassName(rawGrade))
@@ -259,15 +258,15 @@ object WidgetScheduleHelper {
             }
 
             // داخل الشعبة الخاصة به:
-            // أ) مطابقة الاسم الثنائي للأستاذ
-            if (cellTeacherNorm.isNotEmpty()) {
+            // أ) مطابقة الاسم الثنائي للأستاذ إذا كان معلوماً
+            if (cellTeacherNorm.isNotEmpty() && normTeacherCfg.isNotEmpty()) {
                 val matchesTwoPart = (cellTeacherNorm == normTeacherCfg) ||
                         (normTeacherCfg.length >= 4 && cellTeacherNorm.contains(normTeacherCfg)) ||
                         (cellTeacherNorm.length >= 4 && normTeacherCfg.contains(cellTeacherNorm))
                 if (matchesTwoPart) return true
             }
 
-            // ب) أو إذا كان اسم المدرس في الخلية فارغاً، نتأكد من تطابق المادة مع المادة المسندة له في هذه الشعبة
+            // ب) أو إذا كان اسم المدرس في الخلية فارغاً أو غير محدد، نتأكد من تطابق المادة مع المادة المسندة له في هذه الشعبة
             if (cellSubjNorm.isNotEmpty() && matchingEnrolledClass.subjectNorm.isNotEmpty()) {
                 if (cellSubjNorm == matchingEnrolledClass.subjectNorm ||
                     cellSubjNorm.contains(matchingEnrolledClass.subjectNorm) ||
@@ -276,8 +275,10 @@ object WidgetScheduleHelper {
                     return true
                 }
             }
-            return false
+            return normTeacherCfg.isEmpty()
         }
+
+        if (normTeacherCfg.isEmpty()) return false
 
         // 2. إذا لم تكن هناك شعب منزلة بعد، نعتمد حصراً على الاسم الثنائي المكتوب في الخلية
         if (cellTeacherNorm.isNotEmpty()) {
@@ -352,10 +353,12 @@ object WidgetScheduleHelper {
     fun getFullTimingFromScheduleJson(context: Context): ScheduleTimingInfo {
         return try {
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
-            val bossPrefs = context.getSharedPreferences("com.example.theboss_preferences", Context.MODE_PRIVATE)
+            val bossPrefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+            val legacyPrefs = context.getSharedPreferences("com.example.theboss_preferences", Context.MODE_PRIVATE)
 
             val rawScheduleJson = prefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
                 ?: bossPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                ?: legacyPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
                 ?: "{}"
             val rootObj = Gson().fromJson<Map<String, Any>>(rawScheduleJson, object : TypeToken<Map<String, Any>>() {}.type)
             val timingObj = rootObj?.get("_timing") as? Map<*, *>
@@ -364,11 +367,13 @@ object WidgetScheduleHelper {
                 ?.ifBlank { null }
                 ?: prefs.getString("school_start_hour", null)?.takeIf { it.isNotBlank() }
                 ?: bossPrefs.getString("school_start_hour", null)?.takeIf { it.isNotBlank() }
+                ?: legacyPrefs.getString("school_start_hour", null)?.takeIf { it.isNotBlank() }
                 ?: "08:00"
 
             val lessonDur = (timingObj?.get("lessonDurationMinutes") as? Number)?.toInt()
                 ?: prefs.getInt("lesson_duration_minutes", 0).takeIf { it > 0 }
                 ?: bossPrefs.getInt("lesson_duration_minutes", 0).takeIf { it > 0 }
+                ?: legacyPrefs.getInt("lesson_duration_minutes", 0).takeIf { it > 0 }
                 ?: prefs.getInt("bell_lesson_duration", 0).takeIf { it > 0 }
                 ?: bossPrefs.getInt("bell_lesson_duration", 0).takeIf { it > 0 }
                 ?: 45
@@ -376,6 +381,7 @@ object WidgetScheduleHelper {
             val breakDur = (timingObj?.get("breakDurationMinutes") as? Number)?.toInt()
                 ?: prefs.getInt("break_duration_minutes", 0).takeIf { it > 0 }
                 ?: bossPrefs.getInt("break_duration_minutes", 0).takeIf { it > 0 }
+                ?: legacyPrefs.getInt("break_duration_minutes", 0).takeIf { it > 0 }
                 ?: prefs.getInt("bell_break_duration", 0).takeIf { it > 0 }
                 ?: bossPrefs.getInt("bell_break_duration", 0).takeIf { it > 0 }
                 ?: 10
@@ -384,6 +390,7 @@ object WidgetScheduleHelper {
             if (customLessons.isNullOrEmpty()) {
                 val cached = prefs.getString("custom_lesson_durations", null)?.takeIf { it.isNotBlank() }
                     ?: bossPrefs.getString("custom_lesson_durations", null)?.takeIf { it.isNotBlank() }
+                    ?: legacyPrefs.getString("custom_lesson_durations", null)?.takeIf { it.isNotBlank() }
                 if (!cached.isNullOrBlank()) {
                     customLessons = Gson().fromJson<List<Int>>(cached, object : TypeToken<List<Int>>() {}.type)
                 }
@@ -393,6 +400,7 @@ object WidgetScheduleHelper {
             if (customBreaks.isNullOrEmpty()) {
                 val cached = prefs.getString("custom_break_durations", null)?.takeIf { it.isNotBlank() }
                     ?: bossPrefs.getString("custom_break_durations", null)?.takeIf { it.isNotBlank() }
+                    ?: legacyPrefs.getString("custom_break_durations", null)?.takeIf { it.isNotBlank() }
                 if (!cached.isNullOrBlank()) {
                     customBreaks = Gson().fromJson<List<Int>>(cached, object : TypeToken<List<Int>>() {}.type)
                 }
@@ -536,12 +544,15 @@ object WidgetScheduleHelper {
             val startM = if (parts.size > 1) parts[1] else 0
 
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
-            val bossPrefs = context.getSharedPreferences("com.example.theboss_preferences", Context.MODE_PRIVATE)
+            val bossPrefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
+            val legacyPrefs = context.getSharedPreferences("com.example.theboss_preferences", Context.MODE_PRIVATE)
             val rawScheduleJson = prefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
                 ?: bossPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
+                ?: legacyPrefs.getString("synced_schedule", null)?.takeIf { it.isNotBlank() && it != "{}" }
                 ?: "{}"
             var teacherNameInput = prefs.getString("teacher_name", null)?.takeIf { it.isNotBlank() }
                 ?: bossPrefs.getString("teacher_name", null)?.takeIf { it.isNotBlank() }
+                ?: legacyPrefs.getString("teacher_name", null)?.takeIf { it.isNotBlank() }
                 ?: prefs.getString("user_name", null)?.takeIf { it.isNotBlank() }
                 ?: bossPrefs.getString("user_name", null)?.takeIf { it.isNotBlank() }
                 ?: ""
@@ -815,6 +826,8 @@ object WidgetScheduleHelper {
         try {
             // مسح الكاش لإعادة قراءة شعب الأستاذ المحدثة فوراً
             context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+                .edit().remove("cached_teacher_enrolled_classes").apply()
+            context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
                 .edit().remove("cached_teacher_enrolled_classes").apply()
             context.getSharedPreferences("com.example.theboss_preferences", Context.MODE_PRIVATE)
                 .edit().remove("cached_teacher_enrolled_classes").apply()

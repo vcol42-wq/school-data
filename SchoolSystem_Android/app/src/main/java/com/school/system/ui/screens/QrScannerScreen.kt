@@ -57,25 +57,32 @@ fun parseScannedDetails(raw: String): ScannedQrDetails {
     val trimmed = raw.trim()
     if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
         return try {
-            val mapType = object : TypeToken<Map<String, Any>>() {}.type
-            val data: Map<String, Any> = Gson().fromJson(trimmed, mapType)
-            val tName = data["teacherName"]?.toString() ?: data["teacher_name"]?.toString() ?: data["name"]?.toString() ?: ""
-            val sId = data["schoolId"]?.toString() ?: data["school_id"]?.toString() ?: ""
-            val pCode = data["pairingCode"]?.toString() ?: data["pairing_code"]?.toString() ?: ""
-            val sName = data["schoolName"]?.toString() ?: data["school_name"]?.toString() ?: ""
-            val role = data["role"]?.toString() ?: ""
-            val isPrincipal = role.equals("principal", ignoreCase = true) || role.equals("supervisor", ignoreCase = true)
-            val isStudent = role.equals("student", ignoreCase = true)
+            val json = org.json.JSONObject(trimmed)
+            val tName = json.optString("teacherName", json.optString("teacher_name", json.optString("name", ""))).trim()
+            val sId = json.optString("schoolId", json.optString("school_id", json.optString("id", ""))).trim()
+            val princCode = json.optString("principalPairingCode", json.optString("principal_pairing_code", json.optString("adminPairingCode", ""))).trim()
+            val studCode = json.optString("studentPairingCode", json.optString("student_pairing_code", "")).trim()
+            val pCode = json.optString("pairingCode", json.optString("pairing_code", "")).trim()
+            val sName = json.optString("schoolName", json.optString("school_name", "")).trim()
+            val role = json.optString("role", "").trim()
+            val isPrincipal = role.equals("principal", ignoreCase = true) || role.equals("supervisor", ignoreCase = true) || princCode.isNotBlank()
+            val isStudent = role.equals("student", ignoreCase = true) && princCode.isBlank()
             val badgeTitle = when {
                 isPrincipal -> "👑 بطاقة المدير السحابية (الإشراف العام)"
                 isStudent -> "🎓 بطاقة الطالب السحابية (الجدول والنتائج)"
                 tName.isNotBlank() -> "👨‍🏫 بطاقة المعلم السحابية"
                 else -> "🏫 باركود ربط المدرسة السحابي"
             }
+            val codeToUse = when {
+                isPrincipal && princCode.isNotBlank() -> princCode
+                isStudent && studCode.isNotBlank() -> studCode
+                pCode.isNotBlank() -> pCode
+                else -> sId
+            }
             ScannedQrDetails(
                 badgeTitle = badgeTitle,
                 teacherName = if (isPrincipal) "" else if (isStudent) "طالب / ولي أمر" else tName,
-                code = pCode,
+                code = codeToUse,
                 schoolId = sId,
                 schoolName = sName
             )

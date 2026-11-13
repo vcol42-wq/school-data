@@ -44,16 +44,21 @@ class DailyScheduleWidgetProvider : AppWidgetProvider() {
             intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE
         ) {
             val prefs = context.getSharedPreferences("diyala_school_prefs", Context.MODE_PRIVATE)
+            val bossPrefs = context.getSharedPreferences("the_boss_prefs", Context.MODE_PRIVATE)
             if (intent.action == ACTION_PREV_DAY) {
                 val currentIdx = prefs.getInt("widget_selected_day_idx", WidgetScheduleHelper.getDefaultDayIndex())
                 val newIdx = if (currentIdx > 0) currentIdx - 1 else 4
                 prefs.edit().putInt("widget_selected_day_idx", newIdx).apply()
+                bossPrefs.edit().putInt("widget_selected_day_idx", newIdx).apply()
             } else if (intent.action == ACTION_NEXT_DAY) {
                 val currentIdx = prefs.getInt("widget_selected_day_idx", WidgetScheduleHelper.getDefaultDayIndex())
                 val newIdx = if (currentIdx < 4) currentIdx + 1 else 0
                 prefs.edit().putInt("widget_selected_day_idx", newIdx).apply()
+                bossPrefs.edit().putInt("widget_selected_day_idx", newIdx).apply()
             } else if (intent.action == ACTION_REFRESH_WIDGET) {
-                prefs.edit().putInt("widget_selected_day_idx", WidgetScheduleHelper.getDefaultDayIndex()).apply()
+                val defIdx = WidgetScheduleHelper.getDefaultDayIndex()
+                prefs.edit().putInt("widget_selected_day_idx", defIdx).apply()
+                bossPrefs.edit().putInt("widget_selected_day_idx", defIdx).apply()
             }
 
             val appWidgetManager = AppWidgetManager.getInstance(context)

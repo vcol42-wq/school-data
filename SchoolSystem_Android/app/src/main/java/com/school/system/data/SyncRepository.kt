@@ -667,7 +667,7 @@ class SyncRepository @Inject constructor(
     suspend fun verifyPrincipalSchoolByCode(code: String): SupabaseSchoolDto? {
         return try {
             val clean = code.trim()
-            if (clean.isBlank() || clean == "112233" || clean == "223344" || clean == "334455" || clean.all { it.isDigit() }) {
+            if (clean.isBlank() || clean == "112233" || clean == "223344" || clean == "334455" || clean == "123456" || clean == "000000") {
                 return null
             }
             val (url, key) = resolveCredentials(null, null)
@@ -686,7 +686,8 @@ class SyncRepository @Inject constructor(
                     (pCodeCamel != null && pCodeCamel.isNotBlank() && pCodeCamel.equals(clean, ignoreCase = true)) ||
                     (supCode != null && supCode.isNotBlank() && (supCode.equals(clean, ignoreCase = true) || supCode.removePrefix("SUP-").equals(clean, ignoreCase = true))) ||
                     (mgrCode != null && mgrCode.isNotBlank() && mgrCode.equals(clean, ignoreCase = true)) ||
-                    (s.pairing_code.contains("-") && s.pairing_code.length >= 8 && s.pairing_code.equals(clean, ignoreCase = true))
+                    (s.pairing_code.isNotBlank() && s.pairing_code.equals(clean, ignoreCase = true)) ||
+                    (s.id.isNotBlank() && s.id.equals(clean, ignoreCase = true))
                 }
             }
             null
@@ -1636,8 +1637,9 @@ class SyncRepository @Inject constructor(
                 }.take(maxStudentsPerSection)
 
                 matchedStudents.forEach { stdDto ->
-                    val recNum = stdDto.record_number?.takeIf { it.isNotBlank() } ?: stdDto.full_name?.hashCode()?.toString() ?: "0"
                     val fName = stdDto.full_name?.trim()?.takeIf { it.isNotBlank() } ?: "طالب"
+                    val recNum = stdDto.record_number?.takeIf { it.isNotBlank() && it != "0" } 
+                        ?: "std_${Math.abs(fName.hashCode())}"
                     val newStudent = Student(
                         recordNumber = recNum,
                         fullName = fName,
@@ -1895,12 +1897,10 @@ class SyncRepository @Inject constructor(
                 studentsResponse.body() ?: emptyList()
             } else emptyList()
 
+            val existingPackages = packageDao.getAllPackagesList()
             val existingStudents = studentDao.getAllStudentsList()
 
-            // Clear old local packages and students so only selected classes are retained
-            packageDao.clearAll()
-            studentDao.clearAll()
-
+            // Safe incremental update: do NOT clear existing packages and students so other classes remain intact
             val maxStudentsPerSection = 100
             val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
                 strength = java.text.Collator.PRIMARY
@@ -1911,14 +1911,22 @@ class SyncRepository @Inject constructor(
                 val targetSecStd = standardizeSectionName(item.section)
                 val targetSubjStd = standardizeSubjectName(item.subject)
 
-                packageDao.insertPackage(
-                    ClassPackage(
-                        grade = targetGradeStd,
-                        section = targetSecStd,
-                        subject = targetSubjStd,
-                        iconName = "yrd"
+                val pkgAlreadyExists = existingPackages.any { existing ->
+                    isGradeMatch(existing.grade, targetGradeStd) &&
+                    standardizeSectionName(existing.section) == targetSecStd &&
+                    standardizeSubjectName(existing.subject) == targetSubjStd
+                }
+
+                if (!pkgAlreadyExists) {
+                    packageDao.insertPackage(
+                        ClassPackage(
+                            grade = targetGradeStd,
+                            section = targetSecStd,
+                            subject = targetSubjStd,
+                            iconName = "yrd"
+                        )
                     )
-                )
+                }
 
                 val matchedStudents = studentsList.filter { stdDto ->
                     val g = stdDto.current_grade ?: ""
@@ -1932,8 +1940,9 @@ class SyncRepository @Inject constructor(
                 }.take(maxStudentsPerSection)
 
                 matchedStudents.forEach { stdDto ->
-                    val recNum = stdDto.record_number?.takeIf { it.isNotBlank() } ?: stdDto.full_name?.hashCode()?.toString() ?: "0"
                     val fName = stdDto.full_name?.trim()?.takeIf { it.isNotBlank() } ?: "طالب"
+                    val recNum = stdDto.record_number?.takeIf { it.isNotBlank() && it != "0" } 
+                        ?: "std_${Math.abs(fName.hashCode())}"
                     val newStudent = Student(
                         recordNumber = recNum,
                         fullName = fName,
@@ -1952,7 +1961,13 @@ class SyncRepository @Inject constructor(
                     }
 
                     if (matchedOld != null) {
-                        studentDao.insertStudent(newStudent.copy(marks = matchedOld.marks))
+                        studentDao.updateStudent(
+                            matchedOld.copy(
+                                fullName = fName,
+                                recordNumber = recNum,
+                                historicalAbsences = stdDto.absences_count ?: matchedOld.historicalAbsences
+                            )
+                        )
                     } else {
                         studentDao.insertStudent(newStudent)
                     }
@@ -2598,6 +2613,7 @@ class SyncRepository @Inject constructor(
 
     fun matchGradeFlexible(cloudGrade: String?, targetGrade: String): Boolean {
         if (cloudGrade.isNullOrBlank() || targetGrade.isBlank()) return false
+        if (isGradeMatch(cloudGrade, targetGrade)) return true
         val c1 = standardizeGradeName(cloudGrade)
         val c2 = standardizeGradeName(targetGrade)
         if (c1.isNotBlank() && c2.isNotBlank() && c1 == c2) return true

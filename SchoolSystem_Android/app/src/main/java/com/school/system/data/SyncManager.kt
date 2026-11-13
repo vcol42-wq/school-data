@@ -191,7 +191,7 @@ class SyncManager @Inject constructor(
         }
     }
 
-    suspend fun connectAndPairQr(qrContent: String): Boolean {
+    suspend fun connectAndPairQr(qrContent: String, forceRole: String? = null): Boolean {
         return try {
             val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
             val trimmed = qrContent.trim()
@@ -201,41 +201,43 @@ class SyncManager @Inject constructor(
             var schoolId = currentConfig.schoolId.trim()
             var pairingCode = currentConfig.pairingCode
             var teacherName = ""
-            var isPrincipal = false
+            var isPrincipal = forceRole == "supervisor" || forceRole == "principal" || currentConfig.role == "supervisor"
 
             var schoolName = ""
             var directorateName = ""
 
             if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-                val gson = com.google.gson.Gson()
-                val mapType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
-                val data: Map<String, Any> = gson.fromJson(trimmed, mapType)
+                val jsonObj = org.json.JSONObject(trimmed)
 
-                fun jsonField(vararg keys: String): String? {
+                fun jsonOpt(vararg keys: String): String? {
                     for (k in keys) {
-                        val raw = data[k] ?: continue
-                        val str = if (raw is Number) {
-                            val d = raw.toDouble()
-                            if (d % 1.0 == 0.0) d.toLong().toString() else raw.toString()
-                        } else {
-                            raw.toString().trim()
-                        }
-                        if (str.isNotBlank()) return str
+                        val v = jsonObj.optString(k, "").trim()
+                        if (v.isNotBlank() && v != "null") return v
                     }
                     return null
                 }
 
-                url = jsonField("url", "supabaseUrl", "cloudUrl") ?: SyncRepository.DEFAULT_SUPABASE_URL
-                apiKey = jsonField("apiKey", "cloudKey", "api_key", "anonKey") ?: SyncRepository.DEFAULT_ANON_KEY
-                schoolId = jsonField("schoolId", "school_id", "id") ?: schoolId
-                pairingCode = jsonField("pairingCode", "pairing_code") ?: pairingCode
-                teacherName = jsonField("teacherName", "teacher_name", "name") ?: ""
-                schoolName = jsonField("schoolName", "school_name") ?: ""
-                directorateName = jsonField("directorateName", "directorate_name") ?: ""
+                url = jsonOpt("url", "supabaseUrl", "cloudUrl") ?: SyncRepository.DEFAULT_SUPABASE_URL
+                apiKey = jsonOpt("apiKey", "cloudKey", "api_key", "anonKey") ?: SyncRepository.DEFAULT_ANON_KEY
+                schoolId = jsonOpt("schoolId", "school_id", "id") ?: schoolId
+                val princCode = jsonOpt("principalPairingCode", "principal_pairing_code", "adminPairingCode")
+                val studCode = jsonOpt("studentPairingCode", "student_pairing_code")
+                val pCode = jsonOpt("pairingCode", "pairing_code")
+                
+                teacherName = jsonOpt("teacherName", "teacher_name", "name") ?: ""
+                schoolName = jsonOpt("schoolName", "school_name") ?: ""
+                directorateName = jsonOpt("directorateName", "directorate_name") ?: ""
 
-                val roleStr = jsonField("role") ?: ""
-                if (roleStr.equals("principal", ignoreCase = true) || roleStr.equals("supervisor", ignoreCase = true)) {
+                val roleStr = jsonOpt("role") ?: ""
+                if (roleStr.equals("principal", ignoreCase = true) || roleStr.equals("supervisor", ignoreCase = true) || (isPrincipal && princCode != null)) {
                     isPrincipal = true
+                }
+                
+                pairingCode = when {
+                    isPrincipal && !princCode.isNullOrBlank() -> princCode
+                    !pCode.isNullOrBlank() -> pCode
+                    !studCode.isNullOrBlank() -> studCode
+                    else -> pairingCode
                 }
             } else if (trimmed.startsWith("OTP:", ignoreCase = true)) {
                 val parts = trimmed.split(":")
@@ -503,9 +505,10 @@ class SyncManager @Inject constructor(
                             studentDao.updateStudentNameForAllSubjects(cleanGrade, cleanSection, existingStudent.recordNumber, cleanDtoName)
                         }
                     } else {
+                        val finalRecordNumber = if (studentDto.recordNumber.isNotBlank() && studentDto.recordNumber != "0") studentDto.recordNumber else "std_${Math.abs(cleanDtoName.hashCode())}"
                         studentDao.insertStudent(
                             Student(
-                                recordNumber = if (studentDto.recordNumber.isNotBlank()) studentDto.recordNumber else (1000..9999).random().toString(),
+                                recordNumber = finalRecordNumber,
                                 fullName = cleanDtoName,
                                 grade = cleanGrade,
                                 section = cleanSection,
@@ -577,7 +580,10 @@ class SyncManager @Inject constructor(
         
         for ((grade, section) in uniqueClassSections) {
             val students = studentDao.getStudentsForGradeAndSection(grade, section)
-            val uniqueStudents = students.distinctBy { it.recordNumber }
+            val uniqueStudents = students.distinctBy { 
+                if (it.recordNumber.isNotBlank() && it.recordNumber != "0") it.recordNumber 
+                else "${it.fullName.trim()}_${it.grade}_${it.section}"
+            }
             val subjects = allPackages.filter { it.grade == grade && it.section == section }.map { it.subject }.distinct()
             
             for (student in uniqueStudents) {
@@ -679,14 +685,12 @@ class SyncManager @Inject constructor(
         val clean = pairingCode.trim()
         val currentConfig = configDao.getConfig().first() ?: SchoolConfig()
         
-        // 1. Strictly enforce composite code structure for Principal / Supervisor
-        // Reject plain numeric codes, trivial sequences, or simple digits
-        val isComposite = clean.contains("-") || (clean.length >= 7 && clean.any { !it.isDigit() })
-        if (!isComposite || clean == "112233" || clean == "223344" || clean == "334455" || clean.all { it.isDigit() }) {
+        val isTrivial = clean == "112233" || clean == "223344" || clean == "334455" || clean == "123456" || clean == "000000"
+        if (clean.length < 4 || isTrivial) {
             return PairingResult(
                 success = false,
                 warning = true,
-                message = "تحذير أمني مسجل: رمز المدير غير مصرح به! يجب إدخال الرمز المعتمد المركب الخاص بإدارة المدرسة."
+                message = "تحذير: رمز المدير غير صالح. يجب إدخال الرمز المعتمد الخاص بإدارة المدرسة."
             )
         }
         
@@ -696,7 +700,7 @@ class SyncManager @Inject constructor(
             return PairingResult(
                 success = false,
                 warning = true,
-                message = "تحذير أمني مسجل: رمز المدير غير صحيح! تم تسجيل محاولة الدخول غير المصرح بها وعنوان الجهاز، وسوف ترسل إلى إدارة المدرسة."
+                message = "تحذير أمني مسجل: رمز المدير غير صحيح أو غير مسجل في السحابة."
             )
         }
         val targetSchoolId = school.id

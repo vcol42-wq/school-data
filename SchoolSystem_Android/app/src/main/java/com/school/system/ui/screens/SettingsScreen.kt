@@ -653,6 +653,86 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            // بطاقة التبديل والعودة لشاشة البوابات الثلاث (طالب • أستاذ • مدير)
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (currentTheme.isDark) currentTheme.surfaceColor else Color(0xFFFEF3C7),
+                border = BorderStroke(1.5.dp, Color(0xFFF59E0B)),
+                shadowElevation = 3.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFD97706).copy(alpha = 0.15f),
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.SwapHoriz,
+                                    contentDescription = null,
+                                    tint = Color(0xFFD97706),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "تغيير بوابة الدخول 🔄",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 14.5.sp,
+                                color = if (currentTheme.isDark) currentTheme.textPrimaryColor else Color(0xFF92400E)
+                            )
+                            Text(
+                                text = "العودة للشاشة الرئيسية واختيار بوابة (طالب • أستاذ • مدير)",
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp,
+                                color = if (currentTheme.isDark) currentTheme.textSecondaryColor else Color(0xFFB45309),
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                        }
+                    }
+
+                    Button(
+                        onClick = {
+                            com.school.system.utils.RoleManager.resetToRoleSelection(context)
+                            navController?.navigate("role_selection") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD97706)),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 48.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.Apps, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "العودة لشاشة البوابات الثلاثة (طالب • أستاذ • مدير) 🚪",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.5.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             if (currentSubPage == 0) {
                 // بطاقة بيانات الأستاذ وحفظ المعلومات
                 Surface(

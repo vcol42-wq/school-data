@@ -63,6 +63,17 @@ object RoleManager {
         }
     }
 
+    /**
+     * إعادة ضبط البوابة والعودة لشاشة الاختيار الثلاثية (طالب • أستاذ • مدير) حتى بعد القفل
+     */
+    fun resetToRoleSelection(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .remove(KEY_SELECTED_ROLE)
+            .remove(KEY_ROLE_LOCKED)
+            .apply()
+    }
+
     fun isRoleSelected(context: Context): Boolean {
         return getSelectedRole(context) != null
     }

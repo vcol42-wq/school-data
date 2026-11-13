@@ -91,18 +91,48 @@ class GradeViewModel @Inject constructor(
     }
 
     fun loadStudents(grade: String, section: String, subject: String) {
-        currentGrade = grade
-        currentSection = section
-        currentSubject = subject
+        val stdGrade = syncRepository.standardizeGradeName(grade)
+        val stdSection = syncRepository.standardizeSectionName(section)
+        val stdSubject = syncRepository.standardizeSubjectName(subject)
+
+        currentGrade = stdGrade
+        currentSection = stdSection
+        currentSubject = stdSubject
         loadGradeLocks()
         viewModelScope.launch {
             try {
-                studentDao.getStudentsForClass(grade, section, subject).collectLatest { list ->
+                studentDao.getStudentsForClass(stdGrade, stdSection, stdSubject).collectLatest { list ->
                     try {
+                        var effectiveList = list
+                        if (effectiveList.isEmpty()) {
+                            val rawList = studentDao.getStudentsListForClass(grade, section, subject)
+                            if (rawList.isNotEmpty()) {
+                                effectiveList = rawList
+                            } else {
+                                val allStudents = studentDao.getAllStudentsList()
+                                val matched = allStudents.filter { s ->
+                                    syncRepository.isGradeMatch(s.grade, stdGrade) &&
+                                    syncRepository.standardizeSectionName(s.section) == stdSection &&
+                                    (s.subject.isBlank() || syncRepository.standardizeSubjectName(s.subject) == stdSubject)
+                                }
+                                if (matched.isNotEmpty()) {
+                                    for (std in matched) {
+                                        if (syncRepository.standardizeSubjectName(std.subject) != stdSubject) {
+                                            val exists = studentDao.getStudentByDetails(stdGrade, stdSection, std.recordNumber, stdSubject) != null
+                                            if (!exists) {
+                                                studentDao.insertStudent(std.copy(id = 0, grade = stdGrade, section = stdSection, subject = stdSubject))
+                                            }
+                                        }
+                                    }
+                                    effectiveList = studentDao.getStudentsListForClass(stdGrade, stdSection, stdSubject)
+                                }
+                            }
+                        }
+
                         val collator = java.text.Collator.getInstance(java.util.Locale("ar")).apply {
                             strength = java.text.Collator.PRIMARY
                         }
-                        val cleanedList = list.map { s ->
+                        val cleanedList = effectiveList.map { s ->
                             try {
                                 val recalculated = calculateTotals(s.marks, s.subject)
                                 if (recalculated != s.marks) s.copy(marks = recalculated) else s
@@ -168,22 +198,25 @@ class GradeViewModel @Inject constructor(
     }
 
     fun refreshStudentsFromCloud(grade: String, section: String, subject: String, onComplete: (Boolean, String) -> Unit) {
+        val stdGrade = syncRepository.standardizeGradeName(grade)
+        val stdSection = syncRepository.standardizeSectionName(section)
+        val stdSubject = syncRepository.standardizeSubjectName(subject)
         loadGradeLocks()
         viewModelScope.launch {
             try {
-                val ok = syncManager.downloadSimpleRosterForClass(grade, section, subject)
+                val ok = syncManager.downloadSimpleRosterForClass(stdGrade, stdSection, stdSubject)
                 val currentConfig = configDao.getConfig().first()
                 val token = currentConfig?.syncSealToken ?: ""
                 val schoolId = currentConfig?.schoolId ?: ""
                 val rosterOk = if (!ok) syncManager.downloadClassRoster(schoolId, token) else true
 
                 if (ok || rosterOk) {
-                    val count = studentDao.getStudentsListForClass(grade, section, subject).size
+                    val count = studentDao.getStudentsListForClass(stdGrade, stdSection, stdSubject).size
                     // إذا كان الرمز السري للأستاذ محفوظاً، نسترجع درجات السحابة فوراً
-                    val savedPin = getStoredPin(grade, section, subject)
+                    val savedPin = getStoredPin(stdGrade, stdSection, stdSubject)
                     var gradesMsg = ""
                     if (!savedPin.isNullOrBlank()) {
-                        val restoreRes = gradesRepository.restoreGradesSecurely(grade, section, subject, savedPin)
+                        val restoreRes = gradesRepository.restoreGradesSecurely(stdGrade, stdSection, stdSubject, savedPin)
                         if (restoreRes is GradeRestoreResult.Success && restoreRes.restoredCount > 0) {
                             gradesMsg = " واسترجاع درجات (${restoreRes.restoredCount}) طالباً"
                         }

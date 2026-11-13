@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -97,7 +98,7 @@ fun PrincipalOnboardingScreen(
             isLoading = true
             statusText = "جاري تفعيل بوابة المدير عبر الباركود..."
             scope.launch {
-                val ok = viewModel.syncManager.connectAndPairQr(code)
+                val ok = viewModel.syncManager.connectAndPairQr(code, forceRole = "supervisor")
                 isLoading = false
                 if (ok) {
                     Toast.makeText(context, "تم مسح باركود المدير وتفعيل الإشراف العام بنجاح 👑", Toast.LENGTH_LONG).show()
@@ -146,12 +147,40 @@ fun PrincipalOnboardingScreen(
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text(
-                        text = "منظومة The Principal v6.0",
+                        text = "منظومة The Principal v8.0",
                         color = Color(0xFFFDE68A),
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
+                }
+
+                Surface(
+                    color = Color.Black.copy(alpha = 0.35f),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.clickable {
+                        com.school.system.utils.RoleManager.resetToRoleSelection(context)
+                        onNavigateToRoleSelection()
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "رجوع",
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "البوابات الثلاث ↩️",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
             Column(

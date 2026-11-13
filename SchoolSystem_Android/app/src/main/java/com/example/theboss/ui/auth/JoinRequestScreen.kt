@@ -49,24 +49,26 @@ fun JoinRequestScreen(
             try {
                 val clean = code.trim()
                 if (clean.startsWith("{") && clean.endsWith("}")) {
-                    val gson = com.google.gson.Gson()
-                    val mapType = object : com.google.gson.reflect.TypeToken<Map<String, Any>>() {}.type
-                    val data: Map<String, Any> = gson.fromJson(clean, mapType)
+                    val jsonObj = org.json.JSONObject(clean)
                     
-                    val url = data["url"]?.toString()?.trim()?.removeSurrounding("\"") ?: ""
-                    val apiKey = data["apiKey"]?.toString()?.trim()?.removeSurrounding("\"") ?: ""
-                    val sCode = (data["schoolId"] ?: data["id"])?.toString()?.trim()?.removeSurrounding("\"") ?: ""
-                    val pCode = (data["studentPairingCode"] ?: data["student_pairing_code"] ?: data["pairingCode"])
-                        ?.toString()?.trim()?.removeSurrounding("\"") ?: ""
-                    val sName = (data["schoolName"] ?: data["name"])?.toString()?.trim()?.removeSurrounding("\"") ?: ""
+                    val url = jsonObj.optString("url", "").trim()
+                    val apiKey = jsonObj.optString("apiKey", "").trim()
+                    val sCode = jsonObj.optString("schoolId", jsonObj.optString("id", "")).trim()
+                    val pCode = jsonObj.optString("studentPairingCode", jsonObj.optString("student_pairing_code", jsonObj.optString("pairingCode", ""))).trim()
+                    val sName = jsonObj.optString("schoolName", jsonObj.optString("name", "")).trim()
                     
-                    schoolCode = if (pCode.isNotBlank()) pCode else sCode
+                    val cleanCode = when {
+                        pCode.isNotBlank() && !pCode.startsWith("{") -> pCode
+                        sCode.isNotBlank() && !sCode.startsWith("{") -> sCode
+                        else -> ""
+                    }
+                    schoolCode = cleanCode
                     pairedSchoolName = sName
                     
                     // ربط مباشر بالسحابة وحفظ الجلسة فوراً
                     viewModel.pairDirectlyFromQr(
                         schoolId = sCode,
-                        schoolCode = schoolCode,
+                        schoolCode = cleanCode,
                         schoolName = if (sName.isNotBlank()) sName else "المدرسة الذكية",
                         url = url,
                         apiKey = apiKey
@@ -79,8 +81,17 @@ fun JoinRequestScreen(
                     android.widget.Toast.makeText(context, "تم مسح الرمز بنجاح: $schoolCode ✓", android.widget.Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                schoolCode = code.trim()
-                android.widget.Toast.makeText(context, "تم مسح الرمز: $schoolCode", android.widget.Toast.LENGTH_SHORT).show()
+                // Ensure raw JSON is NEVER set into schoolCode
+                val raw = code.trim()
+                if (raw.startsWith("{")) {
+                    val fallbackMatch = "\"studentPairingCode\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(raw)
+                        ?: "\"pairingCode\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(raw)
+                        ?: "\"schoolId\"\\s*:\\s*\"([^\"]+)\"".toRegex().find(raw)
+                    schoolCode = fallbackMatch?.groupValues?.get(1)?.trim() ?: ""
+                } else {
+                    schoolCode = raw
+                }
+                android.widget.Toast.makeText(context, "تم قراءة الرمز: $schoolCode", android.widget.Toast.LENGTH_SHORT).show()
             }
             navController?.currentBackStackEntry?.savedStateHandle?.remove<String>("scanned_code")
         }

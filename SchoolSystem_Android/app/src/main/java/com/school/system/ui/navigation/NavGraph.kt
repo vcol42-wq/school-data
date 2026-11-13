@@ -166,9 +166,9 @@ fun SchoolSystemNavHost(
                     navController.navigate("qr_scanner")
                 },
                 onNavigateToRoleSelection = {
-                    RoleManager.resetRoleBeforeLock(context)
+                    RoleManager.resetToRoleSelection(context)
                     navController.navigate("role_selection") {
-                        popUpTo("principal_onboarding") { inclusive = true }
+                        popUpTo(0) { inclusive = true }
                     }
                 },
                 navController = navController
@@ -188,9 +188,9 @@ fun SchoolSystemNavHost(
                     navController.navigate("qr_scanner")
                 },
                 onNavigateToRoleSelection = {
-                    RoleManager.resetRoleBeforeLock(context)
+                    RoleManager.resetToRoleSelection(context)
                     navController.navigate("role_selection") {
-                        popUpTo("onboarding") { inclusive = true }
+                        popUpTo(0) { inclusive = true }
                     }
                 },
                 navController = navController
@@ -316,9 +316,9 @@ fun SchoolSystemNavHost(
                     }
                 },
                 onNavigateToRoleSelection = {
-                    RoleManager.resetRoleBeforeLock(context)
+                    RoleManager.resetToRoleSelection(context)
                     navController.navigate("role_selection") {
-                        popUpTo("student_onboarding") { inclusive = true }
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )
@@ -335,9 +335,9 @@ fun SchoolSystemNavHost(
                     navController.navigate("student_qr_scanner")
                 },
                 onNavigateToRoleSelection = {
-                    RoleManager.resetRoleBeforeLock(context)
+                    RoleManager.resetToRoleSelection(context)
                     navController.navigate("role_selection") {
-                        popUpTo("student_join_request") { inclusive = true }
+                        popUpTo(0) { inclusive = true }
                     }
                 },
                 navController = navController
